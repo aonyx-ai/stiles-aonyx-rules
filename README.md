@@ -60,8 +60,9 @@ spoke.
 A rule is a `cdylib` that whisker loads into its own process. Rust has no
 stable ABI of its own, so whisker lays every type that crosses that boundary
 out with stabby and loads a plugin regardless of which rustc built it. It
-still refuses a plugin built against another whisker revision. Two things
-therefore move together:
+still refuses a plugin whose protocol version or layout fingerprints differ
+from its own, which happens when whisker's plugin boundary changed between the
+two revisions. Two things therefore move together:
 
 - The `rev` that the whisker dependencies in this repository's `Cargo.toml`
   share, which every rule builds against. `just pin` prints it.
