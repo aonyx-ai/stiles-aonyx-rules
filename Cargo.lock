@@ -181,10 +181,12 @@ dependencies = [
 name = "em_dash_aside"
 version = "0.1.0"
 dependencies = [
+ "jsdoc",
  "whisker-plugin",
  "whisker-rust",
  "whisker-testing",
  "whisker-types",
+ "whisker-typescript",
 ]
 
 [[package]]
@@ -278,16 +280,19 @@ dependencies = [
  "whisker-rust",
  "whisker-testing",
  "whisker-types",
+ "whisker-typescript",
 ]
 
 [[package]]
 name = "inline_doc_link"
 version = "0.1.0"
 dependencies = [
+ "jsdoc",
  "whisker-plugin",
  "whisker-rust",
  "whisker-testing",
  "whisker-types",
+ "whisker-typescript",
 ]
 
 [[package]]
@@ -295,6 +300,13 @@ name = "itoa"
 version = "1.0.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682"
+
+[[package]]
+name = "jsdoc"
+version = "0.1.0"
+dependencies = [
+ "proptest",
+]
 
 [[package]]
 name = "libc"
@@ -312,11 +324,13 @@ checksum = "32a66949e030da00e8c7d4434b251670a91556f4144941d37452769c25d58a53"
 name = "long_doc_sentence"
 version = "0.1.0"
 dependencies = [
+ "jsdoc",
  "tree-sitter",
  "whisker-plugin",
  "whisker-rust",
  "whisker-testing",
  "whisker-types",
+ "whisker-typescript",
 ]
 
 [[package]]
@@ -709,6 +723,7 @@ dependencies = [
  "whisker-rust",
  "whisker-testing",
  "whisker-types",
+ "whisker-typescript",
 ]
 
 [[package]]
@@ -804,7 +819,7 @@ dependencies = [
 [[package]]
 name = "whisker-codegen"
 version = "0.1.0"
-source = "git+https://github.com/aonyx-ai/whisker.git?branch=ts%2Fcheck-typescript#3a8e0e903745e1bc36f509f902048e121fc57353"
+source = "git+https://github.com/aonyx-ai/whisker.git?rev=32e387e9d9d19417d34ded70059aab73897ebe01#32e387e9d9d19417d34ded70059aab73897ebe01"
 dependencies = [
  "serde",
  "serde_json",
@@ -813,7 +828,7 @@ dependencies = [
 [[package]]
 name = "whisker-core"
 version = "0.1.0"
-source = "git+https://github.com/aonyx-ai/whisker.git?branch=ts%2Fcheck-typescript#3a8e0e903745e1bc36f509f902048e121fc57353"
+source = "git+https://github.com/aonyx-ai/whisker.git?rev=32e387e9d9d19417d34ded70059aab73897ebe01#32e387e9d9d19417d34ded70059aab73897ebe01"
 dependencies = [
  "anyhow",
  "tree-sitter",
@@ -823,7 +838,7 @@ dependencies = [
 [[package]]
 name = "whisker-macros"
 version = "0.1.0"
-source = "git+https://github.com/aonyx-ai/whisker.git?branch=ts%2Fcheck-typescript#3a8e0e903745e1bc36f509f902048e121fc57353"
+source = "git+https://github.com/aonyx-ai/whisker.git?rev=32e387e9d9d19417d34ded70059aab73897ebe01#32e387e9d9d19417d34ded70059aab73897ebe01"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -833,7 +848,7 @@ dependencies = [
 [[package]]
 name = "whisker-plugin"
 version = "0.1.0"
-source = "git+https://github.com/aonyx-ai/whisker.git?branch=ts%2Fcheck-typescript#3a8e0e903745e1bc36f509f902048e121fc57353"
+source = "git+https://github.com/aonyx-ai/whisker.git?rev=32e387e9d9d19417d34ded70059aab73897ebe01#32e387e9d9d19417d34ded70059aab73897ebe01"
 dependencies = [
  "stabby",
  "whisker-rust",
@@ -844,7 +859,7 @@ dependencies = [
 [[package]]
 name = "whisker-rust"
 version = "0.1.0"
-source = "git+https://github.com/aonyx-ai/whisker.git?branch=ts%2Fcheck-typescript#3a8e0e903745e1bc36f509f902048e121fc57353"
+source = "git+https://github.com/aonyx-ai/whisker.git?rev=32e387e9d9d19417d34ded70059aab73897ebe01#32e387e9d9d19417d34ded70059aab73897ebe01"
 dependencies = [
  "stabby",
  "tree-sitter",
@@ -857,7 +872,7 @@ dependencies = [
 [[package]]
 name = "whisker-testing"
 version = "0.1.0"
-source = "git+https://github.com/aonyx-ai/whisker.git?branch=ts%2Fcheck-typescript#3a8e0e903745e1bc36f509f902048e121fc57353"
+source = "git+https://github.com/aonyx-ai/whisker.git?rev=32e387e9d9d19417d34ded70059aab73897ebe01#32e387e9d9d19417d34ded70059aab73897ebe01"
 dependencies = [
  "tree-sitter",
  "tree-sitter-rust",
@@ -869,7 +884,7 @@ dependencies = [
 [[package]]
 name = "whisker-types"
 version = "0.1.0"
-source = "git+https://github.com/aonyx-ai/whisker.git?branch=ts%2Fcheck-typescript#3a8e0e903745e1bc36f509f902048e121fc57353"
+source = "git+https://github.com/aonyx-ai/whisker.git?rev=32e387e9d9d19417d34ded70059aab73897ebe01#32e387e9d9d19417d34ded70059aab73897ebe01"
 dependencies = [
  "anyhow",
  "stabby",
@@ -879,7 +894,7 @@ dependencies = [
 [[package]]
 name = "whisker-typescript"
 version = "0.1.0"
-source = "git+https://github.com/aonyx-ai/whisker.git?branch=ts%2Fcheck-typescript#3a8e0e903745e1bc36f509f902048e121fc57353"
+source = "git+https://github.com/aonyx-ai/whisker.git?rev=32e387e9d9d19417d34ded70059aab73897ebe01#32e387e9d9d19417d34ded70059aab73897ebe01"
 dependencies = [
  "stabby",
  "tree-sitter",

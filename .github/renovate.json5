@@ -3,13 +3,13 @@
   extends: ["github>aonyx-ai/renovate-config"],
   customManagers: [
     {
-      // The three whisker crates are one decision, never three. Cargo's own
-      // manager reads them as three git dependencies and opens three pull
-      // requests, each leaving the crates on different revisions, and a
-      // rule compiled against one revision of whisker-rust does not build
-      // against another revision of whisker-types.
+      // The whisker crates are one decision, never several. Cargo's own
+      // manager reads them as separate git dependencies and opens a pull
+      // request for each, each leaving the crates on different revisions,
+      // and a rule compiled against one revision of whisker-rust does not
+      // build against another revision of whisker-types.
       //
-      // This reads all three as one dependency, and moves the digest with
+      // This reads them all as one dependency, and moves the digest with
       // the release comment beside it, the way renovate moves a pinned
       // GitHub action.
       customType: "regex",
@@ -39,14 +39,16 @@
       // still named a release. A pin here names a release, because the
       // release is what has prebuilt lint archives published for it.
       //
-      // Turning it off for these three leaves the custom manager as the one
-      // voice on them, which is the whole point of having written it.
+      // Turning it off for the whisker crates leaves the custom manager as
+      // the one voice on them, which is the whole point of having written
+      // it.
       matchManagers: ["cargo"],
       matchDepNames: [
         "whisker-plugin",
         "whisker-rust",
         "whisker-testing",
         "whisker-types",
+        "whisker-typescript",
       ],
       enabled: false,
     },

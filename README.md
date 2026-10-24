@@ -24,6 +24,15 @@ runs the same rules today and next month.
 Each directory under `lints/` is one rule, and each documents itself. The
 rule ids they report under are all `lint.<name>`.
 
+Most rules read Rust syntax or Rust types, so they run on Rust alone. The
+rules that read only comments also run on TypeScript: `todo_comment`,
+`inline_comment`, `em_dash_aside`, `long_doc_sentence`, and
+`inline_doc_link`. In TypeScript a doc comment is a `/** */` block, and the
+three that read its prose share `crates/jsdoc`, which removes the block tag
+syntax and `@example` code so none of them reads it as prose.
+`commented_out_code` stays with Rust: it decides whether a comment is code
+by parsing it as Rust.
+
 ## Options
 
 A rule that reads options says so in its own documentation. A project sets
@@ -71,8 +80,9 @@ rebuild, never a silent wrong answer.
 
 Copy the smallest existing rule, `lints/todo_comment`, and change the
 name in its `Cargo.toml`, its rule id, and its logic. A rule implements the
-generated `RustLintPass` trait, returns diagnostics with a stable rule id
-and a severity, and hands itself to `whisker_plugin::export_lints!`. Rules that read
+generated `RustLintPass` trait, `TypeScriptLintPass`, or both, returns
+diagnostics with a stable rule id and a severity, and hands itself to
+`whisker_plugin::export_lints!` under each language it implements. Rules that read
 semantic decorations **fail open**: when the decoration is missing, the rule
 stays silent rather than guessing.
 

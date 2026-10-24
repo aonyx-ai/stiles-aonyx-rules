@@ -24,6 +24,7 @@ default = ["plugin"]
 plugin = []
 
 [dependencies]
+jsdoc = { workspace = true }
 whisker-plugin = { workspace = true }
 # `DecoratedNode::raw()` returns a `tree_sitter::Node`, which the rule names
 # directly. The version matches the workspace so the plugin and the host agree
@@ -31,6 +32,7 @@ whisker-plugin = { workspace = true }
 tree-sitter = { workspace = true }
 whisker-rust = { workspace = true }
 whisker-types = { workspace = true }
+whisker-typescript = { workspace = true }
 
 [dev-dependencies]
 whisker-testing = { workspace = true }

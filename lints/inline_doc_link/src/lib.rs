@@ -5,6 +5,7 @@ use std::slice;
 
 use whisker_rust::RustLintPass;
 use whisker_types::{DecoratedNode, Diagnostic, RuleId, Severity};
+use whisker_typescript::TypeScriptLintPass;
 
 use self::doc_block::DocBlock;
 use self::inline_link::InlineLink;
@@ -25,7 +26,17 @@ const RULE_ID: RuleId = RuleId::new("lint.inline-doc-link");
 /// A backticked identifier in running prose is out of scope. Nothing in the
 /// syntax says whether the name is a type, a field, a crate, or a CLI flag,
 /// so a rule that demanded brackets around it would be guessing.
+///
+/// In TypeScript the rule reads a `/** */` doc comment. A `{@link Target}`
+/// tag is not Markdown, so it is left alone, and an `@example` section is
+/// code, so its brackets are never read as links.
 pub struct InlineDocLink;
+
+impl TypeScriptLintPass for InlineDocLink {
+    fn check_comment(&mut self, node: &DecoratedNode<'_>) -> Vec<Diagnostic> {
+        check_typescript(node)
+    }
+}
 
 impl RustLintPass for InlineDocLink {
     fn check_block_comment(&mut self, node: &DecoratedNode<'_>) -> Vec<Diagnostic> {
@@ -74,6 +85,30 @@ fn check(comments: &[DecoratedNode<'_>]) -> Vec<Diagnostic> {
         return Vec::new();
     };
 
+    report(&block)
+}
+
+/// Reports every inline link in one TypeScript doc comment
+///
+/// A `//` or `/* */` comment carries no documentation, so it reports
+/// nothing. Neither does an `@example` section, which is code.
+fn check_typescript(node: &DecoratedNode<'_>) -> Vec<Diagnostic> {
+    let Some(lines) = jsdoc::prose_lines(node.text(), node.span().start()) else {
+        return Vec::new();
+    };
+    let lines = lines
+        .into_iter()
+        .map(|line| (line.offset(), line.text()))
+        .collect();
+    let Some(block) = DocBlock::from_lines(node.span().file_path().clone(), lines) else {
+        return Vec::new();
+    };
+
+    report(&block)
+}
+
+/// Turns the inline links in a joined doc comment into diagnostics
+fn report(block: &DocBlock) -> Vec<Diagnostic> {
     InlineLink::find_all(block.content())
         .into_iter()
         .map(|link| {
@@ -151,7 +186,7 @@ impl whisker_plugin::DeclaresRules for InlineDocLink {
     }
 }
 
-whisker_plugin::export_lints![rust: [InlineDocLink]];
+whisker_plugin::export_lints![rust: [InlineDocLink], typescript: [InlineDocLink]];
 
 #[cfg(test)]
 mod tests {
@@ -376,5 +411,70 @@ mod tests {
         let diagnostics = run(source);
 
         assert_eq!(diagnostics.len(), 2);
+    }
+
+    mod typescript {
+        use whisker_typescript::TypeScriptLintPassAdapter;
+
+        use super::*;
+
+        fn run(source: &str) -> Vec<Diagnostic> {
+            let tree = parse(source, Language::TypeScript);
+            let mut passes: Vec<Box<dyn LintPass>> =
+                vec![Box::new(TypeScriptLintPassAdapter::new(InlineDocLink))];
+
+            execute(&tree, &mut passes)
+        }
+
+        #[test]
+        fn doc_comment_with_inline_link_is_flagged_at_the_link() {
+            let source = "/**\n * Follows [the spec](https://example.com/spec) exactly\n */\nfunction f() {}";
+
+            let diagnostics = run(source);
+
+            assert_eq!(diagnostics.len(), 1);
+            let start = source.find("[the spec]").unwrap();
+            let end = source.find(") exactly").unwrap() + 1;
+            assert_diagnostic(&diagnostics[0])
+                .has_rule_id("lint.inline-doc-link")
+                .has_span("<test>", start, end);
+        }
+
+        #[test]
+        fn doc_comment_with_link_tag_is_not_flagged() {
+            let source = "/**\n * Wraps {@link Reader} and {@link Writer | the writer}\n */\nfunction f() {}";
+
+            let diagnostics = run(source);
+
+            assert_no_diagnostics(&diagnostics);
+        }
+
+        #[test]
+        fn doc_comment_with_reference_link_is_not_flagged() {
+            let source = "/**\n * Follows [the spec] exactly\n *\n * [the spec]: https://example.com/spec\n */\nfunction f() {}";
+
+            let diagnostics = run(source);
+
+            assert_no_diagnostics(&diagnostics);
+        }
+
+        #[test]
+        fn example_section_is_not_read() {
+            let source =
+                "/**\n * Formats a link\n * @example\n * link([a](b))\n */\nfunction link() {}";
+
+            let diagnostics = run(source);
+
+            assert_no_diagnostics(&diagnostics);
+        }
+
+        #[test]
+        fn line_comment_with_inline_link_is_not_read() {
+            let source = "// see [the spec](https://example.com/spec)\nconst a = 1;";
+
+            let diagnostics = run(source);
+
+            assert_no_diagnostics(&diagnostics);
+        }
     }
 }

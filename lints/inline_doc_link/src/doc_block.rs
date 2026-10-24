@@ -59,6 +59,20 @@ impl DocBlock {
             }
         }
 
+        Self::from_lines(file, raw)
+    }
+
+    /// Joins lines already taken out of a doc comment
+    ///
+    /// Each entry is the file offset of a line's first byte and the line's
+    /// text. A TypeScript doc comment arrives this way, its delimiters and
+    /// block tag syntax already gone. The join strips the indentation every
+    /// non-blank line shares, as [`DocBlock::from_comments`] does.
+    ///
+    /// Returns [`None`] when there are no lines.
+    ///
+    /// [`None`]: std::option::Option::None
+    pub(crate) fn from_lines(file: FilePath, raw: Vec<(usize, &str)>) -> Option<Self> {
         if raw.is_empty() {
             return None;
         }

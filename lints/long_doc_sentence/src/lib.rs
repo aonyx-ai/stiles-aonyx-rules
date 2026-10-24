@@ -3,6 +3,7 @@ mod sentence;
 
 use whisker_rust::RustLintPass;
 use whisker_types::{DecoratedNode, Diagnostic, RuleId, Severity, Span};
+use whisker_typescript::TypeScriptLintPass;
 
 use crate::doc_line::DocLine;
 use crate::sentence::sentences;
@@ -18,6 +19,10 @@ const MAX_WORDS: usize = 25;
 /// The rule reads the comment text, never the item it documents. It skips
 /// what rustdoc does not render as prose: fenced code blocks, section
 /// headings, link definitions, and table rows.
+///
+/// In TypeScript the rule reads a `/** */` doc comment. A block tag's
+/// syntax, such as the name and hyphen of `@param a - the first`, is not
+/// counted, and an `@example` section is code, so it is not read.
 pub struct LongDocSentence;
 
 impl RustLintPass for LongDocSentence {
@@ -70,6 +75,20 @@ impl RustLintPass for LongDocSentence {
 ///
 /// A `///` run and a `//!` run document different items, so the rule reads
 /// them as separate comments even when they touch.
+impl TypeScriptLintPass for LongDocSentence {
+    fn check_comment(&mut self, node: &DecoratedNode<'_>) -> Vec<Diagnostic> {
+        let Some(lines) = jsdoc::prose_lines(node.text(), node.span().start()) else {
+            return Vec::new();
+        };
+
+        let lines: Vec<DocLine<'_>> = lines
+            .into_iter()
+            .map(|line| DocLine::new(line.text(), line.offset()))
+            .collect();
+        report(&lines, node)
+    }
+}
+
 #[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
 enum Marker {
     Inner,
@@ -158,7 +177,7 @@ impl whisker_plugin::DeclaresRules for LongDocSentence {
     }
 }
 
-whisker_plugin::export_lints![rust: [LongDocSentence]];
+whisker_plugin::export_lints![rust: [LongDocSentence], typescript: [LongDocSentence]];
 
 #[cfg(test)]
 mod tests {
@@ -387,5 +406,91 @@ mod tests {
         let diagnostics = check(&source);
 
         assert_eq!(diagnostics.len(), 2);
+    }
+
+    mod typescript {
+        use whisker_typescript::TypeScriptLintPassAdapter;
+
+        use super::*;
+
+        fn check(source: &str) -> Vec<Diagnostic> {
+            let tree = parse(source, Language::TypeScript);
+            let mut passes: Vec<Box<dyn LintPass>> =
+                vec![Box::new(TypeScriptLintPassAdapter::new(LongDocSentence))];
+
+            execute(&tree, &mut passes)
+        }
+
+        #[test]
+        fn doc_comment_at_the_limit_is_not_flagged() {
+            let source = format!("/**\n * {}.\n */\nfunction f() {{}}", words(25));
+
+            let diagnostics = check(&source);
+
+            assert_no_diagnostics(&diagnostics);
+        }
+
+        #[test]
+        fn doc_comment_over_the_limit_is_flagged_over_the_sentence() {
+            let sentence = format!("{}.", words(26));
+            let source = format!("/**\n * {sentence}\n */\nfunction f() {{}}");
+
+            let diagnostics = check(&source);
+
+            assert_eq!(diagnostics.len(), 1);
+            let start = source.find("word0").unwrap();
+            assert_diagnostic(&diagnostics[0])
+                .has_rule_id("lint.long-doc-sentence")
+                .has_severity(Severity::Warn)
+                .message_contains("26 words")
+                .has_span("<test>", start, start + sentence.len());
+        }
+
+        #[test]
+        fn example_section_is_not_counted() {
+            let source = format!(
+                "/**\n * Adds.\n * @example\n * {}\n */\nfunction f() {{}}",
+                words(40)
+            );
+
+            let diagnostics = check(&source);
+
+            assert_no_diagnostics(&diagnostics);
+        }
+
+        #[test]
+        fn line_comment_over_the_limit_is_not_read() {
+            let source = format!("// {}.\nconst a = 1;", words(40));
+
+            let diagnostics = check(&source);
+
+            assert_no_diagnostics(&diagnostics);
+        }
+
+        #[test]
+        fn param_name_is_not_counted() {
+            let source = format!(
+                "/**\n * @param count - {}.\n */\nfunction f(count: number) {{}}",
+                words(25)
+            );
+
+            let diagnostics = check(&source);
+
+            assert_no_diagnostics(&diagnostics);
+        }
+
+        #[test]
+        fn sentence_across_lines_is_counted_whole() {
+            let source = format!(
+                "/**\n * {}\n * {}.\n */\nfunction f() {{}}",
+                words(13),
+                words(13)
+            );
+
+            let diagnostics = check(&source);
+
+            assert_eq!(diagnostics.len(), 1);
+            assert_diagnostic(&diagnostics[0]).message_contains("26 words");
+        }
     }
 }

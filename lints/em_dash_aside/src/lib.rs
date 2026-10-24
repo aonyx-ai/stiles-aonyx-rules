@@ -1,5 +1,6 @@
 use whisker_rust::RustLintPass;
 use whisker_types::{DecoratedNode, Diagnostic, RuleId, Severity, Span};
+use whisker_typescript::TypeScriptLintPass;
 
 const RULE_ID: RuleId = RuleId::new("lint.em-dash-aside");
 
@@ -19,6 +20,11 @@ const EN_DASH: &[u8] = "–".as_bytes();
 /// carries the same meaning without the splice. The lint reads prose
 /// only. Code spans, code blocks, quotations, headings, tables, link
 /// definitions, and list markers are exempt.
+///
+/// In TypeScript the lint reads a `/** */` doc comment. The hyphen a block
+/// tag writes between a name and its description, as in `@param a - the
+/// first`, is syntax rather than an aside, and an `@example` section is
+/// code, so neither is read.
 pub struct EmDashAside;
 
 impl RustLintPass for EmDashAside {
@@ -32,6 +38,16 @@ impl RustLintPass for EmDashAside {
 
     fn check_line_comment(&mut self, node: &DecoratedNode<'_>) -> Vec<Diagnostic> {
         let Some(lines) = line_comment_lines(node) else {
+            return Vec::new();
+        };
+
+        diagnose(lines, node)
+    }
+}
+
+impl TypeScriptLintPass for EmDashAside {
+    fn check_comment(&mut self, node: &DecoratedNode<'_>) -> Vec<Diagnostic> {
+        let Some(lines) = jsdoc_lines(node) else {
             return Vec::new();
         };
 
@@ -136,6 +152,26 @@ fn block_comment_lines<'a>(node: &DecoratedNode<'a>) -> Option<Vec<DocLine<'a>>>
             offset: base + start,
         }));
     }
+
+    unindent(&mut lines);
+    Some(lines)
+}
+
+/// Returns the Markdown lines of a TypeScript doc comment
+///
+/// Returns [`None`] for a `//` or `/* */` comment, which carries no
+/// documentation. The block tag syntax and `@example` sections are already
+/// gone from the lines, as [`jsdoc::prose_lines`] describes.
+///
+/// [`None`]: std::option::Option::None
+fn jsdoc_lines<'a>(node: &DecoratedNode<'a>) -> Option<Vec<DocLine<'a>>> {
+    let mut lines: Vec<DocLine<'a>> = jsdoc::prose_lines(node.text(), node.span().start())?
+        .into_iter()
+        .map(|line| DocLine {
+            text: line.text(),
+            offset: line.offset(),
+        })
+        .collect();
 
     unindent(&mut lines);
     Some(lines)
@@ -786,7 +822,7 @@ impl whisker_plugin::DeclaresRules for EmDashAside {
     }
 }
 
-whisker_plugin::export_lints![rust: [EmDashAside]];
+whisker_plugin::export_lints![rust: [EmDashAside], typescript: [EmDashAside]];
 
 #[cfg(test)]
 mod tests {
@@ -1216,5 +1252,89 @@ mod tests {
     fn trait_unpin_pass() {
         fn assert_unpin<T: Unpin>() {}
         assert_unpin::<EmDashAside>();
+    }
+
+    mod typescript {
+        use whisker_typescript::TypeScriptLintPassAdapter;
+
+        use super::*;
+
+        fn check(source: &str) -> Vec<Diagnostic> {
+            let tree = parse(source, Language::TypeScript);
+            let mut passes: Vec<Box<dyn LintPass>> =
+                vec![Box::new(TypeScriptLintPassAdapter::new(EmDashAside))];
+
+            execute(&tree, &mut passes)
+        }
+
+        #[test]
+        fn doc_comment_with_em_dash_is_flagged_at_the_dash() {
+            let source = "/**\n * Adds two numbers \u{2014} quickly \u{2014} and returns them\n */\nfunction f() {}";
+
+            let diagnostics = check(source);
+
+            assert_eq!(diagnostics.len(), 2);
+            let start = source.find('\u{2014}').unwrap();
+            assert_diagnostic(&diagnostics[0])
+                .has_rule_id("lint.em-dash-aside")
+                .has_severity(Severity::Warn)
+                .has_span("<test>", start, start + '\u{2014}'.len_utf8());
+        }
+
+        #[test]
+        fn doc_comment_with_spaced_hyphen_in_prose_is_flagged() {
+            let source = "/**\n * Reads the file - all of it - into memory\n */\nfunction f() {}";
+
+            let diagnostics = check(source);
+
+            assert_eq!(diagnostics.len(), 2);
+            assert_diagnostic(&diagnostics[0]).message_contains("spaced hyphen");
+        }
+
+        #[test]
+        fn example_section_is_not_read() {
+            let source = "/**\n * Subtracts\n * @example\n * sub(3 - 2)\n */\nfunction sub() {}";
+
+            let diagnostics = check(source);
+
+            assert_no_diagnostics(&diagnostics);
+        }
+
+        #[test]
+        fn line_and_block_comments_are_not_read() {
+            let source =
+                "// a note \u{2014} not documentation\n/* another - aside */\nconst a = 1;";
+
+            let diagnostics = check(source);
+
+            assert_no_diagnostics(&diagnostics);
+        }
+
+        #[test]
+        fn one_line_doc_comment_is_read() {
+            let source = "/** Counts the rows \u{2014} slowly. */\nconst rows = 0;";
+
+            let diagnostics = check(source);
+
+            assert_eq!(diagnostics.len(), 1);
+        }
+
+        #[test]
+        fn param_hyphen_is_not_flagged() {
+            let source = "/**\n * Adds two numbers\n * @param a - the first\n * @param {number} b - the second\n */\nfunction add(a: number, b: number) {}";
+
+            let diagnostics = check(source);
+
+            assert_no_diagnostics(&diagnostics);
+        }
+
+        #[test]
+        fn param_description_with_an_aside_is_flagged() {
+            let source = "/**\n * @param a - the first \u{2014} never negative \u{2014} value\n */\nfunction f(a: number) {}";
+
+            let diagnostics = check(source);
+
+            assert_eq!(diagnostics.len(), 2);
+        }
     }
 }

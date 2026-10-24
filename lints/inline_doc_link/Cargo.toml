@@ -24,9 +24,11 @@ default = ["plugin"]
 plugin = []
 
 [dependencies]
+jsdoc = { workspace = true }
 whisker-plugin = { workspace = true }
 whisker-rust = { workspace = true }
 whisker-types = { workspace = true }
+whisker-typescript = { workspace = true }
 
 [dev-dependencies]
 whisker-testing = { workspace = true }

@@ -28,6 +28,7 @@ missing_panics_doc = "warn"
 
 [workspace.dependencies]
 boundary = { path = "crates/boundary" }
+jsdoc = { path = "crates/jsdoc" }
 proptest = "1"
 # `DecoratedNode::raw()` returns a `tree_sitter::Node`, which some rules name
 # directly. The version matches whisker's own so that the plugin and the host
@@ -38,7 +39,8 @@ tree-sitter = "0.27"
 # and a tag can be moved, so the pin is a commit and the release beside it
 # says which one. Renovate reads the pair through a custom manager and
 # moves both, the way it moves a pinned action.
-whisker-plugin = { git = "https://github.com/aonyx-ai/whisker.git", branch = "ts/check-typescript" }
-whisker-rust = { git = "https://github.com/aonyx-ai/whisker.git", branch = "ts/check-typescript", default-features = false }
-whisker-testing = { git = "https://github.com/aonyx-ai/whisker.git", branch = "ts/check-typescript" }
-whisker-types = { git = "https://github.com/aonyx-ai/whisker.git", branch = "ts/check-typescript" }
+whisker-plugin = { git = "https://github.com/aonyx-ai/whisker.git", rev = "32e387e9d9d19417d34ded70059aab73897ebe01" }
+whisker-rust = { git = "https://github.com/aonyx-ai/whisker.git", rev = "32e387e9d9d19417d34ded70059aab73897ebe01", default-features = false }
+whisker-testing = { git = "https://github.com/aonyx-ai/whisker.git", rev = "32e387e9d9d19417d34ded70059aab73897ebe01" }
+whisker-types = { git = "https://github.com/aonyx-ai/whisker.git", rev = "32e387e9d9d19417d34ded70059aab73897ebe01" }
+whisker-typescript = { git = "https://github.com/aonyx-ai/whisker.git", rev = "32e387e9d9d19417d34ded70059aab73897ebe01", default-features = false }
