@@ -21,6 +21,7 @@ checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
 name = "anyhow_missing_context"
 version = "0.1.0"
 dependencies = [
+ "whisker-plugin",
  "whisker-rust",
  "whisker-testing",
  "whisker-types",
@@ -62,6 +63,7 @@ name = "bool_param"
 version = "0.1.0"
 dependencies = [
  "boundary",
+ "whisker-plugin",
  "whisker-rust",
  "whisker-testing",
  "whisker-types",
@@ -144,6 +146,7 @@ version = "0.1.0"
 dependencies = [
  "proptest",
  "tree-sitter",
+ "whisker-plugin",
  "whisker-rust",
  "whisker-testing",
  "whisker-types",
@@ -168,6 +171,7 @@ dependencies = [
 name = "derive_order"
 version = "0.1.0"
 dependencies = [
+ "whisker-plugin",
  "whisker-rust",
  "whisker-testing",
  "whisker-types",
@@ -177,6 +181,7 @@ dependencies = [
 name = "em_dash_aside"
 version = "0.1.0"
 dependencies = [
+ "whisker-plugin",
  "whisker-rust",
  "whisker-testing",
  "whisker-types",
@@ -220,6 +225,7 @@ checksum = "3f9eec918d3f24069decb9af1554cad7c880e2da24a9afd88aca000531ab82c1"
 name = "function_scoped_import"
 version = "0.1.0"
 dependencies = [
+ "whisker-plugin",
  "whisker-rust",
  "whisker-testing",
  "whisker-types",
@@ -247,6 +253,7 @@ checksum = "ed5909b6e89a2db4456e54cd5f673791d7eca6732202bbf2a9cc504fe2f9b84a"
 name = "if_let_with_else"
 version = "0.1.0"
 dependencies = [
+ "whisker-plugin",
  "whisker-rust",
  "whisker-testing",
  "whisker-types",
@@ -267,6 +274,7 @@ name = "inline_comment"
 version = "0.1.0"
 dependencies = [
  "tree-sitter",
+ "whisker-plugin",
  "whisker-rust",
  "whisker-testing",
  "whisker-types",
@@ -276,6 +284,7 @@ dependencies = [
 name = "inline_doc_link"
 version = "0.1.0"
 dependencies = [
+ "whisker-plugin",
  "whisker-rust",
  "whisker-testing",
  "whisker-types",
@@ -304,6 +313,7 @@ name = "long_doc_sentence"
 version = "0.1.0"
 dependencies = [
  "tree-sitter",
+ "whisker-plugin",
  "whisker-rust",
  "whisker-testing",
  "whisker-types",
@@ -313,6 +323,7 @@ dependencies = [
 name = "matches_macro"
 version = "0.1.0"
 dependencies = [
+ "whisker-plugin",
  "whisker-rust",
  "whisker-testing",
  "whisker-types",
@@ -328,6 +339,7 @@ checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
 name = "missing_examples_doc"
 version = "0.1.0"
 dependencies = [
+ "whisker-plugin",
  "whisker-rust",
  "whisker-testing",
  "whisker-types",
@@ -337,6 +349,7 @@ dependencies = [
 name = "missing_trait_tests"
 version = "0.1.0"
 dependencies = [
+ "whisker-plugin",
  "whisker-rust",
  "whisker-testing",
  "whisker-types",
@@ -399,6 +412,7 @@ dependencies = [
 name = "pub_field"
 version = "0.1.0"
 dependencies = [
+ "whisker-plugin",
  "whisker-rust",
  "whisker-testing",
  "whisker-types",
@@ -483,6 +497,7 @@ checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 name = "repeated_field_access"
 version = "0.1.0"
 dependencies = [
+ "whisker-plugin",
  "whisker-rust",
  "whisker-testing",
  "whisker-types",
@@ -493,6 +508,7 @@ name = "repeated_primitive_params"
 version = "0.1.0"
 dependencies = [
  "boundary",
+ "whisker-plugin",
  "whisker-rust",
  "whisker-testing",
  "whisker-types",
@@ -604,6 +620,7 @@ checksum = "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba"
 name = "split_binding"
 version = "0.1.0"
 dependencies = [
+ "whisker-plugin",
  "whisker-rust",
  "whisker-testing",
  "whisker-types",
@@ -688,6 +705,7 @@ dependencies = [
 name = "todo_comment"
 version = "0.1.0"
 dependencies = [
+ "whisker-plugin",
  "whisker-rust",
  "whisker-testing",
  "whisker-types",
@@ -753,6 +771,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "tree-sitter-typescript"
+version = "0.23.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6c5f76ed8d947a75cc446d5fccd8b602ebf0cde64ccf2ffa434d873d7a575eff"
+dependencies = [
+ "cc",
+ "tree-sitter-language",
+]
+
+[[package]]
 name = "unarray"
 version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -776,7 +804,7 @@ dependencies = [
 [[package]]
 name = "whisker-codegen"
 version = "0.1.0"
-source = "git+https://github.com/aonyx-ai/whisker.git?rev=c49a9259a8548e2397acae766af499f1fbf6dccb#c49a9259a8548e2397acae766af499f1fbf6dccb"
+source = "git+https://github.com/aonyx-ai/whisker.git?branch=ts%2Fcheck-typescript#3a8e0e903745e1bc36f509f902048e121fc57353"
 dependencies = [
  "serde",
  "serde_json",
@@ -785,7 +813,7 @@ dependencies = [
 [[package]]
 name = "whisker-core"
 version = "0.1.0"
-source = "git+https://github.com/aonyx-ai/whisker.git?rev=c49a9259a8548e2397acae766af499f1fbf6dccb#c49a9259a8548e2397acae766af499f1fbf6dccb"
+source = "git+https://github.com/aonyx-ai/whisker.git?branch=ts%2Fcheck-typescript#3a8e0e903745e1bc36f509f902048e121fc57353"
 dependencies = [
  "anyhow",
  "tree-sitter",
@@ -795,7 +823,7 @@ dependencies = [
 [[package]]
 name = "whisker-macros"
 version = "0.1.0"
-source = "git+https://github.com/aonyx-ai/whisker.git?rev=c49a9259a8548e2397acae766af499f1fbf6dccb#c49a9259a8548e2397acae766af499f1fbf6dccb"
+source = "git+https://github.com/aonyx-ai/whisker.git?branch=ts%2Fcheck-typescript#3a8e0e903745e1bc36f509f902048e121fc57353"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -803,9 +831,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "whisker-plugin"
+version = "0.1.0"
+source = "git+https://github.com/aonyx-ai/whisker.git?branch=ts%2Fcheck-typescript#3a8e0e903745e1bc36f509f902048e121fc57353"
+dependencies = [
+ "stabby",
+ "whisker-rust",
+ "whisker-types",
+ "whisker-typescript",
+]
+
+[[package]]
 name = "whisker-rust"
 version = "0.1.0"
-source = "git+https://github.com/aonyx-ai/whisker.git?rev=c49a9259a8548e2397acae766af499f1fbf6dccb#c49a9259a8548e2397acae766af499f1fbf6dccb"
+source = "git+https://github.com/aonyx-ai/whisker.git?branch=ts%2Fcheck-typescript#3a8e0e903745e1bc36f509f902048e121fc57353"
 dependencies = [
  "stabby",
  "tree-sitter",
@@ -818,10 +857,11 @@ dependencies = [
 [[package]]
 name = "whisker-testing"
 version = "0.1.0"
-source = "git+https://github.com/aonyx-ai/whisker.git?rev=c49a9259a8548e2397acae766af499f1fbf6dccb#c49a9259a8548e2397acae766af499f1fbf6dccb"
+source = "git+https://github.com/aonyx-ai/whisker.git?branch=ts%2Fcheck-typescript#3a8e0e903745e1bc36f509f902048e121fc57353"
 dependencies = [
  "tree-sitter",
  "tree-sitter-rust",
+ "tree-sitter-typescript",
  "whisker-core",
  "whisker-types",
 ]
@@ -829,7 +869,7 @@ dependencies = [
 [[package]]
 name = "whisker-types"
 version = "0.1.0"
-source = "git+https://github.com/aonyx-ai/whisker.git?rev=c49a9259a8548e2397acae766af499f1fbf6dccb#c49a9259a8548e2397acae766af499f1fbf6dccb"
+source = "git+https://github.com/aonyx-ai/whisker.git?branch=ts%2Fcheck-typescript#3a8e0e903745e1bc36f509f902048e121fc57353"
 dependencies = [
  "anyhow",
  "stabby",
@@ -837,9 +877,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "whisker-typescript"
+version = "0.1.0"
+source = "git+https://github.com/aonyx-ai/whisker.git?branch=ts%2Fcheck-typescript#3a8e0e903745e1bc36f509f902048e121fc57353"
+dependencies = [
+ "stabby",
+ "tree-sitter",
+ "tree-sitter-typescript",
+ "whisker-codegen",
+ "whisker-macros",
+ "whisker-types",
+]
+
+[[package]]
 name = "wildcard_match_arm"
 version = "0.1.0"
 dependencies = [
+ "whisker-plugin",
  "whisker-rust",
  "whisker-testing",
  "whisker-types",

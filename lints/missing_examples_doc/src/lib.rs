@@ -377,13 +377,13 @@ fn in_public_scope(node: &DecoratedNode<'_>) -> bool {
 }
 
 #[cfg(feature = "plugin")]
-impl whisker_rust::DeclaresRules for MissingExamplesDoc {
+impl whisker_plugin::DeclaresRules for MissingExamplesDoc {
     fn rules(&self) -> Vec<RuleId> {
         vec![RuleId::new("lint.missing-examples-doc")]
     }
 }
 
-whisker_rust::export_lints![MissingExamplesDoc];
+whisker_plugin::export_lints![rust: [MissingExamplesDoc]];
 
 #[cfg(test)]
 mod tests {

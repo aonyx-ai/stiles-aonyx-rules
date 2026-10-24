@@ -129,13 +129,13 @@ impl RustLintPass for BoolParam {
 }
 
 #[cfg(feature = "plugin")]
-impl whisker_rust::DeclaresRules for BoolParam {
+impl whisker_plugin::DeclaresRules for BoolParam {
     fn rules(&self) -> Vec<RuleId> {
         vec![RuleId::new("lint.bool-param")]
     }
 }
 
-whisker_rust::export_lints![BoolParam::default()];
+whisker_plugin::export_lints![rust: [BoolParam::default()]];
 
 #[cfg(test)]
 mod tests {

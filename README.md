@@ -54,16 +54,16 @@ out with stabby and loads a plugin regardless of which rustc built it. It
 still refuses a plugin built against another whisker revision. Two things
 therefore move together:
 
-- The `rev` that the three whisker dependencies in this repository's
-  `Cargo.toml` share, which every rule builds against. `just pin` prints it.
+- The `rev` that the whisker dependencies in this repository's `Cargo.toml`
+  share, which every rule builds against. `just pin` prints it.
 - The `rev` that a project names in its own `.config/whisker.toml`, which
   should be a commit of this repository built against the whisker that
   project runs.
 
 `rust-toolchain.toml` is this repository's own choice.
 
-To bump: move the three `rev` values in `[workspace.dependencies]` to the
-new whisker commit, run `cargo update -w`, and let CI's dogfood job confirm
+To bump: move every whisker `rev` in `[workspace.dependencies]` to the new
+whisker commit, run `cargo update -w`, and let CI's dogfood job confirm
 the pair still loads. A mismatch is a refusal with an error naming what to
 rebuild, never a silent wrong answer.
 
@@ -72,7 +72,7 @@ rebuild, never a silent wrong answer.
 Copy the smallest existing rule, `lints/todo_comment`, and change the
 name in its `Cargo.toml`, its rule id, and its logic. A rule implements the
 generated `RustLintPass` trait, returns diagnostics with a stable rule id
-and a severity, and hands itself to `export_lints!`. Rules that read
+and a severity, and hands itself to `whisker_plugin::export_lints!`. Rules that read
 semantic decorations **fail open**: when the decoration is missing, the rule
 stays silent rather than guessing.
 

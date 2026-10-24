@@ -192,13 +192,13 @@ impl RustLintPass for InlineComment {
 }
 
 #[cfg(feature = "plugin")]
-impl whisker_rust::DeclaresRules for InlineComment {
+impl whisker_plugin::DeclaresRules for InlineComment {
     fn rules(&self) -> Vec<RuleId> {
         vec![RuleId::new("lint.inline-comment")]
     }
 }
 
-whisker_rust::export_lints![InlineComment];
+whisker_plugin::export_lints![rust: [InlineComment]];
 
 #[cfg(test)]
 mod tests {

@@ -42,7 +42,12 @@
       // Turning it off for these three leaves the custom manager as the one
       // voice on them, which is the whole point of having written it.
       matchManagers: ["cargo"],
-      matchDepNames: ["whisker-rust", "whisker-testing", "whisker-types"],
+      matchDepNames: [
+        "whisker-plugin",
+        "whisker-rust",
+        "whisker-testing",
+        "whisker-types",
+      ],
       enabled: false,
     },
     {

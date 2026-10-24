@@ -24,6 +24,7 @@ default = ["plugin"]
 plugin = []
 
 [dependencies]
+whisker-plugin = { workspace = true }
 whisker-rust = { workspace = true }
 whisker-types = { workspace = true }
 

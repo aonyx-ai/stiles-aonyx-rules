@@ -145,13 +145,13 @@ fn continues(previous: &DecoratedNode<'_>, candidate: &DecoratedNode<'_>) -> boo
 }
 
 #[cfg(feature = "plugin")]
-impl whisker_rust::DeclaresRules for InlineDocLink {
+impl whisker_plugin::DeclaresRules for InlineDocLink {
     fn rules(&self) -> Vec<RuleId> {
         vec![RuleId::new("lint.inline-doc-link")]
     }
 }
 
-whisker_rust::export_lints![InlineDocLink];
+whisker_plugin::export_lints![rust: [InlineDocLink]];
 
 #[cfg(test)]
 mod tests {

@@ -118,13 +118,13 @@ impl RustLintPass for DeriveOrder {
 }
 
 #[cfg(feature = "plugin")]
-impl whisker_rust::DeclaresRules for DeriveOrder {
+impl whisker_plugin::DeclaresRules for DeriveOrder {
     fn rules(&self) -> Vec<RuleId> {
         vec![RuleId::new("lint.derive-order")]
     }
 }
 
-whisker_rust::export_lints![DeriveOrder];
+whisker_plugin::export_lints![rust: [DeriveOrder]];
 
 #[cfg(test)]
 mod tests {

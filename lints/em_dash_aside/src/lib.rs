@@ -780,13 +780,13 @@ fn is_content(byte: &u8) -> bool {
 }
 
 #[cfg(feature = "plugin")]
-impl whisker_rust::DeclaresRules for EmDashAside {
+impl whisker_plugin::DeclaresRules for EmDashAside {
     fn rules(&self) -> Vec<RuleId> {
         vec![RuleId::new("lint.em-dash-aside")]
     }
 }
 
-whisker_rust::export_lints![EmDashAside];
+whisker_plugin::export_lints![rust: [EmDashAside]];
 
 #[cfg(test)]
 mod tests {

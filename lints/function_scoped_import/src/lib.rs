@@ -167,13 +167,13 @@ impl RustLintPass for FunctionScopedImport {
 }
 
 #[cfg(feature = "plugin")]
-impl whisker_rust::DeclaresRules for FunctionScopedImport {
+impl whisker_plugin::DeclaresRules for FunctionScopedImport {
     fn rules(&self) -> Vec<RuleId> {
         vec![RuleId::new("lint.function-scoped-import")]
     }
 }
 
-whisker_rust::export_lints![FunctionScopedImport];
+whisker_plugin::export_lints![rust: [FunctionScopedImport]];
 
 #[cfg(test)]
 mod tests {

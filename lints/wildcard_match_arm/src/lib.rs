@@ -74,13 +74,13 @@ fn is_wildcard_pattern(match_pattern: &DecoratedNode<'_>) -> bool {
 }
 
 #[cfg(feature = "plugin")]
-impl whisker_rust::DeclaresRules for WildcardMatchArm {
+impl whisker_plugin::DeclaresRules for WildcardMatchArm {
     fn rules(&self) -> Vec<RuleId> {
         vec![RuleId::new("lint.wildcard-match-arm")]
     }
 }
 
-whisker_rust::export_lints![WildcardMatchArm];
+whisker_plugin::export_lints![rust: [WildcardMatchArm]];
 
 #[cfg(test)]
 mod tests {

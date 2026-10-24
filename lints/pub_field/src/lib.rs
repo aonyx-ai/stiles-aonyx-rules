@@ -112,13 +112,13 @@ impl RustLintPass for PubField {
 }
 
 #[cfg(feature = "plugin")]
-impl whisker_rust::DeclaresRules for PubField {
+impl whisker_plugin::DeclaresRules for PubField {
     fn rules(&self) -> Vec<RuleId> {
         vec![RuleId::new("lint.pub-field")]
     }
 }
 
-whisker_rust::export_lints![PubField];
+whisker_plugin::export_lints![rust: [PubField]];
 
 #[cfg(test)]
 mod tests {

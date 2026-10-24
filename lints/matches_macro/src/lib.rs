@@ -30,13 +30,13 @@ impl RustLintPass for MatchesMacro {
 }
 
 #[cfg(feature = "plugin")]
-impl whisker_rust::DeclaresRules for MatchesMacro {
+impl whisker_plugin::DeclaresRules for MatchesMacro {
     fn rules(&self) -> Vec<RuleId> {
         vec![RuleId::new("lint.matches-macro")]
     }
 }
 
-whisker_rust::export_lints![MatchesMacro];
+whisker_plugin::export_lints![rust: [MatchesMacro]];
 
 #[cfg(test)]
 mod tests {

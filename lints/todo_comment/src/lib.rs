@@ -111,13 +111,13 @@ impl RustLintPass for TodoComment {
 }
 
 #[cfg(feature = "plugin")]
-impl whisker_rust::DeclaresRules for TodoComment {
+impl whisker_plugin::DeclaresRules for TodoComment {
     fn rules(&self) -> Vec<RuleId> {
         vec![RuleId::new("lint.todo-comment")]
     }
 }
 
-whisker_rust::export_lints![TodoComment];
+whisker_plugin::export_lints![rust: [TodoComment]];
 
 #[cfg(test)]
 mod tests {

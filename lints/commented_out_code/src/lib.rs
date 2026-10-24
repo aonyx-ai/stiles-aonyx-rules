@@ -373,13 +373,13 @@ fn is_terminated_statement(node: Node<'_>) -> bool {
 }
 
 #[cfg(feature = "plugin")]
-impl whisker_rust::DeclaresRules for CommentedOutCode {
+impl whisker_plugin::DeclaresRules for CommentedOutCode {
     fn rules(&self) -> Vec<RuleId> {
         vec![RuleId::new("lint.commented-out-code")]
     }
 }
 
-whisker_rust::export_lints![CommentedOutCode::new()];
+whisker_plugin::export_lints![rust: [CommentedOutCode::new()]];
 
 #[cfg(test)]
 mod tests {
