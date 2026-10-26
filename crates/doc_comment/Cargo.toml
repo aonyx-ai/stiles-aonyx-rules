@@ -1,0 +1,24 @@
+# Three rules read the prose of a doc comment, in Rust and in TypeScript, and
+# they have to agree on where it is. The reading lives here rather than in
+# each rule, because a copy that drifts makes one rule read syntax as prose
+# that another skips, or join lines another keeps apart.
+#
+# This crate is an rlib and exports no plugin declaration, so the build
+# produces no dynamic library for whisker to load.
+[package]
+name = "doc_comment"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+whisker-types = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }
+whisker-testing = { workspace = true }
+
+[lints]
+workspace = true

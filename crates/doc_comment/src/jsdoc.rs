@@ -1,14 +1,17 @@
 //! The prose of a TypeScript doc comment, line by line
 //!
-//! A TypeScript doc comment is a `/** */` block, and its prose sits among
+//! A TypeScript doc comment is a `/** */` block. Its prose sits among
 //! syntax a prose rule must not read: the delimiters, the `*` that opens
-//! each line, and block tags such as `@param name - description`, whose
-//! hyphen separates a name from its description rather than interrupting a
-//! sentence. An `@example` section usually holds code without a fence.
+//! each line, and block tags such as `@param name - description`. The
+//! hyphen of a block tag separates a name from its description, and it
+//! does not interrupt a sentence. An `@example` section usually holds code
+//! without a fence.
 //!
 //! [`prose_lines`] strips that syntax and keeps every line's position in the
-//! file, so a rule that finds something in the prose reports it at the right
-//! bytes.
+//! file. A rule that finds something in the prose thus reports it at the
+//! right bytes.
+
+use crate::{DocLine, strip_star};
 
 /// The tags whose first word after any `{type}` is a name, not prose
 ///
@@ -27,44 +30,6 @@ const NAMED_TAGS: &[&str] = &[
 /// The tag whose section holds code rather than prose
 const EXAMPLE_TAG: &str = "example";
 
-/// One line of a doc comment's prose, with the offset of its first byte
-///
-/// The offset counts from the start of the file, so a finding at byte `i`
-/// of the text sits at byte `offset + i` of the file.
-#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
-pub struct ProseLine<'a> {
-    text: &'a str,
-    offset: usize,
-}
-
-impl<'a> ProseLine<'a> {
-    /// Returns the text of the line
-    pub fn text(&self) -> &'a str {
-        self.text
-    }
-
-    /// Returns the file offset of the line's first byte
-    pub fn offset(&self) -> usize {
-        self.offset
-    }
-
-    /// Returns the line without its first `consumed` bytes
-    fn advance(self, consumed: usize) -> Self {
-        Self {
-            text: &self.text[consumed..],
-            offset: self.offset + consumed,
-        }
-    }
-
-    /// Returns an empty line at the same place, which ends a paragraph
-    fn blank(self) -> Self {
-        Self {
-            text: "",
-            offset: self.offset,
-        }
-    }
-}
-
 /// Returns the prose lines of a doc comment, or [`None`] when `comment` is
 /// not one
 ///
@@ -79,19 +44,7 @@ impl<'a> ProseLine<'a> {
 /// section come back empty.
 ///
 /// [`None`]: std::option::Option::None
-///
-/// # Examples
-///
-/// ```
-/// let comment = "/**\n * Adds two numbers\n * @param a - the first\n */";
-///
-/// let lines = jsdoc::prose_lines(comment, 100).unwrap();
-///
-/// let texts: Vec<&str> = lines.iter().map(|line| line.text()).collect();
-/// assert_eq!(texts, ["", "Adds two numbers", "the first", ""]);
-/// assert_eq!(lines[1].offset(), 100 + comment.find("Adds").unwrap());
-/// ```
-pub fn prose_lines(comment: &str, start: usize) -> Option<Vec<ProseLine<'_>>> {
+pub(crate) fn prose_lines(comment: &str, start: usize) -> Option<Vec<DocLine<'_>>> {
     let body = comment.strip_prefix("/**")?.strip_suffix("*/")?;
     let base = start + "/**".len();
 
@@ -100,7 +53,7 @@ pub fn prose_lines(comment: &str, start: usize) -> Option<Vec<ProseLine<'_>>> {
     let mut consumed = 0;
 
     for raw in body.split('\n') {
-        let line = ProseLine {
+        let line = DocLine {
             text: raw.strip_suffix('\r').unwrap_or(raw),
             offset: base + consumed,
         };
@@ -122,26 +75,6 @@ pub fn prose_lines(comment: &str, start: usize) -> Option<Vec<ProseLine<'_>>> {
     Some(lines)
 }
 
-/// Returns the line without the `*` that opens it and one space after it
-///
-/// A `*` followed by anything but whitespace is prose, such as `**bold**`,
-/// so it stays. A line of whitespace alone comes back empty.
-fn strip_star(line: ProseLine<'_>) -> ProseLine<'_> {
-    let trimmed = line.text.trim_start();
-    if trimmed.is_empty() {
-        return line.advance(line.text.len());
-    }
-    let Some(rest) = trimmed.strip_prefix('*') else {
-        return line;
-    };
-    if !rest.is_empty() && !rest.starts_with(' ') && !rest.starts_with('\t') {
-        return line;
-    }
-
-    let rest = rest.strip_prefix(' ').unwrap_or(rest);
-    line.advance(line.text.len() - rest.len())
-}
-
 /// Returns the name of the block tag that opens `text`, if any
 fn block_tag(text: &str) -> Option<&str> {
     let rest = text.trim_start().strip_prefix('@')?;
@@ -156,7 +89,7 @@ fn block_tag(text: &str) -> Option<&str> {
 }
 
 /// Returns the line without the syntax of its block tag
-fn strip_tag<'a>(line: ProseLine<'a>, tag: &str) -> ProseLine<'a> {
+fn strip_tag<'a>(line: DocLine<'a>, tag: &str) -> DocLine<'a> {
     let leading = line.text.len() - line.text.trim_start().len();
     let mut line = line.advance(leading + "@".len() + tag.len());
 
@@ -182,7 +115,7 @@ fn strip_tag<'a>(line: ProseLine<'a>, tag: &str) -> ProseLine<'a> {
 }
 
 /// Returns the line without its leading spaces and tabs
-fn skip_spaces(line: ProseLine<'_>) -> ProseLine<'_> {
+fn skip_spaces(line: DocLine<'_>) -> DocLine<'_> {
     let rest = line.text.trim_start_matches([' ', '\t']);
     line.advance(line.text.len() - rest.len())
 }
@@ -227,8 +160,8 @@ mod tests {
 
     use super::*;
 
-    fn texts<'a>(lines: &[ProseLine<'a>]) -> Vec<&'a str> {
-        lines.iter().map(ProseLine::text).collect()
+    fn texts<'a>(lines: &[DocLine<'a>]) -> Vec<&'a str> {
+        lines.iter().map(DocLine::text).collect()
     }
 
     #[test]
@@ -341,24 +274,6 @@ mod tests {
         let lines = prose_lines(comment, 0).expect("a doc comment");
 
         assert_eq!(lines[1].text(), "Returns the sum");
-    }
-
-    #[test]
-    fn trait_send() {
-        fn assert_send<T: Send>() {}
-        assert_send::<ProseLine<'_>>();
-    }
-
-    #[test]
-    fn trait_sync() {
-        fn assert_sync<T: Sync>() {}
-        assert_sync::<ProseLine<'_>>();
-    }
-
-    #[test]
-    fn trait_unpin() {
-        fn assert_unpin<T: Unpin>() {}
-        assert_unpin::<ProseLine<'_>>();
     }
 
     proptest! {

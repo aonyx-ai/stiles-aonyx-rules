@@ -24,7 +24,7 @@ default = ["plugin"]
 plugin = []
 
 [dependencies]
-jsdoc = { workspace = true }
+doc_comment = { workspace = true }
 whisker-plugin = { workspace = true }
 whisker-rust = { workspace = true }
 whisker-types = { workspace = true }

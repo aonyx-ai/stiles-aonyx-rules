@@ -29,7 +29,7 @@ missing_panics_doc = "warn"
 
 [workspace.dependencies]
 boundary = { path = "crates/boundary" }
-jsdoc = { path = "crates/jsdoc" }
+doc_comment = { path = "crates/doc_comment" }
 proptest = "1"
 # `DecoratedNode::raw()` returns a `tree_sitter::Node`, which some rules name
 # directly. The version matches whisker's own so that the plugin and the host
