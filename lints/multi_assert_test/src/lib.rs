@@ -1,5 +1,5 @@
-use whisker_rust::RustLintPass;
-use whisker_types::{DecoratedNode, Diagnostic, RuleId, Severity};
+use whisker_rust::{RuleId, RustLintPass};
+use whisker_types::{DecoratedNode, Diagnostic, Severity};
 
 const RULE_ID: RuleId = RuleId::new("lint.multi-assert-test");
 

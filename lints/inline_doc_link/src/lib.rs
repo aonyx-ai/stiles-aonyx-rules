@@ -2,8 +2,8 @@ mod doc_block;
 mod inline_link;
 
 use doc_comment::DocLine;
-use whisker_rust::RustLintPass;
-use whisker_types::{DecoratedNode, Diagnostic, RuleId, Severity};
+use whisker_rust::{RuleId, RustLintPass};
+use whisker_types::{DecoratedNode, Diagnostic, Severity};
 use whisker_typescript::TypeScriptLintPass;
 
 use self::doc_block::DocBlock;

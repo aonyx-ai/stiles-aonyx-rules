@@ -1,6 +1,6 @@
 use doc_comment::DocLine;
-use whisker_rust::RustLintPass;
-use whisker_types::{DecoratedNode, Diagnostic, RuleId, Severity, Span};
+use whisker_rust::{RuleId, RustLintPass};
+use whisker_types::{DecoratedNode, Diagnostic, Severity, Span};
 
 const RULE_ID: RuleId = RuleId::new("lint.doc-summary-period");
 

@@ -1,5 +1,5 @@
-use whisker_rust::{RustLintPass, RustLintPassAdapter};
-use whisker_types::{DecoratedNode, Diagnostic, LintPass, RuleId, RuleOptions, Severity};
+use whisker_rust::{RuleId, RustLintPass, RustLintPassAdapter};
+use whisker_types::{DecoratedNode, Diagnostic, LintPass, RuleOptions, Severity};
 
 const RULE_ID: RuleId = RuleId::new("lint.repeated-primitive-params");
 

@@ -1,6 +1,6 @@
-use whisker_rust::RustLintPass;
 use whisker_rust::decorations::{AdtFlags, ResolvedType};
-use whisker_types::{DecoratedNode, Diagnostic, RuleId, Severity};
+use whisker_rust::{RuleId, RustLintPass};
+use whisker_types::{DecoratedNode, Diagnostic, Severity};
 
 /// Flags wildcard (`_`) patterns in match arms when the scrutinee is an enum
 ///

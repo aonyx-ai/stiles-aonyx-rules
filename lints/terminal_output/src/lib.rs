@@ -3,8 +3,8 @@ mod test_code;
 
 use std::path::Path;
 
-use whisker_rust::RustLintPass;
-use whisker_types::{DecoratedNode, Diagnostic, RuleId, Severity};
+use whisker_rust::{RuleId, RustLintPass};
+use whisker_types::{DecoratedNode, Diagnostic, Severity};
 
 use self::resolve::Namespace;
 
