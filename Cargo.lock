@@ -327,6 +327,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "io_in_pure_function"
+version = "0.1.0"
+dependencies = [
+ "whisker-plugin",
+ "whisker-rust",
+ "whisker-testing",
+ "whisker-types",
+]
+
+[[package]]
 name = "itoa"
 version = "1.0.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
