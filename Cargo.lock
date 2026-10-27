@@ -198,6 +198,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "doc_summary_person"
+version = "0.1.0"
+dependencies = [
+ "doc_comment",
+ "whisker-plugin",
+ "whisker-rust",
+ "whisker-testing",
+ "whisker-types",
+]
+
+[[package]]
 name = "em_dash_aside"
 version = "0.1.0"
 dependencies = [
@@ -275,17 +286,6 @@ checksum = "ed5909b6e89a2db4456e54cd5f673791d7eca6732202bbf2a9cc504fe2f9b84a"
 name = "if_let_with_else"
 version = "0.1.0"
 dependencies = [
- "whisker-plugin",
- "whisker-rust",
- "whisker-testing",
- "whisker-types",
-]
-
-[[package]]
-name = "imperative_doc_summary"
-version = "0.1.0"
-dependencies = [
- "doc_comment",
  "whisker-plugin",
  "whisker-rust",
  "whisker-testing",
