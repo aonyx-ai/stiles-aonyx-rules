@@ -820,7 +820,7 @@ dependencies = [
 [[package]]
 name = "whisker-codegen"
 version = "0.1.0"
-source = "git+https://github.com/aonyx-ai/whisker.git?rev=32e387e9d9d19417d34ded70059aab73897ebe01#32e387e9d9d19417d34ded70059aab73897ebe01"
+source = "git+https://github.com/aonyx-ai/whisker.git?rev=84dbe8d5d476fe48f188dbdf5c2f0418efc317b9#84dbe8d5d476fe48f188dbdf5c2f0418efc317b9"
 dependencies = [
  "serde",
  "serde_json",
@@ -829,7 +829,7 @@ dependencies = [
 [[package]]
 name = "whisker-core"
 version = "0.1.0"
-source = "git+https://github.com/aonyx-ai/whisker.git?rev=32e387e9d9d19417d34ded70059aab73897ebe01#32e387e9d9d19417d34ded70059aab73897ebe01"
+source = "git+https://github.com/aonyx-ai/whisker.git?rev=84dbe8d5d476fe48f188dbdf5c2f0418efc317b9#84dbe8d5d476fe48f188dbdf5c2f0418efc317b9"
 dependencies = [
  "anyhow",
  "tree-sitter",
@@ -839,7 +839,7 @@ dependencies = [
 [[package]]
 name = "whisker-macros"
 version = "0.1.0"
-source = "git+https://github.com/aonyx-ai/whisker.git?rev=32e387e9d9d19417d34ded70059aab73897ebe01#32e387e9d9d19417d34ded70059aab73897ebe01"
+source = "git+https://github.com/aonyx-ai/whisker.git?rev=84dbe8d5d476fe48f188dbdf5c2f0418efc317b9#84dbe8d5d476fe48f188dbdf5c2f0418efc317b9"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -849,7 +849,7 @@ dependencies = [
 [[package]]
 name = "whisker-plugin"
 version = "0.1.0"
-source = "git+https://github.com/aonyx-ai/whisker.git?rev=32e387e9d9d19417d34ded70059aab73897ebe01#32e387e9d9d19417d34ded70059aab73897ebe01"
+source = "git+https://github.com/aonyx-ai/whisker.git?rev=84dbe8d5d476fe48f188dbdf5c2f0418efc317b9#84dbe8d5d476fe48f188dbdf5c2f0418efc317b9"
 dependencies = [
  "stabby",
  "whisker-rust",
@@ -860,7 +860,7 @@ dependencies = [
 [[package]]
 name = "whisker-rust"
 version = "0.1.0"
-source = "git+https://github.com/aonyx-ai/whisker.git?rev=32e387e9d9d19417d34ded70059aab73897ebe01#32e387e9d9d19417d34ded70059aab73897ebe01"
+source = "git+https://github.com/aonyx-ai/whisker.git?rev=84dbe8d5d476fe48f188dbdf5c2f0418efc317b9#84dbe8d5d476fe48f188dbdf5c2f0418efc317b9"
 dependencies = [
  "stabby",
  "tree-sitter",
@@ -873,7 +873,7 @@ dependencies = [
 [[package]]
 name = "whisker-testing"
 version = "0.1.0"
-source = "git+https://github.com/aonyx-ai/whisker.git?rev=32e387e9d9d19417d34ded70059aab73897ebe01#32e387e9d9d19417d34ded70059aab73897ebe01"
+source = "git+https://github.com/aonyx-ai/whisker.git?rev=84dbe8d5d476fe48f188dbdf5c2f0418efc317b9#84dbe8d5d476fe48f188dbdf5c2f0418efc317b9"
 dependencies = [
  "tree-sitter",
  "tree-sitter-rust",
@@ -885,7 +885,7 @@ dependencies = [
 [[package]]
 name = "whisker-types"
 version = "0.1.0"
-source = "git+https://github.com/aonyx-ai/whisker.git?rev=32e387e9d9d19417d34ded70059aab73897ebe01#32e387e9d9d19417d34ded70059aab73897ebe01"
+source = "git+https://github.com/aonyx-ai/whisker.git?rev=84dbe8d5d476fe48f188dbdf5c2f0418efc317b9#84dbe8d5d476fe48f188dbdf5c2f0418efc317b9"
 dependencies = [
  "anyhow",
  "stabby",
@@ -895,7 +895,7 @@ dependencies = [
 [[package]]
 name = "whisker-typescript"
 version = "0.1.0"
-source = "git+https://github.com/aonyx-ai/whisker.git?rev=32e387e9d9d19417d34ded70059aab73897ebe01#32e387e9d9d19417d34ded70059aab73897ebe01"
+source = "git+https://github.com/aonyx-ai/whisker.git?rev=84dbe8d5d476fe48f188dbdf5c2f0418efc317b9#84dbe8d5d476fe48f188dbdf5c2f0418efc317b9"
 dependencies = [
  "stabby",
  "tree-sitter",
