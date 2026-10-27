@@ -3,7 +3,7 @@
 # named once in the workspace manifest, because the handshake compares the
 # whisker a plugin was compiled against with the whisker loading it.
 [package]
-name = "imperative_doc_summary"
+name = "doc_summary_person"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
