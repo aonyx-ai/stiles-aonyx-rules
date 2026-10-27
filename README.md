@@ -33,7 +33,8 @@ rules that read only comments also run on TypeScript: `todo_comment`,
 also removes the block tag syntax and `@example` code, so no rule reads
 them as prose.
 `commented_out_code` stays with Rust: it decides whether a comment is code
-by parsing it as Rust.
+by parsing it as Rust. `doc_summary_period` stays with Rust too: the
+summary it reads is the first paragraph that rustdoc shows.
 
 ## Options
 

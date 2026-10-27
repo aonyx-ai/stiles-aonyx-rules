@@ -1,4 +1,4 @@
-# Three rules read the prose of a doc comment, in Rust and in TypeScript, and
+# Several rules read the prose of a doc comment, in Rust and in TypeScript, and
 # they have to agree on where it is. The reading lives here rather than in
 # each rule, because a copy that drifts makes one rule read syntax as prose
 # that another skips, or join lines another keeps apart.

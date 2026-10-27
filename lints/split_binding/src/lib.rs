@@ -321,7 +321,7 @@ mod tests {
     }
 
     /// A binding that is one argument among several is not a stage of the
-    /// value that follows it.
+    /// value that follows it
     ///
     /// Taken from raft, where `app_id` names an app and `id` names the job
     /// row the insert returned. Shadowing them into one name would say an app
@@ -338,7 +338,7 @@ mod tests {
         assert_no_diagnostics(&diagnostics);
     }
 
-    /// A binding the next one borrows from cannot merge with it at all.
+    /// A binding the next one borrows from cannot merge with it at all
     ///
     /// Taken from raft. `author` is already a parameter, so the suggested
     /// rewrite would have the binding borrow from itself and would not
@@ -356,7 +356,7 @@ mod tests {
     }
 
     /// A closure parameter is bound by the initializer, so it does not make
-    /// the initializer draw on a second thing.
+    /// the initializer draw on a second thing
     #[test]
     fn a_closure_parameter_does_not_count_as_a_second_source() {
         let source = "fn f() -> Vec<i32> {\n    \
