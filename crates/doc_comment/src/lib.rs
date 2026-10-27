@@ -11,8 +11,9 @@
 mod jsdoc;
 mod rust;
 
-pub use rust::rust;
 use whisker_types::DecoratedNode;
+
+pub use self::rust::rust;
 
 /// One line of a doc comment's prose, with the offset of its first byte
 ///
@@ -123,7 +124,7 @@ impl<'a> DocLine<'a> {
 /// assert_eq!(texts, ["", "Adds two numbers", "the first", ""]);
 /// ```
 pub fn typescript<'a>(node: &DecoratedNode<'a>) -> Option<Vec<DocLine<'a>>> {
-    let mut lines = jsdoc::prose_lines(node.text(), node.span().start())?;
+    let mut lines = self::jsdoc::prose_lines(node.text(), node.span().start())?;
     unindent(&mut lines);
     Some(lines)
 }
