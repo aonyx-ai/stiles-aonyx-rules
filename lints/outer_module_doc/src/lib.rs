@@ -141,15 +141,17 @@ impl RustLintPass for OuterModuleDoc {
             return Vec::new();
         };
 
-        vec![Diagnostic::new(
-            RULE_ID,
-            Severity::Warn,
-            format!(
-                "documentation on `mod {};`: document the module with `//!` in its own file",
-                name.text()
-            ),
-            covering_span(first, last),
-        )]
+        vec![
+            Diagnostic::builder()
+                .rule_id(RULE_ID)
+                .severity(Severity::Warn)
+                .message(format!(
+                    "documentation on `mod {};`: document the module with `//!` in its own file",
+                    name.text()
+                ))
+                .span(covering_span(first, last))
+                .build(),
+        ]
     }
 }
 
@@ -161,7 +163,11 @@ fn covering_span(first: &DecoratedNode<'_>, last: &DecoratedNode<'_>) -> Span {
     let start = first.span();
     let end = last.span().start() + last.text().trim_end_matches(['\n', '\r']).len();
 
-    Span::new(start.file_path().clone(), start.start(), end)
+    Span::builder()
+        .file(start.file_path().clone())
+        .start(start.start())
+        .end(end)
+        .build()
 }
 
 #[cfg(feature = "plugin")]

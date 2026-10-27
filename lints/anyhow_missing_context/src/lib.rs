@@ -71,12 +71,14 @@ impl RustLintPass for AnyhowMissingContext {
             return Vec::new();
         }
 
-        vec![Diagnostic::new(
-            RULE_ID,
-            Severity::Warn,
-            "use of `?` on Result without error context".into(),
-            node.span(),
-        )]
+        vec![
+            Diagnostic::builder()
+                .rule_id(RULE_ID)
+                .severity(Severity::Warn)
+                .message("use of `?` on Result without error context")
+                .span(node.span())
+                .build(),
+        ]
     }
 }
 
@@ -164,8 +166,18 @@ mod tests {
     /// Returns the signature the provider reports for `anyhow::Result<()>`
     fn anyhow_fn_sig() -> FnSignature {
         let ret = ResolvedType::new("Result<(), Error>".into()).with_result(true);
-        let error = ErrorType::Named(TypePath::new("anyhow", [] as [&str; 0], "Error"));
-        FnSignature::new(Some(ret), Some(error), ReturnMode::Direct)
+        let error = ErrorType::Named(
+            TypePath::builder()
+                .krate("anyhow")
+                .modules([] as [&str; 0])
+                .name("Error")
+                .build(),
+        );
+        FnSignature::builder()
+            .return_type(ret)
+            .error_type(error)
+            .return_mode(ReturnMode::Direct)
+            .build()
     }
 
     /// Returns the signature the provider reports for `std::io::Result<()>`
@@ -175,8 +187,18 @@ mod tests {
     /// is a re-export of `core::io::error::Error`.
     fn non_anyhow_fn_sig() -> FnSignature {
         let ret = ResolvedType::new("Result<(), Error>".into()).with_result(true);
-        let error = ErrorType::Named(TypePath::new("core", ["io", "error"], "Error"));
-        FnSignature::new(Some(ret), Some(error), ReturnMode::Direct)
+        let error = ErrorType::Named(
+            TypePath::builder()
+                .krate("core")
+                .modules(["io", "error"])
+                .name("Error")
+                .build(),
+        );
+        FnSignature::builder()
+            .return_type(ret)
+            .error_type(error)
+            .return_mode(ReturnMode::Direct)
+            .build()
     }
 
     /// Walks the tree to find the first node with the given kind

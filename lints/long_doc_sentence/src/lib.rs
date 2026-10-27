@@ -70,15 +70,21 @@ fn report(lines: &[DocLine<'_>], node: &DecoratedNode<'_>) -> Vec<Diagnostic> {
         .into_iter()
         .filter(|sentence| sentence.words() > MAX_WORDS)
         .map(|sentence| {
-            Diagnostic::new(
-                RuleId::new("lint.long-doc-sentence"),
-                Severity::Warn,
-                format!(
+            Diagnostic::builder()
+                .rule_id(RuleId::new("lint.long-doc-sentence"))
+                .severity(Severity::Warn)
+                .message(format!(
                     "doc sentence is {} words, over the {MAX_WORDS}-word limit",
                     sentence.words()
-                ),
-                Span::new(file.file_path().clone(), sentence.start(), sentence.end()),
-            )
+                ))
+                .span(
+                    Span::builder()
+                        .file(file.file_path().clone())
+                        .start(sentence.start())
+                        .end(sentence.end())
+                        .build(),
+                )
+                .build()
         })
         .collect()
 }

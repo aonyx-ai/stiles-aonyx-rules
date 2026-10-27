@@ -342,15 +342,17 @@ impl<'a> FileImports<'a> {
         let facade = facade_path(reexports, crates)?;
         let krate = facade.krate();
 
-        Some(Diagnostic::new(
-            RULE_ID,
-            Severity::Warn,
-            format!(
-                "`{path}` is also exported as `{facade}`, and this file already imports from \
+        Some(
+            Diagnostic::builder()
+                .rule_id(RULE_ID)
+                .severity(Severity::Warn)
+                .message(format!(
+                    "`{path}` is also exported as `{facade}`, and this file already imports from \
                  `{krate}`; import it through `{krate}`"
-            ),
-            node.span(),
-        ))
+                ))
+                .span(node.span())
+                .build(),
+        )
     }
 
     /// Returns whether a crate root names a crate
@@ -442,7 +444,10 @@ mod tests {
         Reexports::new(paths.iter().map(|path| {
             let mut segments = path.split("::");
             let krate = segments.next().expect("a path names a crate");
-            PublicPath::new(krate, segments)
+            PublicPath::builder()
+                .krate(krate)
+                .segments(segments)
+                .build()
         }))
     }
 

@@ -133,12 +133,14 @@ fn report(node: &DecoratedNode<'_>, message: String) -> Vec<Diagnostic> {
         return Vec::new();
     }
 
-    vec![Diagnostic::new(
-        RULE_ID,
-        Severity::Warn,
-        message,
-        node.span(),
-    )]
+    vec![
+        Diagnostic::builder()
+            .rule_id(RULE_ID)
+            .severity(Severity::Warn)
+            .message(message)
+            .span(node.span())
+            .build(),
+    ]
 }
 
 /// Returns whether the rule skips every node of the file at `path`
@@ -217,7 +219,12 @@ mod tests {
             .set_language(&whisker_rust::language())
             .expect("should load the Rust grammar");
         let tree = parser.parse(source, None).expect("should parse");
-        DecoratedTree::new(tree, Language::Rust, source.to_owned(), path.to_path_buf())
+        DecoratedTree::builder()
+            .tree(tree)
+            .language(Language::Rust)
+            .source(source.to_owned())
+            .file(path.to_path_buf())
+            .build()
     }
 
     /// Returns the messages the rule reports for `source` at `path`

@@ -49,15 +49,17 @@ fn named_field_diagnostics(body: &DecoratedNode<'_>) -> Vec<Diagnostic> {
             continue;
         };
 
-        diagnostics.push(Diagnostic::new(
-            RULE_ID,
-            Severity::Warn,
-            format!(
-                "field `{}` is public; make it private and derive a getter with `getset`",
-                name.text()
-            ),
-            visibility.span(),
-        ));
+        diagnostics.push(
+            Diagnostic::builder()
+                .rule_id(RULE_ID)
+                .severity(Severity::Warn)
+                .message(format!(
+                    "field `{}` is public; make it private and derive a getter with `getset`",
+                    name.text()
+                ))
+                .span(visibility.span())
+                .build(),
+        );
     }
 
     diagnostics
@@ -86,12 +88,16 @@ fn ordered_field_diagnostics(body: &DecoratedNode<'_>) -> Vec<Diagnostic> {
             continue;
         }
 
-        diagnostics.push(Diagnostic::new(
-            RULE_ID,
-            Severity::Warn,
-            format!("field {index} is public; make it private and add an accessor method"),
-            child.span(),
-        ));
+        diagnostics.push(
+            Diagnostic::builder()
+                .rule_id(RULE_ID)
+                .severity(Severity::Warn)
+                .message(format!(
+                    "field {index} is public; make it private and add an accessor method"
+                ))
+                .span(child.span())
+                .build(),
+        );
     }
 
     diagnostics

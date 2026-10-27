@@ -54,12 +54,14 @@ impl RustLintPass for MatchesMacro {
             Position::Value => VALUE_MESSAGE,
         };
 
-        vec![Diagnostic::new(
-            RuleId::new("lint.matches-macro"),
-            Severity::Warn,
-            message.into(),
-            node.span(),
-        )]
+        vec![
+            Diagnostic::builder()
+                .rule_id(RuleId::new("lint.matches-macro"))
+                .severity(Severity::Warn)
+                .message(message)
+                .span(node.span())
+                .build(),
+        ]
     }
 }
 

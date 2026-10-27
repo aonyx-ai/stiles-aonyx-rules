@@ -64,16 +64,18 @@ fn check_function(function: &DecoratedNode<'_>) -> Option<Diagnostic> {
     collect_assertions(&body, &mut assertions);
     let second = assertions.get(1)?;
 
-    Some(Diagnostic::new(
-        RULE_ID,
-        Severity::Warn,
-        format!(
-            "test `{}` makes {} assertions; split it into one test per assertion",
-            name.text(),
-            assertions.len(),
-        ),
-        second.span(),
-    ))
+    Some(
+        Diagnostic::builder()
+            .rule_id(RULE_ID)
+            .severity(Severity::Warn)
+            .message(format!(
+                "test `{}` makes {} assertions; split it into one test per assertion",
+                name.text(),
+                assertions.len(),
+            ))
+            .span(second.span())
+            .build(),
+    )
 }
 
 /// Returns whether an attribute in front of `function` marks it as a test

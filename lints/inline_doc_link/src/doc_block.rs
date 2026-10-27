@@ -74,11 +74,11 @@ impl DocBlock {
     ///
     /// Panics if `start` is greater than `end`.
     pub(crate) fn span(&self, start: usize, end: usize) -> Span {
-        Span::new(
-            self.file.clone(),
-            self.to_file_offset(start),
-            self.to_file_offset(end),
-        )
+        Span::builder()
+            .file(self.file.clone())
+            .start(self.to_file_offset(start))
+            .end(self.to_file_offset(end))
+            .build()
     }
 
     /// Converts an offset in the joined text to an offset in the file

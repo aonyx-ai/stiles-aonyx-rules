@@ -83,12 +83,20 @@ fn report(node: &DecoratedNode<'_>) -> Option<Diagnostic> {
     }
 
     let file = node.span();
-    Some(Diagnostic::new(
-        RULE_ID,
-        Severity::Warn,
-        "doc summary ends with a period".to_owned(),
-        Span::new(file.file_path().clone(), period, period + 1),
-    ))
+    Some(
+        Diagnostic::builder()
+            .rule_id(RULE_ID)
+            .severity(Severity::Warn)
+            .message("doc summary ends with a period")
+            .span(
+                Span::builder()
+                    .file(file.file_path().clone())
+                    .start(period)
+                    .end(period + 1)
+                    .build(),
+            )
+            .build(),
+    )
 }
 
 /// Returns the placement of a doc comment or a doc attribute, or [`None`]

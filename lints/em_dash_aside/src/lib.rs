@@ -108,14 +108,20 @@ fn diagnose(
             } = aside;
             let dash = kind.dash();
 
-            Diagnostic::new(
-                RULE_ID,
-                Severity::Warn,
-                format!(
+            Diagnostic::builder()
+                .rule_id(RULE_ID)
+                .severity(Severity::Warn)
+                .message(format!(
                     "{dash} interrupts the sentence; use a colon, a period, or a subordinate clause"
-                ),
-                Span::new(file.clone(), offset, offset + length),
-            )
+                ))
+                .span(
+                    Span::builder()
+                        .file(file.clone())
+                        .start(offset)
+                        .end(offset + length)
+                        .build(),
+                )
+                .build()
         })
         .collect()
 }

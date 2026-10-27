@@ -157,12 +157,14 @@ impl RustLintPass for FunctionScopedImport {
             return Vec::new();
         }
 
-        vec![Diagnostic::new(
-            RULE_ID,
-            Severity::Warn,
-            "`use` sits inside a function body; move it to the top of the module".into(),
-            node.span(),
-        )]
+        vec![
+            Diagnostic::builder()
+                .rule_id(RULE_ID)
+                .severity(Severity::Warn)
+                .message("`use` sits inside a function body; move it to the top of the module")
+                .span(node.span())
+                .build(),
+        ]
     }
 }
 

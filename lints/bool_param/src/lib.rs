@@ -77,12 +77,14 @@ fn check_signature(node: &DecoratedNode<'_>, boundary_attributes: &[String]) -> 
             continue;
         };
         if is_bool_type(&ty) {
-            diagnostics.push(Diagnostic::new(
-                RULE_ID,
-                Severity::Warn,
-                "parameter has type `bool`; use an enum with meaningful variants".into(),
-                ty.span(),
-            ));
+            diagnostics.push(
+                Diagnostic::builder()
+                    .rule_id(RULE_ID)
+                    .severity(Severity::Warn)
+                    .message("parameter has type `bool`; use an enum with meaningful variants")
+                    .span(ty.span())
+                    .build(),
+            );
         }
     }
     diagnostics
@@ -116,12 +118,16 @@ impl RustLintPass for BoolParam {
                 continue;
             };
             if is_bool_type(&ty) {
-                diagnostics.push(Diagnostic::new(
-                    RULE_ID,
-                    Severity::Warn,
-                    "struct field has type `bool`; use an enum with meaningful variants".into(),
-                    ty.span(),
-                ));
+                diagnostics.push(
+                    Diagnostic::builder()
+                        .rule_id(RULE_ID)
+                        .severity(Severity::Warn)
+                        .message(
+                            "struct field has type `bool`; use an enum with meaningful variants",
+                        )
+                        .span(ty.span())
+                        .build(),
+                );
             }
         }
         diagnostics
@@ -157,11 +163,13 @@ mod tests {
     /// Runs the rule as whisker runs it, with `boundary-attributes` set
     fn run_with_boundary_attributes(source: &str, boundary: &[&str]) -> Vec<Diagnostic> {
         let tree = parse(source, Language::Rust);
-        let options = RuleOptions::new(vec![RuleOption::new(
-            RULE_ID.as_str().to_owned(),
-            "boundary-attributes".to_owned(),
-            boundary.iter().map(|name| (*name).to_owned()).collect(),
-        )]);
+        let options = RuleOptions::new(vec![
+            RuleOption::builder()
+                .rule(RULE_ID.as_str().to_owned())
+                .name("boundary-attributes")
+                .values(boundary.iter().map(|name| (*name).to_owned()).collect())
+                .build(),
+        ]);
 
         let mut pass = adapt();
         pass.configure(&options);

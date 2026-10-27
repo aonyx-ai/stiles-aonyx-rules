@@ -187,15 +187,17 @@ fn misnamed_cause(field: &DecoratedNode<'_>, variant: &str) -> Option<Diagnostic
         return None;
     }
 
-    Some(Diagnostic::new(
-        RULE_ID,
-        Severity::Warn,
-        format!(
-            "field `{}` holds the cause of `{variant}`; name it `{SOURCE_FIELD}`",
-            name.text()
-        ),
-        name.span(),
-    ))
+    Some(
+        Diagnostic::builder()
+            .rule_id(RULE_ID)
+            .severity(Severity::Warn)
+            .message(format!(
+                "field `{}` holds the cause of `{variant}`; name it `{SOURCE_FIELD}`",
+                name.text()
+            ))
+            .span(name.span())
+            .build(),
+    )
 }
 
 /// Returns whether a variant body holds a cause
@@ -236,15 +238,17 @@ fn body_diagnostics(body: &DecoratedNode<'_>, name: &DecoratedNode<'_>) -> Vec<D
             } else {
                 "give it named fields".to_string()
             };
-            vec![Diagnostic::new(
-                RULE_ID,
-                Severity::Warn,
-                format!(
-                    "error variant `{}` is a tuple variant; {advice}",
-                    name.text()
-                ),
-                name.span(),
-            )]
+            vec![
+                Diagnostic::builder()
+                    .rule_id(RULE_ID)
+                    .severity(Severity::Warn)
+                    .message(format!(
+                        "error variant `{}` is a tuple variant; {advice}",
+                        name.text()
+                    ))
+                    .span(name.span())
+                    .build(),
+            ]
         }
         _ => Vec::new(),
     }
@@ -273,12 +277,14 @@ fn message_diagnostic(variant: &DecoratedNode<'_>, name: &DecoratedNode<'_>) -> 
         (true, true) | (false, false) => return None,
     };
 
-    Some(Diagnostic::new(
-        RULE_ID,
-        Severity::Warn,
-        message,
-        literal.span(),
-    ))
+    Some(
+        Diagnostic::builder()
+            .rule_id(RULE_ID)
+            .severity(Severity::Warn)
+            .message(message)
+            .span(literal.span())
+            .build(),
+    )
 }
 
 /// Returns the diagnostics for one variant of an error enum
@@ -304,15 +310,10 @@ impl RustLintPass for ErrorEnumShape {
         if let Some(name) = node.child_by_field_name("name")
             && !name.text().ends_with(ERROR_SUFFIX)
         {
-            diagnostics.push(Diagnostic::new(
-                RULE_ID,
-                Severity::Warn,
-                format!(
+            diagnostics.push(Diagnostic::builder().rule_id(RULE_ID).severity(Severity::Warn).message(format!(
                     "error enum `{}` does not end in `{ERROR_SUFFIX}`; name it after the action that fails and its object",
                     name.text()
-                ),
-                name.span(),
-            ));
+                )).span(name.span()).build());
         }
 
         let Some(body) = node.child_by_field_name("body") else {

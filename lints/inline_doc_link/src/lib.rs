@@ -68,12 +68,12 @@ fn report(block: &DocBlock) -> Vec<Diagnostic> {
     InlineLink::find_all(block.content())
         .into_iter()
         .map(|link| {
-            Diagnostic::new(
-                RULE_ID,
-                Severity::Warn,
-                link.kind().message().into(),
-                block.span(link.start(), link.end()),
-            )
+            Diagnostic::builder()
+                .rule_id(RULE_ID)
+                .severity(Severity::Warn)
+                .message(link.kind().message())
+                .span(block.span(link.start(), link.end()))
+                .build()
         })
         .collect()
 }

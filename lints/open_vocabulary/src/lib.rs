@@ -513,15 +513,10 @@ fn slot_diagnostics(fields: Vec<Field<'_>>, owner: &str, imports: &Imports) -> V
             continue;
         };
 
-        diagnostics.push(Diagnostic::new(
-            RULE_ID,
-            Severity::Warn,
-            format!(
+        diagnostics.push(Diagnostic::builder().rule_id(RULE_ID).severity(Severity::Warn).message(format!(
                 "field {label}{owner} holds {}, which takes values no consumer can match; give it a type that names them",
                 slot.description()
-            ),
-            node.span(),
-        ));
+            )).span(node.span()).build());
     }
 
     diagnostics
@@ -545,15 +540,10 @@ fn variant_diagnostics(variant: &DecoratedNode<'_>, imports: &Imports) -> Vec<Di
 
     let mut diagnostics = Vec::new();
     if CATCH_ALL_NAMES.contains(&name.text()) {
-        diagnostics.push(Diagnostic::new(
-            RULE_ID,
-            Severity::Warn,
-            format!(
+        diagnostics.push(Diagnostic::builder().rule_id(RULE_ID).severity(Severity::Warn).message(format!(
                 "variant `{}` is a catch-all with a payload; give each case it holds a variant of its own",
                 name.text()
-            ),
-            name.span(),
-        ));
+            )).span(name.span()).build());
     }
     let owner = format!(" of variant `{}`", name.text());
     diagnostics.extend(slot_diagnostics(fields, &owner, imports));

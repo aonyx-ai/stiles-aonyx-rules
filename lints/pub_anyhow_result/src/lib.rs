@@ -105,16 +105,18 @@ fn check_signature(node: &DecoratedNode<'_>) -> Vec<Diagnostic> {
         return Vec::new();
     };
 
-    vec![Diagnostic::new(
-        RULE_ID,
-        Severity::Warn,
-        format!(
-            "`{}` is public and its error type is `anyhow::Error`; return an error type the \
+    vec![
+        Diagnostic::builder()
+            .rule_id(RULE_ID)
+            .severity(Severity::Warn)
+            .message(format!(
+                "`{}` is public and its error type is `anyhow::Error`; return an error type the \
              caller can match on",
-            name.text()
-        ),
-        return_type.span(),
-    )]
+                name.text()
+            ))
+            .span(return_type.span())
+            .build(),
+    ]
 }
 
 /// Returns whether the signature is reachable under a bare `pub`
@@ -341,16 +343,36 @@ mod tests {
     /// Returns the signature the provider records for `anyhow::Result<()>`
     fn anyhow_signature() -> FnSignature {
         let ret = ResolvedType::new("Result<()>".into()).with_result(true);
-        let error = ErrorType::Named(TypePath::new("anyhow", [] as [&str; 0], "Error"));
-        FnSignature::new(Some(ret), Some(error), ReturnMode::Direct)
+        let error = ErrorType::Named(
+            TypePath::builder()
+                .krate("anyhow")
+                .modules([] as [&str; 0])
+                .name("Error")
+                .build(),
+        );
+        FnSignature::builder()
+            .return_type(ret)
+            .error_type(error)
+            .return_mode(ReturnMode::Direct)
+            .build()
     }
 
     /// Returns the signature the provider records for an `async fn` whose
     /// future yields `anyhow::Result<()>`
     fn anyhow_async_signature() -> FnSignature {
         let ret = ResolvedType::new("Result<()>".into()).with_result(true);
-        let error = ErrorType::Named(TypePath::new("anyhow", [] as [&str; 0], "Error"));
-        FnSignature::new(Some(ret), Some(error), ReturnMode::Awaited)
+        let error = ErrorType::Named(
+            TypePath::builder()
+                .krate("anyhow")
+                .modules([] as [&str; 0])
+                .name("Error")
+                .build(),
+        );
+        FnSignature::builder()
+            .return_type(ret)
+            .error_type(error)
+            .return_mode(ReturnMode::Awaited)
+            .build()
     }
 
     /// Returns the signature the provider records for `Result<(), Error>`
@@ -360,8 +382,18 @@ mod tests {
     /// path tells the two apart.
     fn local_error_signature() -> FnSignature {
         let ret = ResolvedType::new("Result<(), Error>".into()).with_result(true);
-        let error = ErrorType::Named(TypePath::new("my_crate", ["error"], "Error"));
-        FnSignature::new(Some(ret), Some(error), ReturnMode::Direct)
+        let error = ErrorType::Named(
+            TypePath::builder()
+                .krate("my_crate")
+                .modules(["error"])
+                .name("Error")
+                .build(),
+        );
+        FnSignature::builder()
+            .return_type(ret)
+            .error_type(error)
+            .return_mode(ReturnMode::Direct)
+            .build()
     }
 
     /// Runs the rule with `signature` on every function in `source`
@@ -384,7 +416,12 @@ mod tests {
             .set_language(&grammar)
             .expect("the grammar should load");
         let tree = parser.parse(source, None).expect("the source should parse");
-        let tree = DecoratedTree::new(tree, Language::Rust, source.to_owned(), path.to_path_buf());
+        let tree = DecoratedTree::builder()
+            .tree(tree)
+            .language(Language::Rust)
+            .source(source.to_owned())
+            .file(path.to_path_buf())
+            .build();
 
         run_decorated(tree, anyhow_signature())
     }
@@ -446,8 +483,18 @@ mod tests {
     #[test]
     fn boxed_error_type_not_flagged() {
         let ret = ResolvedType::new("Result<(), Box<dyn Error>>".into()).with_result(true);
-        let error = ErrorType::Named(TypePath::new("alloc", ["boxed"], "Box"));
-        let signature = FnSignature::new(Some(ret), Some(error), ReturnMode::Direct);
+        let error = ErrorType::Named(
+            TypePath::builder()
+                .krate("alloc")
+                .modules(["boxed"])
+                .name("Box")
+                .build(),
+        );
+        let signature = FnSignature::builder()
+            .return_type(ret)
+            .error_type(error)
+            .return_mode(ReturnMode::Direct)
+            .build();
 
         let diagnostics = run_with("pub fn f() -> Result<(), Box<dyn Error>> {}", signature);
 
@@ -595,8 +642,18 @@ mod tests {
     #[test]
     fn error_in_anyhow_submodule_not_flagged() {
         let ret = ResolvedType::new("Result<(), Error>".into()).with_result(true);
-        let error = ErrorType::Named(TypePath::new("anyhow", ["kind"], "Error"));
-        let signature = FnSignature::new(Some(ret), Some(error), ReturnMode::Direct);
+        let error = ErrorType::Named(
+            TypePath::builder()
+                .krate("anyhow")
+                .modules(["kind"])
+                .name("Error")
+                .build(),
+        );
+        let signature = FnSignature::builder()
+            .return_type(ret)
+            .error_type(error)
+            .return_mode(ReturnMode::Direct)
+            .build();
 
         let diagnostics = run_with("pub fn f() -> Result<(), Error> {}", signature);
 
@@ -606,7 +663,11 @@ mod tests {
     #[test]
     fn generic_error_type_not_flagged() {
         let ret = ResolvedType::new("Result<(), E>".into()).with_result(true);
-        let signature = FnSignature::new(Some(ret), Some(ErrorType::Generic), ReturnMode::Direct);
+        let signature = FnSignature::builder()
+            .return_type(ret)
+            .error_type(ErrorType::Generic)
+            .return_mode(ReturnMode::Direct)
+            .build();
 
         let diagnostics = run_with("pub fn f<E>() -> Result<(), E> {}", signature);
 
@@ -766,7 +827,10 @@ mod tests {
     #[test]
     fn non_result_return_not_flagged() {
         let ret = ResolvedType::new("u32".into());
-        let signature = FnSignature::new(Some(ret), None, ReturnMode::Direct);
+        let signature = FnSignature::builder()
+            .return_type(ret)
+            .return_mode(ReturnMode::Direct)
+            .build();
 
         let diagnostics = run_with("pub fn f() -> u32 {}", signature);
 
@@ -775,7 +839,9 @@ mod tests {
 
     #[test]
     fn opaque_async_signature_not_flagged() {
-        let signature = FnSignature::new(None, None, ReturnMode::Opaque);
+        let signature = FnSignature::builder()
+            .return_mode(ReturnMode::Opaque)
+            .build();
 
         let diagnostics = run_with("pub async fn f() -> anyhow::Result<()> {}", signature);
 

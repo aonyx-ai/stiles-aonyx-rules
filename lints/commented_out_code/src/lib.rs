@@ -109,12 +109,14 @@ impl CommentedOutCode {
     /// Returns a diagnostic for `span` when `body` grades as [`Fragment::Code`]
     fn report(&mut self, body: &str, span: Span) -> Vec<Diagnostic> {
         match classify(&mut self.parser, body) {
-            Fragment::Code => vec![Diagnostic::new(
-                RuleId::new("lint.commented-out-code"),
-                Severity::Warn,
-                "remove this commented-out code; version control keeps the history".into(),
-                span,
-            )],
+            Fragment::Code => vec![
+                Diagnostic::builder()
+                    .rule_id(RuleId::new("lint.commented-out-code"))
+                    .severity(Severity::Warn)
+                    .message("remove this commented-out code; version control keeps the history")
+                    .span(span)
+                    .build(),
+            ],
             Fragment::Ambiguous => Vec::new(),
             Fragment::Prose => Vec::new(),
         }
@@ -156,7 +158,11 @@ impl RustLintPass for CommentedOutCode {
             .join("\n");
         let last = group.last().unwrap_or(node);
         let start = node.span();
-        let span = Span::new(start.file_path().clone(), start.start(), last.span().end());
+        let span = Span::builder()
+            .file(start.file_path().clone())
+            .start(start.start())
+            .end(last.span().end())
+            .build();
 
         self.report(&body, span)
     }

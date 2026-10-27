@@ -128,16 +128,18 @@ fn check_item(node: &DecoratedNode<'_>, kind: ItemKind) -> Vec<Diagnostic> {
         return Vec::new();
     };
 
-    vec![Diagnostic::new(
-        RULE_ID,
-        Severity::Warn,
-        format!(
-            "public {} `{}` has no `# Examples` section",
-            kind.as_str(),
-            name.text()
-        ),
-        name.span(),
-    )]
+    vec![
+        Diagnostic::builder()
+            .rule_id(RULE_ID)
+            .severity(Severity::Warn)
+            .message(format!(
+                "public {} `{}` has no `# Examples` section",
+                kind.as_str(),
+                name.text()
+            ))
+            .span(name.span())
+            .build(),
+    ]
 }
 
 /// Returns the outer doc comment lines attached to an item, in source order
