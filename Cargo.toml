@@ -26,6 +26,10 @@ repository = "https://github.com/aonyx-ai/whisker-aonyx-rules.git"
 [workspace.lints.clippy]
 missing_errors_doc = "warn"
 missing_panics_doc = "warn"
+# `lint.matches-macro` asks for a `match` whose arms yield `true` or `false`,
+# and this lint asks for `matches!` in its place when the last arm is a
+# wildcard. The two cannot both pass, and the rule is the convention here.
+match_like_matches_macro = "allow"
 
 [workspace.dependencies]
 boundary = { path = "crates/boundary" }
