@@ -170,97 +170,9 @@ mod tests {
         execute(&tree, &mut passes)
     }
 
-    /// Pins that this rule ignores every signature the shared corpus holds
-    ///
-    /// The corpus is what stops two rules reading one option from drifting
-    /// apart. `bool_param` once reported an `extern` signature that
-    /// `repeated_primitive_params` skipped, and no test failed, because
-    /// only one of them had `extern` cases.
-    #[test]
-    fn every_boundary_in_the_shared_corpus_reports_nothing() {
-        for source in boundary::corpus::EXEMPT {
-            let diagnostics = run_with_boundary_attributes(source, boundary::corpus::ATTRIBUTES);
-
-            assert!(
-                diagnostics.is_empty(),
-                "should report nothing for a boundary: {source}"
-            );
-        }
-    }
-
-    /// Pins that this rule still reports what the corpus says it must
-    ///
-    /// A rule that exempts too much reports nothing, which reads exactly
-    /// like a rule that found no fault.
-    #[test]
-    fn every_signature_off_the_boundary_in_the_shared_corpus_reports() {
-        for source in boundary::corpus::REPORTED {
-            let diagnostics = run_with_boundary_attributes(source, boundary::corpus::ATTRIBUTES);
-
-            assert!(
-                !diagnostics.is_empty(),
-                "should report a signature on no boundary: {source}"
-            );
-        }
-    }
-
     #[test]
     fn bool_local_variable_not_flagged() {
         let diagnostics = run("fn foo() { let x: bool = true; }");
-
-        assert_no_diagnostics(&diagnostics);
-    }
-
-    #[test]
-    fn bool_param_in_function_flagged_once() {
-        let diagnostics = run("fn foo(x: bool) {}");
-
-        assert_eq!(diagnostics.len(), 1);
-    }
-
-    #[test]
-    fn bool_param_in_function_flagged_with_rule_id_severity_and_message() {
-        let diagnostics = run("fn foo(x: bool) {}");
-
-        assert_diagnostic(&diagnostics[0])
-            .has_rule_id("lint.bool-param")
-            .has_severity(Severity::Warn)
-            .message_contains("parameter has type `bool`");
-    }
-
-    #[test]
-    fn bool_param_on_a_trait_declaration_flagged_once() {
-        let diagnostics = run("trait T {\n    fn f(&self, x: bool);\n}");
-
-        assert_eq!(diagnostics.len(), 1);
-    }
-
-    #[test]
-    fn bool_param_on_a_trait_declaration_flagged_with_rule_id_and_message() {
-        let diagnostics = run("trait T {\n    fn f(&self, x: bool);\n}");
-
-        assert_diagnostic(&diagnostics[0])
-            .has_rule_id("lint.bool-param")
-            .message_contains("parameter has type `bool`");
-    }
-
-    #[test]
-    fn bool_param_on_a_trait_declaration_with_a_default_body_flagged_once() {
-        let diagnostics = run("trait T {\n    fn f(&self, x: bool) {}\n}");
-
-        assert_eq!(diagnostics.len(), 1);
-    }
-
-    #[test]
-    fn bool_param_in_an_extern_block_not_flagged() {
-        let diagnostics = run("unsafe extern \"C\" { fn f(x: bool); }");
-
-        assert_no_diagnostics(&diagnostics);
-    }
-
-    #[test]
-    fn bool_param_in_an_extern_function_not_flagged() {
-        let diagnostics = run("pub extern \"C\" fn foo(x: bool) {}");
 
         assert_no_diagnostics(&diagnostics);
     }
@@ -309,6 +221,67 @@ mod tests {
     }
 
     #[test]
+    fn bool_param_in_an_extern_block_not_flagged() {
+        let diagnostics = run("unsafe extern \"C\" { fn f(x: bool); }");
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn bool_param_in_an_extern_function_not_flagged() {
+        let diagnostics = run("pub extern \"C\" fn foo(x: bool) {}");
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn bool_param_in_function_flagged_once() {
+        let diagnostics = run("fn foo(x: bool) {}");
+
+        assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn bool_param_in_function_flagged_with_rule_id_severity_and_message() {
+        let diagnostics = run("fn foo(x: bool) {}");
+
+        assert_diagnostic(&diagnostics[0])
+            .has_rule_id("lint.bool-param")
+            .has_severity(Severity::Warn)
+            .message_contains("parameter has type `bool`");
+    }
+
+    #[test]
+    fn bool_param_on_a_trait_declaration_flagged_once() {
+        let diagnostics = run("trait T {\n    fn f(&self, x: bool);\n}");
+
+        assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn bool_param_on_a_trait_declaration_flagged_with_rule_id_and_message() {
+        let diagnostics = run("trait T {\n    fn f(&self, x: bool);\n}");
+
+        assert_diagnostic(&diagnostics[0])
+            .has_rule_id("lint.bool-param")
+            .message_contains("parameter has type `bool`");
+    }
+
+    #[test]
+    fn bool_param_on_a_trait_declaration_with_a_default_body_flagged_once() {
+        let diagnostics = run("trait T {\n    fn f(&self, x: bool) {}\n}");
+
+        assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn bool_return_type_not_flagged() {
+        let diagnostics = run("fn foo() -> bool { true }");
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
     fn bool_struct_field_behind_a_configured_attribute_flagged_once() {
         let diagnostics =
             run_with_boundary_attributes("#[shard]\nstruct Config { verbose: bool }", &["shard"]);
@@ -322,13 +295,6 @@ mod tests {
             run_with_boundary_attributes("#[shard]\nstruct Config { verbose: bool }", &["shard"]);
 
         assert_diagnostic(&diagnostics[0]).message_contains("struct field has type `bool`");
-    }
-
-    #[test]
-    fn bool_return_type_not_flagged() {
-        let diagnostics = run("fn foo() -> bool { true }");
-
-        assert_no_diagnostics(&diagnostics);
     }
 
     #[test]
@@ -346,6 +312,40 @@ mod tests {
             .has_rule_id("lint.bool-param")
             .has_severity(Severity::Warn)
             .message_contains("struct field has type `bool`");
+    }
+
+    /// Pins that this rule ignores every signature the shared corpus holds
+    ///
+    /// The corpus is what stops two rules reading one option from drifting
+    /// apart. `bool_param` once reported an `extern` signature that
+    /// `repeated_primitive_params` skipped, and no test failed, because
+    /// only one of them had `extern` cases.
+    #[test]
+    fn every_boundary_in_the_shared_corpus_reports_nothing() {
+        for source in boundary::corpus::EXEMPT {
+            let diagnostics = run_with_boundary_attributes(source, boundary::corpus::ATTRIBUTES);
+
+            assert!(
+                diagnostics.is_empty(),
+                "should report nothing for a boundary: {source}"
+            );
+        }
+    }
+
+    /// Pins that this rule still reports what the corpus says it must
+    ///
+    /// A rule that exempts too much reports nothing, which reads exactly
+    /// like a rule that found no fault.
+    #[test]
+    fn every_signature_off_the_boundary_in_the_shared_corpus_reports() {
+        for source in boundary::corpus::REPORTED {
+            let diagnostics = run_with_boundary_attributes(source, boundary::corpus::ATTRIBUTES);
+
+            assert!(
+                !diagnostics.is_empty(),
+                "should report a signature on no boundary: {source}"
+            );
+        }
     }
 
     #[test]

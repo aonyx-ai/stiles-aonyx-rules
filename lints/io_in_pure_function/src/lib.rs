@@ -314,14 +314,6 @@ mod tests {
         assert_eq!(diagnostics.len(), 1);
     }
 
-    #[test]
-    fn bare_name_passed_as_argument_is_flagged() {
-        let diagnostics =
-            run("use std::fs::read_to_string;\nfn parse_all() { paths.map(read_to_string); }");
-
-        assert_eq!(diagnostics.len(), 1);
-    }
-
     /// A bare name that is neither called nor passed names a local
     ///
     /// `read` here is the binding of the `let`, whatever the file imports.
@@ -330,6 +322,14 @@ mod tests {
         let diagnostics = run("use std::fs::read;\nfn new() { let read = 1; let x = read + 1; }");
 
         assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn bare_name_passed_as_argument_is_flagged() {
+        let diagnostics =
+            run("use std::fs::read_to_string;\nfn parse_all() { paths.map(read_to_string); }");
+
+        assert_eq!(diagnostics.len(), 1);
     }
 
     #[test]
@@ -346,19 +346,19 @@ mod tests {
         assert_eq!(diagnostics.len(), 1);
     }
 
-    #[test]
-    fn cfg_attr_test_does_not_exempt() {
-        let diagnostics =
-            run("#[cfg_attr(test, allow(dead_code))]\nfn new() { std::fs::read(p); }");
-
-        assert_eq!(diagnostics.len(), 1);
-    }
-
     /// A `cfg` that also holds outside a test build gates shipped code
     #[test]
     fn cfg_any_test_or_feature_is_flagged() {
         let diagnostics =
             run("#[cfg(any(test, feature = \"fixtures\"))]\nfn new() { std::fs::read(p); }");
+
+        assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn cfg_attr_test_does_not_exempt() {
+        let diagnostics =
+            run("#[cfg_attr(test, allow(dead_code))]\nfn new() { std::fs::read(p); }");
 
         assert_eq!(diagnostics.len(), 1);
     }
@@ -570,20 +570,20 @@ mod tests {
     }
 
     #[test]
-    fn libloading_is_flagged() {
-        let diagnostics =
-            run("use libloading::Library;\nfn new(path: &Path) { unsafe { Library::new(path) }; }");
-
-        assert_eq!(diagnostics.len(), 1);
-    }
-
-    #[test]
     fn let_binding_shadowing_import_is_not_flagged() {
         let diagnostics = run(
             "use std::fs::read;\nfn new() { let read = make(); read(p); if let Some(read) = r { read(p); } }",
         );
 
         assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn libloading_is_flagged() {
+        let diagnostics =
+            run("use libloading::Library;\nfn new(path: &Path) { unsafe { Library::new(path) }; }");
+
+        assert_eq!(diagnostics.len(), 1);
     }
 
     #[test]
@@ -685,6 +685,24 @@ mod tests {
         assert_eq!(diagnostics.len(), 1);
     }
 
+    /// A parameter lives in the value namespace and a module in the type
+    /// namespace, so a parameter named `fs` leaves `fs::read` alone
+    #[test]
+    fn parameter_named_like_a_module_is_flagged() {
+        let diagnostics = run("use std::fs;\nfn new(fs: &Fs) { fs::read(p); }");
+
+        assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn parameter_shadowing_import_is_not_flagged() {
+        let diagnostics = run(
+            "use std::fs::read;\nfn new(read: impl Fn()) { read(); }\nfn parse() { items.map(|read| read(x)); }",
+        );
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
     #[test]
     fn process_exit_is_not_flagged() {
         let diagnostics = run("fn parse() { std::process::exit(1); }");
@@ -697,24 +715,6 @@ mod tests {
         let diagnostics = run("fn resolve(config: &Config) -> Plan { Plan::from(config) }");
 
         assert_no_diagnostics(&diagnostics);
-    }
-
-    #[test]
-    fn parameter_shadowing_import_is_not_flagged() {
-        let diagnostics = run(
-            "use std::fs::read;\nfn new(read: impl Fn()) { read(); }\nfn parse() { items.map(|read| read(x)); }",
-        );
-
-        assert_no_diagnostics(&diagnostics);
-    }
-
-    /// A parameter lives in the value namespace and a module in the type
-    /// namespace, so a parameter named `fs` leaves `fs::read` alone
-    #[test]
-    fn parameter_named_like_a_module_is_flagged() {
-        let diagnostics = run("use std::fs;\nfn new(fs: &Fs) { fs::read(p); }");
-
-        assert_eq!(diagnostics.len(), 1);
     }
 
     #[test]

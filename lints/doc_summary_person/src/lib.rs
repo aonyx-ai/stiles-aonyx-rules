@@ -525,6 +525,383 @@ mod tests {
     }
 
     #[test]
+    fn adverb_alone_is_flagged() {
+        assert_eq!(
+            flagged_words("/// Recursively\nfn collect() {}"),
+            ["Recursively"]
+        );
+    }
+
+    #[test]
+    fn adverb_before_imperative_is_flagged() {
+        assert_eq!(
+            flagged_words("/// Recursively collect the items\nfn collect() {}"),
+            ["Recursively"]
+        );
+    }
+
+    #[test]
+    fn adverb_before_punctuated_third_person_is_not_flagged() {
+        let diagnostics = check("/// Only returns, never panics\nfn get() {}");
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn adverb_before_third_person_is_not_flagged() {
+        let diagnostics = check("/// Recursively collects the items\nfn collect() {}");
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn adverb_with_trailing_comma_is_not_flagged() {
+        let diagnostics = check("/// Finally, returns the rest\nfn rest() {}");
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn article_opening_is_flagged() {
+        assert_eq!(
+            flagged_words("/// The length of the string\nfn len() {}"),
+            ["The"]
+        );
+    }
+
+    #[test]
+    fn associated_function_in_impl_is_flagged() {
+        let diagnostics =
+            check("impl Foo {\n    /// Create a new foo\n    pub fn new() -> Self {}\n}");
+
+        assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn associated_function_in_impl_is_flagged_with_the_verb_in_the_message() {
+        let diagnostics =
+            check("impl Foo {\n    /// Create a new foo\n    pub fn new() -> Self {}\n}");
+
+        assert_diagnostic(&diagnostics[0]).message_contains("opens with \"Create\"");
+    }
+
+    #[test]
+    fn attribute_between_doc_and_function_is_flagged() {
+        let diagnostics = check("/// Return the length\n#[must_use]\nfn len() {}");
+
+        assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn attribute_named_like_a_test_is_flagged() {
+        let diagnostics = check("#[test_case(1)]\n/// Return the length\nfn len() {}");
+
+        assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn autolink_opening_is_flagged() {
+        assert_eq!(
+            flagged_words("/// <https://example.com> mirror\nfn mirror() {}"),
+            ["<https://example.com>"]
+        );
+    }
+
+    #[test]
+    fn backtick_fence_opening_is_not_flagged() {
+        let diagnostics = check("/// ```\n/// Return\n/// ```\nfn len() {}");
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn blank_doc_line_before_summary_is_skipped() {
+        let diagnostics = check("///\n/// Return the length\nfn len() {}");
+
+        assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn block_doc_comment_is_flagged() {
+        let source = "/**\n * Return the length\n */\nfn len() {}";
+
+        let diagnostics = check(source);
+
+        assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn block_doc_comment_is_flagged_at_the_verb() {
+        let source = "/**\n * Return the length\n */\nfn len() {}";
+
+        let diagnostics = check(source);
+
+        let start = source.find("Return").unwrap();
+        assert_diagnostic(&diagnostics[0]).has_span("<test>", start, start + "Return".len());
+    }
+
+    #[test]
+    fn capital_s_ending_is_flagged() {
+        assert_eq!(
+            flagged_words("/// GPS position of the device\nfn position() {}"),
+            ["GPS"]
+        );
+    }
+
+    #[test]
+    fn cfg_all_with_test_is_not_flagged() {
+        let diagnostics = check("#[cfg(all(test, unix))]\n/// Build a fixture\nfn fixture() {}");
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn cfg_any_with_test_is_flagged() {
+        let diagnostics = check("#[cfg(any(test, unix))]\n/// Return the length\nfn len() {}");
+
+        assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn cfg_attr_doc_before_doc_comment_is_not_flagged() {
+        let diagnostics =
+            check("#[cfg_attr(docsrs, doc = \"Summary\")]\n/// Return the length\nfn len() {}");
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn cfg_attr_test_is_flagged() {
+        let diagnostics =
+            check("#[cfg_attr(test, allow(dead_code))]\n/// Return the length\nfn len() {}");
+
+        assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn cfg_feature_test_is_flagged() {
+        let diagnostics = check("#[cfg(feature = \"test\")]\n/// Return the length\nfn len() {}");
+
+        assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn cfg_not_test_is_flagged() {
+        let diagnostics = check("#[cfg(not(test))]\n/// Return the length\nfn len() {}");
+
+        assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn cfg_test_on_the_previous_item_is_flagged() {
+        let diagnostics = check("#[cfg(test)]\nmod tests {}\n/// Return the length\nfn len() {}");
+
+        assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn code_span_alone_is_flagged() {
+        assert_eq!(flagged_words("/// `len`\nfn len() {}"), ["`len`"]);
+    }
+
+    #[test]
+    fn code_span_ending_in_s_is_flagged() {
+        assert_eq!(
+            flagged_words("/// `Returns` the length\nfn len() {}"),
+            ["`Returns`"]
+        );
+    }
+
+    #[test]
+    fn code_span_later_in_the_summary_is_flagged() {
+        assert_eq!(
+            flagged_words("/// Return `len` of the string\nfn len() {}"),
+            ["Return"]
+        );
+    }
+
+    #[test]
+    fn code_span_opening_is_flagged() {
+        let diagnostics = check("/// `len` of the string\nfn len() {}");
+
+        assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn code_span_opening_is_flagged_at_the_code_span() {
+        let diagnostics = check("/// `len` of the string\nfn len() {}");
+
+        assert_diagnostic(&diagnostics[0])
+            .message_contains("opens with \"`len`\"")
+            .has_span("<test>", 4, 9);
+    }
+
+    #[test]
+    fn code_span_with_spaces_is_flagged_whole() {
+        assert_eq!(
+            flagged_words("/// `impl Trait for T` blanket\nfn a() {}"),
+            ["`impl Trait for T`"]
+        );
+    }
+
+    #[test]
+    fn constant_is_not_flagged() {
+        let diagnostics = check("/// Return code for a clean exit\nconst OK: i32 = 0;");
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn doc_attribute_after_doc_comment_is_flagged() {
+        let diagnostics =
+            check("/// Return the length\n#[doc = include_str!(\"len.md\")]\nfn len() {}");
+
+        assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn doc_attribute_alone_is_not_flagged() {
+        let diagnostics = check("#[doc = \"Return the length\"]\nfn len() {}");
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn doc_attribute_before_doc_comment_is_not_flagged() {
+        let diagnostics = check("#[doc = \"Summary\"]\n/// Return the length\nfn len() {}");
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn doc_hidden_attribute_is_flagged() {
+        let diagnostics = check("#[doc(hidden)]\n/// Return the length\nfn len() {}");
+
+        assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn double_backtick_code_span_is_flagged_whole() {
+        assert_eq!(
+            flagged_words("/// ``a ` b`` pair\nfn a() {}"),
+            ["``a ` b``"]
+        );
+    }
+
+    #[test]
+    fn empty_doc_comment_is_not_flagged() {
+        let diagnostics = check("///\nfn len() {}");
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn enum_variant_is_not_flagged() {
+        let diagnostics = check("enum Mode {\n    /// Print the plan\n    Print,\n}");
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn extern_function_declaration_is_flagged() {
+        let diagnostics =
+            check("extern \"C\" {\n    /// Return the length\n    fn len() -> usize;\n}");
+
+        assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn fence_with_info_string_is_not_flagged() {
+        let diagnostics = check("/// ```rust\n/// let x = 1;\n/// ```\nfn len() {}");
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn file_with_inner_cfg_test_is_not_flagged() {
+        let diagnostics = check("#![cfg(test)]\n/// Build a fixture\nfn fixture() {}");
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn first_doc_comment_holds_the_summary() {
+        let diagnostics =
+            check("/// Returns the length\n#[must_use]\n/// Return the rest\nfn len() {}");
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn function_without_docs_is_not_flagged() {
+        let diagnostics = check("fn len() {}");
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn helper_in_cfg_test_module_is_not_flagged() {
+        let diagnostics =
+            check("#[cfg(test)]\nmod tests {\n    /// Build a fixture\n    fn fixture() {}\n}");
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn helper_in_module_with_inner_cfg_test_is_not_flagged() {
+        let diagnostics = check(
+            "mod tests {\n    #![cfg(test)]\n    /// Build a fixture\n    fn fixture() {}\n}",
+        );
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn helper_in_nested_module_under_cfg_test_is_not_flagged() {
+        let diagnostics = check(
+            "#[cfg(test)]\nmod tests {\n    mod helpers {\n        /// Build a fixture\n        fn fixture() {}\n    }\n}",
+        );
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn helper_inside_a_test_function_is_not_flagged() {
+        let diagnostics =
+            check("#[test]\nfn parses() {\n    /// Build a fixture\n    fn fixture() {}\n}");
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn hyphenated_word_in_s_is_not_flagged() {
+        let diagnostics = check("/// Re-reads the file\nfn reread() {}");
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn hyphenated_word_is_flagged() {
+        assert_eq!(
+            flagged_words("/// Set-up for the test harness\nfn setup() {}"),
+            ["Set-up"]
+        );
+    }
+
+    #[test]
+    fn imperative_after_the_first_line_is_not_flagged() {
+        let diagnostics =
+            check("/// Returns the length\n///\n/// Return early on empty input.\nfn len() {}");
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn imperative_alone_is_flagged() {
+        assert_eq!(flagged_words("/// Clear\nfn clear() {}"), ["Clear"]);
+    }
+
+    #[test]
     fn imperative_is_flagged() {
         let source = "/// Return the length of the string\nfn len() {}";
 
@@ -549,265 +926,13 @@ mod tests {
     }
 
     #[test]
-    fn third_person_is_not_flagged() {
-        let diagnostics = check("/// Returns the length of the string\nfn len() {}");
+    fn indented_summary_span_starts_at_the_word() {
+        let source = "///    Return the length\nfn len() {}";
 
-        assert_no_diagnostics(&diagnostics);
-    }
+        let diagnostics = check(source);
 
-    #[test]
-    fn irregular_third_person_is_not_flagged() {
-        let diagnostics = check(
-            "/// Does the work\nfn a() {}\n/// Has a value\nfn b() {}\n/// Is empty\nfn c() {}\n/// Tries again\nfn d() {}",
-        );
-
-        assert_no_diagnostics(&diagnostics);
-    }
-
-    #[test]
-    fn verb_that_noun_phrases_hid_is_flagged() {
-        let source = "/// Load factor of the table\nfn a() {}\n/// Start offset\nfn b() {}\n/// Check the input\nfn c() {}";
-
-        assert_eq!(flagged_words(source), ["Load", "Start", "Check"]);
-    }
-
-    #[test]
-    fn unknown_verb_is_flagged() {
-        assert_eq!(
-            flagged_words("/// Frobnicate the widget\nfn frob() {}"),
-            ["Frobnicate"]
-        );
-    }
-
-    #[test]
-    fn noun_opening_is_flagged() {
-        assert_eq!(
-            flagged_words("/// Source text the rule reads\nfn source() {}"),
-            ["Source"]
-        );
-    }
-
-    #[test]
-    fn article_opening_is_flagged() {
-        assert_eq!(
-            flagged_words("/// The length of the string\nfn len() {}"),
-            ["The"]
-        );
-    }
-
-    #[test]
-    fn modal_verb_is_flagged() {
-        assert_eq!(
-            flagged_words("/// Can be called twice\nfn twice() {}"),
-            ["Can"]
-        );
-    }
-
-    #[test]
-    fn plural_noun_is_not_flagged() {
-        let diagnostics = check("/// Bytes of the file\nfn bytes() {}");
-
-        assert_no_diagnostics(&diagnostics);
-    }
-
-    #[test]
-    fn lowercase_imperative_is_flagged() {
-        assert_eq!(
-            flagged_words("/// return the length\nfn len() {}"),
-            ["return"]
-        );
-    }
-
-    #[test]
-    fn lowercase_third_person_is_not_flagged() {
-        let diagnostics = check("/// returns the length\nfn len() {}");
-
-        assert_no_diagnostics(&diagnostics);
-    }
-
-    #[test]
-    fn capital_s_ending_is_flagged() {
-        assert_eq!(
-            flagged_words("/// GPS position of the device\nfn position() {}"),
-            ["GPS"]
-        );
-    }
-
-    #[test]
-    fn imperative_alone_is_flagged() {
-        assert_eq!(flagged_words("/// Clear\nfn clear() {}"), ["Clear"]);
-    }
-
-    #[test]
-    fn trailing_comma_is_cut_from_the_word() {
-        let source = "/// Return, or panic\nfn a() {}\n/// Returns, or panics\nfn b() {}";
-
-        assert_eq!(flagged_words(source), ["Return"]);
-    }
-
-    #[test]
-    fn trailing_colon_is_cut_from_the_word() {
-        let source = "/// Note: the length\nfn a() {}\n/// Panics: always\nfn b() {}";
-
-        assert_eq!(flagged_words(source), ["Note"]);
-    }
-
-    #[test]
-    fn trailing_semicolon_is_cut_from_the_word() {
-        let source = "/// Stop; then wait\nfn a() {}\n/// Stops; then waits\nfn b() {}";
-
-        assert_eq!(flagged_words(source), ["Stop"]);
-    }
-
-    #[test]
-    fn trailing_period_is_cut_from_the_word() {
-        let source = "/// Clear.\nfn a() {}\n/// Clears.\nfn b() {}";
-
-        assert_eq!(flagged_words(source), ["Clear"]);
-    }
-
-    #[test]
-    fn word_of_punctuation_only_is_flagged_whole() {
-        assert_eq!(flagged_words("/// ... and more\nfn a() {}"), ["..."]);
-    }
-
-    #[test]
-    fn hyphenated_word_is_flagged() {
-        assert_eq!(
-            flagged_words("/// Set-up for the test harness\nfn setup() {}"),
-            ["Set-up"]
-        );
-    }
-
-    #[test]
-    fn hyphenated_word_in_s_is_not_flagged() {
-        let diagnostics = check("/// Re-reads the file\nfn reread() {}");
-
-        assert_no_diagnostics(&diagnostics);
-    }
-
-    #[test]
-    fn multibyte_word_is_flagged() {
-        let source = "/// Ünïcödé — 日本語 summary\nfn len() {}";
-
-        assert_eq!(flagged_words(source), ["Ünïcödé"]);
-    }
-
-    #[test]
-    fn adverb_before_third_person_is_not_flagged() {
-        let diagnostics = check("/// Recursively collects the items\nfn collect() {}");
-
-        assert_no_diagnostics(&diagnostics);
-    }
-
-    #[test]
-    fn adverb_before_punctuated_third_person_is_not_flagged() {
-        let diagnostics = check("/// Only returns, never panics\nfn get() {}");
-
-        assert_no_diagnostics(&diagnostics);
-    }
-
-    #[test]
-    fn adverb_before_imperative_is_flagged() {
-        assert_eq!(
-            flagged_words("/// Recursively collect the items\nfn collect() {}"),
-            ["Recursively"]
-        );
-    }
-
-    #[test]
-    fn adverb_alone_is_flagged() {
-        assert_eq!(
-            flagged_words("/// Recursively\nfn collect() {}"),
-            ["Recursively"]
-        );
-    }
-
-    #[test]
-    fn adverb_with_trailing_comma_is_not_flagged() {
-        let diagnostics = check("/// Finally, returns the rest\nfn rest() {}");
-
-        assert_no_diagnostics(&diagnostics);
-    }
-
-    #[test]
-    fn verb_in_ly_before_plural_is_flagged() {
-        let source = "/// Apply edits to the tree\nfn a() {}\n/// Supply defaults\nfn b() {}\n/// MULTIPLY values\nfn c() {}";
-
-        assert_eq!(flagged_words(source), ["Apply", "Supply", "MULTIPLY"]);
-    }
-
-    #[test]
-    fn ly_alone_is_not_an_adverb() {
-        assert_eq!(flagged_words("/// Ly returns\nfn a() {}"), ["Ly"]);
-    }
-
-    #[test]
-    fn ly_verb_list_entries_end_in_ly() {
-        assert!(LY_VERBS.iter().all(|verb| verb.ends_with("ly")));
-    }
-
-    #[test]
-    fn ly_verb_list_is_lowercase() {
-        assert!(LY_VERBS.iter().all(|verb| *verb == verb.to_lowercase()));
-    }
-
-    #[test]
-    fn ly_verb_list_is_sorted_and_unique() {
-        assert!(LY_VERBS.windows(2).all(|pair| pair[0] < pair[1]));
-    }
-
-    #[test]
-    fn code_span_opening_is_flagged() {
-        let diagnostics = check("/// `len` of the string\nfn len() {}");
-
-        assert_eq!(diagnostics.len(), 1);
-    }
-
-    #[test]
-    fn code_span_opening_is_flagged_at_the_code_span() {
-        let diagnostics = check("/// `len` of the string\nfn len() {}");
-
-        assert_diagnostic(&diagnostics[0])
-            .message_contains("opens with \"`len`\"")
-            .has_span("<test>", 4, 9);
-    }
-
-    #[test]
-    fn code_span_ending_in_s_is_flagged() {
-        assert_eq!(
-            flagged_words("/// `Returns` the length\nfn len() {}"),
-            ["`Returns`"]
-        );
-    }
-
-    #[test]
-    fn code_span_with_spaces_is_flagged_whole() {
-        assert_eq!(
-            flagged_words("/// `impl Trait for T` blanket\nfn a() {}"),
-            ["`impl Trait for T`"]
-        );
-    }
-
-    #[test]
-    fn double_backtick_code_span_is_flagged_whole() {
-        assert_eq!(
-            flagged_words("/// ``a ` b`` pair\nfn a() {}"),
-            ["``a ` b``"]
-        );
-    }
-
-    #[test]
-    fn unclosed_code_span_is_flagged_to_the_first_space() {
-        assert_eq!(flagged_words("/// `len of the string\nfn a() {}"), ["`len"]);
-    }
-
-    #[test]
-    fn intra_doc_link_opening_is_flagged() {
-        assert_eq!(
-            flagged_words("/// [`Vec`] with the items\nfn a() {}"),
-            ["[`Vec`]"]
-        );
+        let start = source.find("Return").unwrap();
+        assert_diagnostic(&diagnostics[0]).has_span("<test>", start, start + "Return".len());
     }
 
     #[test]
@@ -819,11 +944,51 @@ mod tests {
     }
 
     #[test]
-    fn reference_link_opening_is_flagged_with_its_label() {
+    fn inline_triple_backtick_code_span_is_flagged() {
         assert_eq!(
-            flagged_words("/// [Foo bar][foo] of the bar\nfn a() {}"),
-            ["[Foo bar][foo]"]
+            flagged_words("/// ```len``` of it\nfn len() {}"),
+            ["```len```"]
         );
+    }
+
+    #[test]
+    fn inner_doc_comment_above_is_not_read() {
+        let diagnostics = check("//! Return the module\nfn len() {}");
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn inner_doc_comment_ends_the_walk() {
+        let diagnostics = check(
+            "mod m {\n    //! Return the module\n    /// Returns the length\n    fn len() {}\n}",
+        );
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn inner_doc_comment_in_a_module_is_not_read() {
+        let diagnostics = check("mod m {\n    //! Return the module\n    fn len() {}\n}");
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn intra_doc_link_opening_is_flagged() {
+        assert_eq!(
+            flagged_words("/// [`Vec`] with the items\nfn a() {}"),
+            ["[`Vec`]"]
+        );
+    }
+
+    #[test]
+    fn irregular_third_person_is_not_flagged() {
+        let diagnostics = check(
+            "/// Does the work\nfn a() {}\n/// Has a value\nfn b() {}\n/// Is empty\nfn c() {}\n/// Tries again\nfn d() {}",
+        );
+
+        assert_no_diagnostics(&diagnostics);
     }
 
     #[test]
@@ -853,41 +1018,161 @@ mod tests {
     }
 
     #[test]
-    fn unclosed_link_is_flagged_to_the_first_space() {
-        assert_eq!(flagged_words("/// [Foo of the bar\nfn a() {}"), ["[Foo"]);
-    }
-
-    #[test]
-    fn autolink_opening_is_flagged() {
+    fn lowercase_imperative_is_flagged() {
         assert_eq!(
-            flagged_words("/// <https://example.com> mirror\nfn mirror() {}"),
-            ["<https://example.com>"]
+            flagged_words("/// return the length\nfn len() {}"),
+            ["return"]
         );
     }
 
     #[test]
-    fn code_span_alone_is_flagged() {
-        assert_eq!(flagged_words("/// `len`\nfn len() {}"), ["`len`"]);
-    }
-
-    #[test]
-    fn inline_triple_backtick_code_span_is_flagged() {
-        assert_eq!(
-            flagged_words("/// ```len``` of it\nfn len() {}"),
-            ["```len```"]
-        );
-    }
-
-    #[test]
-    fn fence_with_info_string_is_not_flagged() {
-        let diagnostics = check("/// ```rust\n/// let x = 1;\n/// ```\nfn len() {}");
+    fn lowercase_third_person_is_not_flagged() {
+        let diagnostics = check("/// returns the length\nfn len() {}");
 
         assert_no_diagnostics(&diagnostics);
     }
 
     #[test]
-    fn backtick_fence_opening_is_not_flagged() {
-        let diagnostics = check("/// ```\n/// Return\n/// ```\nfn len() {}");
+    fn ly_alone_is_not_an_adverb() {
+        assert_eq!(flagged_words("/// Ly returns\nfn a() {}"), ["Ly"]);
+    }
+
+    #[test]
+    fn ly_verb_list_entries_end_in_ly() {
+        assert!(LY_VERBS.iter().all(|verb| verb.ends_with("ly")));
+    }
+
+    #[test]
+    fn ly_verb_list_is_lowercase() {
+        assert!(LY_VERBS.iter().all(|verb| *verb == verb.to_lowercase()));
+    }
+
+    #[test]
+    fn ly_verb_list_is_sorted_and_unique() {
+        assert!(LY_VERBS.windows(2).all(|pair| pair[0] < pair[1]));
+    }
+
+    #[test]
+    fn method_in_impl_under_cfg_test_is_not_flagged() {
+        let diagnostics = check(
+            "#[cfg(test)]\nmod tests {\n    impl Foo {\n        /// Build a foo\n        fn build() {}\n    }\n}",
+        );
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn modal_verb_is_flagged() {
+        assert_eq!(
+            flagged_words("/// Can be called twice\nfn twice() {}"),
+            ["Can"]
+        );
+    }
+
+    #[test]
+    fn multibyte_word_is_flagged() {
+        let source = "/// Ünïcödé — 日本語 summary\nfn len() {}";
+
+        assert_eq!(flagged_words(source), ["Ünïcödé"]);
+    }
+
+    #[test]
+    fn noun_opening_is_flagged() {
+        assert_eq!(
+            flagged_words("/// Source text the rule reads\nfn source() {}"),
+            ["Source"]
+        );
+    }
+
+    #[test]
+    fn plain_comment_between_doc_and_function_is_flagged() {
+        let diagnostics = check("/// Return the length\n// note\nfn len() {}");
+
+        assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn plain_comment_is_not_flagged() {
+        let diagnostics = check("// Return the length\nfn len() {}");
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn plural_noun_is_not_flagged() {
+        let diagnostics = check("/// Bytes of the file\nfn bytes() {}");
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn previous_item_docs_are_not_read() {
+        let diagnostics = check("/// Return the length\nstruct Foo;\nfn len() {}");
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn reference_link_opening_is_flagged_with_its_label() {
+        assert_eq!(
+            flagged_words("/// [Foo bar][foo] of the bar\nfn a() {}"),
+            ["[Foo bar][foo]"]
+        );
+    }
+
+    #[test]
+    fn scoped_test_attribute_is_not_flagged() {
+        let diagnostics = check(
+            "/// Check the client\n#[tokio::test(flavor = \"multi_thread\")]\nasync fn client() {}",
+        );
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn struct_is_not_flagged() {
+        let diagnostics = check("/// Set of names\npub struct Names;");
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn test_attribute_above_the_doc_comment_is_not_flagged() {
+        let diagnostics = check("#[test]\n/// Check the parser\nfn parses() {}");
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn test_function_is_not_flagged() {
+        let diagnostics = check("/// Check the parser\n#[test]\nfn parses() {}");
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn test_target_paths_exclude_a_src_lib_file() {
+        assert!(!is_test_target(Path::new("crates/core/src/lib.rs")));
+    }
+
+    #[test]
+    fn test_target_paths_exclude_a_src_tests_file() {
+        assert!(!is_test_target(Path::new("crates/core/src/tests.rs")));
+    }
+
+    #[test]
+    fn test_target_paths_include_a_benches_file() {
+        assert!(is_test_target(Path::new("benches/throughput.rs")));
+    }
+
+    #[test]
+    fn test_target_paths_include_a_tests_directory_file() {
+        assert!(is_test_target(Path::new("crates/core/tests/common/mod.rs")));
+    }
+
+    #[test]
+    fn third_person_is_not_flagged() {
+        let diagnostics = check("/// Returns the length of the string\nfn len() {}");
 
         assert_no_diagnostics(&diagnostics);
     }
@@ -900,27 +1185,31 @@ mod tests {
     }
 
     #[test]
-    fn code_span_later_in_the_summary_is_flagged() {
-        assert_eq!(
-            flagged_words("/// Return `len` of the string\nfn len() {}"),
-            ["Return"]
-        );
+    fn trailing_colon_is_cut_from_the_word() {
+        let source = "/// Note: the length\nfn a() {}\n/// Panics: always\nfn b() {}";
+
+        assert_eq!(flagged_words(source), ["Note"]);
     }
 
     #[test]
-    fn associated_function_in_impl_is_flagged() {
-        let diagnostics =
-            check("impl Foo {\n    /// Create a new foo\n    pub fn new() -> Self {}\n}");
+    fn trailing_comma_is_cut_from_the_word() {
+        let source = "/// Return, or panic\nfn a() {}\n/// Returns, or panics\nfn b() {}";
 
-        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(flagged_words(source), ["Return"]);
     }
 
     #[test]
-    fn associated_function_in_impl_is_flagged_with_the_verb_in_the_message() {
-        let diagnostics =
-            check("impl Foo {\n    /// Create a new foo\n    pub fn new() -> Self {}\n}");
+    fn trailing_period_is_cut_from_the_word() {
+        let source = "/// Clear.\nfn a() {}\n/// Clears.\nfn b() {}";
 
-        assert_diagnostic(&diagnostics[0]).message_contains("opens with \"Create\"");
+        assert_eq!(flagged_words(source), ["Clear"]);
+    }
+
+    #[test]
+    fn trailing_semicolon_is_cut_from_the_word() {
+        let source = "/// Stop; then wait\nfn a() {}\n/// Stops; then waits\nfn b() {}";
+
+        assert_eq!(flagged_words(source), ["Stop"]);
     }
 
     #[test]
@@ -952,332 +1241,6 @@ mod tests {
     }
 
     #[test]
-    fn extern_function_declaration_is_flagged() {
-        let diagnostics =
-            check("extern \"C\" {\n    /// Return the length\n    fn len() -> usize;\n}");
-
-        assert_eq!(diagnostics.len(), 1);
-    }
-
-    #[test]
-    fn block_doc_comment_is_flagged() {
-        let source = "/**\n * Return the length\n */\nfn len() {}";
-
-        let diagnostics = check(source);
-
-        assert_eq!(diagnostics.len(), 1);
-    }
-
-    #[test]
-    fn block_doc_comment_is_flagged_at_the_verb() {
-        let source = "/**\n * Return the length\n */\nfn len() {}";
-
-        let diagnostics = check(source);
-
-        let start = source.find("Return").unwrap();
-        assert_diagnostic(&diagnostics[0]).has_span("<test>", start, start + "Return".len());
-    }
-
-    #[test]
-    fn indented_summary_span_starts_at_the_word() {
-        let source = "///    Return the length\nfn len() {}";
-
-        let diagnostics = check(source);
-
-        let start = source.find("Return").unwrap();
-        assert_diagnostic(&diagnostics[0]).has_span("<test>", start, start + "Return".len());
-    }
-
-    #[test]
-    fn constant_is_not_flagged() {
-        let diagnostics = check("/// Return code for a clean exit\nconst OK: i32 = 0;");
-
-        assert_no_diagnostics(&diagnostics);
-    }
-
-    #[test]
-    fn struct_is_not_flagged() {
-        let diagnostics = check("/// Set of names\npub struct Names;");
-
-        assert_no_diagnostics(&diagnostics);
-    }
-
-    #[test]
-    fn enum_variant_is_not_flagged() {
-        let diagnostics = check("enum Mode {\n    /// Print the plan\n    Print,\n}");
-
-        assert_no_diagnostics(&diagnostics);
-    }
-
-    #[test]
-    fn test_function_is_not_flagged() {
-        let diagnostics = check("/// Check the parser\n#[test]\nfn parses() {}");
-
-        assert_no_diagnostics(&diagnostics);
-    }
-
-    #[test]
-    fn test_attribute_above_the_doc_comment_is_not_flagged() {
-        let diagnostics = check("#[test]\n/// Check the parser\nfn parses() {}");
-
-        assert_no_diagnostics(&diagnostics);
-    }
-
-    #[test]
-    fn scoped_test_attribute_is_not_flagged() {
-        let diagnostics = check(
-            "/// Check the client\n#[tokio::test(flavor = \"multi_thread\")]\nasync fn client() {}",
-        );
-
-        assert_no_diagnostics(&diagnostics);
-    }
-
-    #[test]
-    fn helper_in_cfg_test_module_is_not_flagged() {
-        let diagnostics =
-            check("#[cfg(test)]\nmod tests {\n    /// Build a fixture\n    fn fixture() {}\n}");
-
-        assert_no_diagnostics(&diagnostics);
-    }
-
-    #[test]
-    fn helper_in_nested_module_under_cfg_test_is_not_flagged() {
-        let diagnostics = check(
-            "#[cfg(test)]\nmod tests {\n    mod helpers {\n        /// Build a fixture\n        fn fixture() {}\n    }\n}",
-        );
-
-        assert_no_diagnostics(&diagnostics);
-    }
-
-    #[test]
-    fn helper_in_module_with_inner_cfg_test_is_not_flagged() {
-        let diagnostics = check(
-            "mod tests {\n    #![cfg(test)]\n    /// Build a fixture\n    fn fixture() {}\n}",
-        );
-
-        assert_no_diagnostics(&diagnostics);
-    }
-
-    #[test]
-    fn file_with_inner_cfg_test_is_not_flagged() {
-        let diagnostics = check("#![cfg(test)]\n/// Build a fixture\nfn fixture() {}");
-
-        assert_no_diagnostics(&diagnostics);
-    }
-
-    #[test]
-    fn cfg_all_with_test_is_not_flagged() {
-        let diagnostics = check("#[cfg(all(test, unix))]\n/// Build a fixture\nfn fixture() {}");
-
-        assert_no_diagnostics(&diagnostics);
-    }
-
-    #[test]
-    fn helper_inside_a_test_function_is_not_flagged() {
-        let diagnostics =
-            check("#[test]\nfn parses() {\n    /// Build a fixture\n    fn fixture() {}\n}");
-
-        assert_no_diagnostics(&diagnostics);
-    }
-
-    #[test]
-    fn method_in_impl_under_cfg_test_is_not_flagged() {
-        let diagnostics = check(
-            "#[cfg(test)]\nmod tests {\n    impl Foo {\n        /// Build a foo\n        fn build() {}\n    }\n}",
-        );
-
-        assert_no_diagnostics(&diagnostics);
-    }
-
-    #[test]
-    fn cfg_not_test_is_flagged() {
-        let diagnostics = check("#[cfg(not(test))]\n/// Return the length\nfn len() {}");
-
-        assert_eq!(diagnostics.len(), 1);
-    }
-
-    #[test]
-    fn cfg_any_with_test_is_flagged() {
-        let diagnostics = check("#[cfg(any(test, unix))]\n/// Return the length\nfn len() {}");
-
-        assert_eq!(diagnostics.len(), 1);
-    }
-
-    #[test]
-    fn cfg_feature_test_is_flagged() {
-        let diagnostics = check("#[cfg(feature = \"test\")]\n/// Return the length\nfn len() {}");
-
-        assert_eq!(diagnostics.len(), 1);
-    }
-
-    #[test]
-    fn cfg_attr_test_is_flagged() {
-        let diagnostics =
-            check("#[cfg_attr(test, allow(dead_code))]\n/// Return the length\nfn len() {}");
-
-        assert_eq!(diagnostics.len(), 1);
-    }
-
-    #[test]
-    fn attribute_named_like_a_test_is_flagged() {
-        let diagnostics = check("#[test_case(1)]\n/// Return the length\nfn len() {}");
-
-        assert_eq!(diagnostics.len(), 1);
-    }
-
-    #[test]
-    fn cfg_test_on_the_previous_item_is_flagged() {
-        let diagnostics = check("#[cfg(test)]\nmod tests {}\n/// Return the length\nfn len() {}");
-
-        assert_eq!(diagnostics.len(), 1);
-    }
-
-    #[test]
-    fn test_target_paths_exclude_a_src_lib_file() {
-        assert!(!is_test_target(Path::new("crates/core/src/lib.rs")));
-    }
-
-    #[test]
-    fn test_target_paths_exclude_a_src_tests_file() {
-        assert!(!is_test_target(Path::new("crates/core/src/tests.rs")));
-    }
-
-    #[test]
-    fn test_target_paths_include_a_benches_file() {
-        assert!(is_test_target(Path::new("benches/throughput.rs")));
-    }
-
-    #[test]
-    fn test_target_paths_include_a_tests_directory_file() {
-        assert!(is_test_target(Path::new("crates/core/tests/common/mod.rs")));
-    }
-
-    #[test]
-    fn attribute_between_doc_and_function_is_flagged() {
-        let diagnostics = check("/// Return the length\n#[must_use]\nfn len() {}");
-
-        assert_eq!(diagnostics.len(), 1);
-    }
-
-    #[test]
-    fn blank_doc_line_before_summary_is_skipped() {
-        let diagnostics = check("///\n/// Return the length\nfn len() {}");
-
-        assert_eq!(diagnostics.len(), 1);
-    }
-
-    #[test]
-    fn doc_attribute_after_doc_comment_is_flagged() {
-        let diagnostics =
-            check("/// Return the length\n#[doc = include_str!(\"len.md\")]\nfn len() {}");
-
-        assert_eq!(diagnostics.len(), 1);
-    }
-
-    #[test]
-    fn doc_attribute_before_doc_comment_is_not_flagged() {
-        let diagnostics = check("#[doc = \"Summary\"]\n/// Return the length\nfn len() {}");
-
-        assert_no_diagnostics(&diagnostics);
-    }
-
-    #[test]
-    fn doc_attribute_alone_is_not_flagged() {
-        let diagnostics = check("#[doc = \"Return the length\"]\nfn len() {}");
-
-        assert_no_diagnostics(&diagnostics);
-    }
-
-    #[test]
-    fn cfg_attr_doc_before_doc_comment_is_not_flagged() {
-        let diagnostics =
-            check("#[cfg_attr(docsrs, doc = \"Summary\")]\n/// Return the length\nfn len() {}");
-
-        assert_no_diagnostics(&diagnostics);
-    }
-
-    #[test]
-    fn doc_hidden_attribute_is_flagged() {
-        let diagnostics = check("#[doc(hidden)]\n/// Return the length\nfn len() {}");
-
-        assert_eq!(diagnostics.len(), 1);
-    }
-
-    #[test]
-    fn first_doc_comment_holds_the_summary() {
-        let diagnostics =
-            check("/// Returns the length\n#[must_use]\n/// Return the rest\nfn len() {}");
-
-        assert_no_diagnostics(&diagnostics);
-    }
-
-    #[test]
-    fn function_without_docs_is_not_flagged() {
-        let diagnostics = check("fn len() {}");
-
-        assert_no_diagnostics(&diagnostics);
-    }
-
-    #[test]
-    fn empty_doc_comment_is_not_flagged() {
-        let diagnostics = check("///\nfn len() {}");
-
-        assert_no_diagnostics(&diagnostics);
-    }
-
-    #[test]
-    fn imperative_after_the_first_line_is_not_flagged() {
-        let diagnostics =
-            check("/// Returns the length\n///\n/// Return early on empty input.\nfn len() {}");
-
-        assert_no_diagnostics(&diagnostics);
-    }
-
-    #[test]
-    fn inner_doc_comment_above_is_not_read() {
-        let diagnostics = check("//! Return the module\nfn len() {}");
-
-        assert_no_diagnostics(&diagnostics);
-    }
-
-    #[test]
-    fn inner_doc_comment_ends_the_walk() {
-        let diagnostics = check(
-            "mod m {\n    //! Return the module\n    /// Returns the length\n    fn len() {}\n}",
-        );
-
-        assert_no_diagnostics(&diagnostics);
-    }
-
-    #[test]
-    fn inner_doc_comment_in_a_module_is_not_read() {
-        let diagnostics = check("mod m {\n    //! Return the module\n    fn len() {}\n}");
-
-        assert_no_diagnostics(&diagnostics);
-    }
-
-    #[test]
-    fn plain_comment_between_doc_and_function_is_flagged() {
-        let diagnostics = check("/// Return the length\n// note\nfn len() {}");
-
-        assert_eq!(diagnostics.len(), 1);
-    }
-
-    #[test]
-    fn plain_comment_is_not_flagged() {
-        let diagnostics = check("// Return the length\nfn len() {}");
-
-        assert_no_diagnostics(&diagnostics);
-    }
-
-    #[test]
-    fn previous_item_docs_are_not_read() {
-        let diagnostics = check("/// Return the length\nstruct Foo;\nfn len() {}");
-
-        assert_no_diagnostics(&diagnostics);
-    }
-
-    #[test]
     fn trait_send() {
         fn assert_send<T: Send>() {}
         assert_send::<DocSummaryPerson>();
@@ -1293,5 +1256,42 @@ mod tests {
     fn trait_unpin() {
         fn assert_unpin<T: Unpin>() {}
         assert_unpin::<DocSummaryPerson>();
+    }
+
+    #[test]
+    fn unclosed_code_span_is_flagged_to_the_first_space() {
+        assert_eq!(flagged_words("/// `len of the string\nfn a() {}"), ["`len"]);
+    }
+
+    #[test]
+    fn unclosed_link_is_flagged_to_the_first_space() {
+        assert_eq!(flagged_words("/// [Foo of the bar\nfn a() {}"), ["[Foo"]);
+    }
+
+    #[test]
+    fn unknown_verb_is_flagged() {
+        assert_eq!(
+            flagged_words("/// Frobnicate the widget\nfn frob() {}"),
+            ["Frobnicate"]
+        );
+    }
+
+    #[test]
+    fn verb_in_ly_before_plural_is_flagged() {
+        let source = "/// Apply edits to the tree\nfn a() {}\n/// Supply defaults\nfn b() {}\n/// MULTIPLY values\nfn c() {}";
+
+        assert_eq!(flagged_words(source), ["Apply", "Supply", "MULTIPLY"]);
+    }
+
+    #[test]
+    fn verb_that_noun_phrases_hid_is_flagged() {
+        let source = "/// Load factor of the table\nfn a() {}\n/// Start offset\nfn b() {}\n/// Check the input\nfn c() {}";
+
+        assert_eq!(flagged_words(source), ["Load", "Start", "Check"]);
+    }
+
+    #[test]
+    fn word_of_punctuation_only_is_flagged_whole() {
+        assert_eq!(flagged_words("/// ... and more\nfn a() {}"), ["..."]);
     }
 }

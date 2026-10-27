@@ -612,18 +612,18 @@ mod tests {
     }
 
     #[test]
-    fn format_arguments_after_message_are_fine() {
+    fn fmt_function_message_not_read() {
         let diagnostics = run(
-            "#[derive(Error)]\nenum LoadError {\n    #[error(\"failed to open {}\", path.display())]\n    A { path: PathBuf, source: E },\n}",
+            "#[derive(Error)]\nenum LoadError {\n    #[error(fmt = render)]\n    A { source: E },\n}",
         );
 
         assert_no_diagnostics(&diagnostics);
     }
 
     #[test]
-    fn fmt_function_message_not_read() {
+    fn format_arguments_after_message_are_fine() {
         let diagnostics = run(
-            "#[derive(Error)]\nenum LoadError {\n    #[error(fmt = render)]\n    A { source: E },\n}",
+            "#[derive(Error)]\nenum LoadError {\n    #[error(\"failed to open {}\", path.display())]\n    A { path: PathBuf, source: E },\n}",
         );
 
         assert_no_diagnostics(&diagnostics);

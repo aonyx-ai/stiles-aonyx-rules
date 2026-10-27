@@ -435,24 +435,6 @@ mod tests {
     }
 
     #[test]
-    fn trailing_comment_before_blank_line_separates() {
-        let source = "#[test]\nfn t() {\n    let a = 1; // arrange\n\n    let b = a;\n    assert_eq!(a, b);\n}";
-
-        let diagnostics = check(source);
-
-        assert_no_diagnostics(&diagnostics);
-    }
-
-    #[test]
-    fn trailing_comments_without_blank_line_do_not_separate() {
-        let source = "#[test]\nfn t() {\n    let a = 1; // arrange\n    let b = a; // act\n    assert_eq!(a, b);\n}";
-
-        let diagnostics = check(source);
-
-        assert_eq!(diagnostics.len(), 1);
-    }
-
-    #[test]
     fn test_attribute_on_previous_item_does_not_reach_function() {
         let source = "#[test]\nfn first() {}\nfn second() {\n    let a = 1;\n    let b = a;\n    assert_eq!(a, b);\n}";
 
@@ -468,20 +450,6 @@ mod tests {
         let diagnostics = check(source);
 
         assert_eq!(diagnostics.len(), 1);
-    }
-
-    #[test]
-    fn unseparated_body_diagnostic_has_rule_id_severity_message_and_span() {
-        let source = "#[test]\nfn parse_works() {\n    let input = \"42\";\n    let result = parse(input);\n    assert_eq!(result, 42);\n}";
-        let start = source.find("parse_works").unwrap();
-
-        let diagnostics = check(source);
-
-        assert_diagnostic(&diagnostics[0])
-            .has_rule_id("lint.unseparated-test-body")
-            .has_severity(Severity::Warn)
-            .message_contains("test body of 3 statements has no blank line")
-            .has_span("<test>", start, start + "parse_works".len());
     }
 
     #[test]
@@ -504,6 +472,24 @@ mod tests {
     }
 
     #[test]
+    fn trailing_comment_before_blank_line_separates() {
+        let source = "#[test]\nfn t() {\n    let a = 1; // arrange\n\n    let b = a;\n    assert_eq!(a, b);\n}";
+
+        let diagnostics = check(source);
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn trailing_comments_without_blank_line_do_not_separate() {
+        let source = "#[test]\nfn t() {\n    let a = 1; // arrange\n    let b = a; // act\n    assert_eq!(a, b);\n}";
+
+        let diagnostics = check(source);
+
+        assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
     fn trait_send() {
         fn assert_send<T: Send>() {}
         assert_send::<UnseparatedTestBody>();
@@ -519,5 +505,19 @@ mod tests {
     fn trait_unpin() {
         fn assert_unpin<T: Unpin>() {}
         assert_unpin::<UnseparatedTestBody>();
+    }
+
+    #[test]
+    fn unseparated_body_diagnostic_has_rule_id_severity_message_and_span() {
+        let source = "#[test]\nfn parse_works() {\n    let input = \"42\";\n    let result = parse(input);\n    assert_eq!(result, 42);\n}";
+        let start = source.find("parse_works").unwrap();
+
+        let diagnostics = check(source);
+
+        assert_diagnostic(&diagnostics[0])
+            .has_rule_id("lint.unseparated-test-body")
+            .has_severity(Severity::Warn)
+            .message_contains("test body of 3 statements has no blank line")
+            .has_span("<test>", start, start + "parse_works".len());
     }
 }

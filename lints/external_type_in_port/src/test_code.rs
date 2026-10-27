@@ -238,13 +238,13 @@ mod tests {
     }
 
     #[test]
-    fn is_test_code_with_any_of_only_test_returns_true() {
-        assert!(is_test("#[cfg(any(test))]\nfn f() {}"));
+    fn is_test_code_with_any_including_another_predicate_returns_false() {
+        assert!(!is_test("#[cfg(any(test, unix))]\nfn f() {}"));
     }
 
     #[test]
-    fn is_test_code_with_any_including_another_predicate_returns_false() {
-        assert!(!is_test("#[cfg(any(test, unix))]\nfn f() {}"));
+    fn is_test_code_with_any_of_only_test_returns_true() {
+        assert!(is_test("#[cfg(any(test))]\nfn f() {}"));
     }
 
     #[test]
@@ -278,13 +278,13 @@ mod tests {
     }
 
     #[test]
-    fn is_test_code_with_inner_cfg_test_in_the_file_returns_true() {
-        assert!(is_test("#![cfg(test)]\n\nfn f() {}"));
+    fn is_test_code_with_inner_cfg_test_in_a_module_returns_true() {
+        assert!(is_test("mod m {\n    #![cfg(test)]\n    fn f() {}\n}"));
     }
 
     #[test]
-    fn is_test_code_with_inner_cfg_test_in_a_module_returns_true() {
-        assert!(is_test("mod m {\n    #![cfg(test)]\n    fn f() {}\n}"));
+    fn is_test_code_with_inner_cfg_test_in_the_file_returns_true() {
+        assert!(is_test("#![cfg(test)]\n\nfn f() {}"));
     }
 
     #[test]

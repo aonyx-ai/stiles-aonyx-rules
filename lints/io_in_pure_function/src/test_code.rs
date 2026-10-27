@@ -222,13 +222,13 @@ mod tests {
     }
 
     #[test]
-    fn cfg_requires_test_with_feature_named_test_returns_false() {
-        assert!(!cfg_requires_test("feature = \"test\""));
+    fn cfg_requires_test_with_escaped_quote_in_string_returns_true() {
+        assert!(cfg_requires_test("all(feature = \"a\\\"b\", test)"));
     }
 
     #[test]
-    fn cfg_requires_test_with_escaped_quote_in_string_returns_true() {
-        assert!(cfg_requires_test("all(feature = \"a\\\"b\", test)"));
+    fn cfg_requires_test_with_feature_named_test_returns_false() {
+        assert!(!cfg_requires_test("feature = \"test\""));
     }
 
     #[test]

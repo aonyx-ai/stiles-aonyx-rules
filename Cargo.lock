@@ -1026,6 +1026,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "unsorted_test"
+version = "0.1.0"
+dependencies = [
+ "whisker-plugin",
+ "whisker-rust",
+ "whisker-testing",
+ "whisker-types",
+]
+
+[[package]]
 name = "wait-timeout"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

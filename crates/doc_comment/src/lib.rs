@@ -214,6 +214,24 @@ mod tests {
     }
 
     #[test]
+    fn trait_send() {
+        fn assert_send<T: Send>() {}
+        assert_send::<DocLine<'_>>();
+    }
+
+    #[test]
+    fn trait_sync() {
+        fn assert_sync<T: Sync>() {}
+        assert_sync::<DocLine<'_>>();
+    }
+
+    #[test]
+    fn trait_unpin() {
+        fn assert_unpin<T: Unpin>() {}
+        assert_unpin::<DocLine<'_>>();
+    }
+
+    #[test]
     fn unindent_ignores_blank_lines_and_leaves_them_empty() {
         let mut lines = [
             DocLine {
@@ -331,23 +349,5 @@ mod tests {
         unindent(&mut lines);
 
         assert_eq!(lines[0].text(), "text");
-    }
-
-    #[test]
-    fn trait_send() {
-        fn assert_send<T: Send>() {}
-        assert_send::<DocLine<'_>>();
-    }
-
-    #[test]
-    fn trait_sync() {
-        fn assert_sync<T: Sync>() {}
-        assert_sync::<DocLine<'_>>();
-    }
-
-    #[test]
-    fn trait_unpin() {
-        fn assert_unpin<T: Unpin>() {}
-        assert_unpin::<DocLine<'_>>();
     }
 }

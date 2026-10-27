@@ -157,6 +157,33 @@ mod tests {
     }
 
     #[test]
+    fn if_let_does_not_trigger_lint() {
+        let source = "fn f() { if let Some(x) = opt { x } else { 0 } }";
+        let tree = parse(source, Language::Rust);
+
+        let diagnostics = execute(&tree, &mut passes());
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn no_wildcard_arm_is_not_flagged() {
+        let source = "fn f() { match x { A => {} B => {} } }";
+        let mut tree = parse(source, Language::Rust);
+        let scrutinee_id = find_scrutinee_id(&tree);
+        let mut map = DecorationMap::new();
+        map.insert(
+            scrutinee_id,
+            ResolvedType::new("MyEnum".into()).with_enum(true),
+        );
+        decorate(&mut tree, map);
+
+        let diagnostics = execute(&tree, &mut passes());
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
     fn non_enum_type_is_not_flagged() {
         let source = "fn f() { match x { 0 => {} _ => {} } }";
         let mut tree = parse(source, Language::Rust);
@@ -227,33 +254,6 @@ mod tests {
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.wildcard-match-arm")
             .has_severity(Severity::Warn);
-    }
-
-    #[test]
-    fn if_let_does_not_trigger_lint() {
-        let source = "fn f() { if let Some(x) = opt { x } else { 0 } }";
-        let tree = parse(source, Language::Rust);
-
-        let diagnostics = execute(&tree, &mut passes());
-
-        assert_no_diagnostics(&diagnostics);
-    }
-
-    #[test]
-    fn no_wildcard_arm_is_not_flagged() {
-        let source = "fn f() { match x { A => {} B => {} } }";
-        let mut tree = parse(source, Language::Rust);
-        let scrutinee_id = find_scrutinee_id(&tree);
-        let mut map = DecorationMap::new();
-        map.insert(
-            scrutinee_id,
-            ResolvedType::new("MyEnum".into()).with_enum(true),
-        );
-        decorate(&mut tree, map);
-
-        let diagnostics = execute(&tree, &mut passes());
-
-        assert_no_diagnostics(&diagnostics);
     }
 
     #[test]
