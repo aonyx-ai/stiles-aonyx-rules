@@ -52,7 +52,12 @@ fn report_doc(
 
     let lines: Vec<DocLine<'_>> = lines
         .into_iter()
-        .map(|line| DocLine::new(line.text(), line.offset()))
+        .map(|line| {
+            DocLine::builder()
+                .text(line.text())
+                .offset(line.offset())
+                .build()
+        })
         .collect();
     report(&lines, node)
 }

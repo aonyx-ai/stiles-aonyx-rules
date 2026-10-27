@@ -1,3 +1,4 @@
+use bon::bon;
 use doc_comment::DocLine;
 use whisker_types::{FilePath, Span};
 
@@ -25,6 +26,7 @@ struct Line {
     file_start: usize,
 }
 
+#[bon]
 impl DocBlock {
     /// Joins the prose lines of one doc comment into one Markdown document
     ///
@@ -35,6 +37,7 @@ impl DocBlock {
     /// Returns [`None`] when there are no lines.
     ///
     /// [`None`]: std::option::Option::None
+    #[builder]
     pub(crate) fn new(file: FilePath, doc: &[DocLine<'_>]) -> Option<Self> {
         if doc.is_empty() {
             return None;
@@ -103,7 +106,21 @@ mod tests {
         let first = tree.root_node().named_child(0).expect("a comment");
         let lines = doc_comment::rust(&first).expect("a doc comment");
 
-        DocBlock::new(first.span().file_path().clone(), &lines).expect("should build a block")
+        DocBlock::builder()
+            .file(first.span().file_path().clone())
+            .doc(&lines)
+            .build()
+            .expect("should build a block")
+    }
+
+    #[test]
+    fn build_with_no_lines_returns_none() {
+        let tree = parse("fn f() {}", Language::Rust);
+        let file = tree.root_node().span().file_path().clone();
+
+        let block = DocBlock::builder().file(file).doc(&[]).build();
+
+        assert!(block.is_none());
     }
 
     #[test]
@@ -122,16 +139,6 @@ mod tests {
         let block = block_of(source);
 
         assert_eq!(block.content(), "a\n    b");
-    }
-
-    #[test]
-    fn new_with_no_lines_returns_none() {
-        let tree = parse("fn f() {}", Language::Rust);
-        let file = tree.root_node().span().file_path().clone();
-
-        let block = DocBlock::new(file, &[]);
-
-        assert!(block.is_none());
     }
 
     #[test]

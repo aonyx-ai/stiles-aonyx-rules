@@ -391,7 +391,7 @@ mod tests {
         let mut offset = 0;
         let mut lines = Vec::new();
         for line in text.split('\n') {
-            lines.push(DocLine::new(line, offset));
+            lines.push(DocLine::builder().text(line).offset(offset).build());
             offset += line.len() + 1;
         }
         lines
