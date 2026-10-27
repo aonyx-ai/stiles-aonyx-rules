@@ -196,6 +196,14 @@ mod tests {
         let diagnostics = check(source);
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn block_doc_comment_on_declaration_is_flagged_over_the_comment() {
+        let source = "/** What the manifests declare */\nmod manifests;";
+
+        let diagnostics = check(source);
+
         assert_diagnostic(&diagnostics[0]).has_span("<test>", 0, 33);
     }
 
@@ -224,6 +232,14 @@ mod tests {
         let diagnostics = check(source);
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn declaration_in_inline_module_is_flagged_with_the_declaration_in_the_message() {
+        let source = "mod outer {\n    /// Manifests\n    pub mod manifests;\n}";
+
+        let diagnostics = check(source);
+
         assert_diagnostic(&diagnostics[0]).message_contains("`mod manifests;`");
     }
 
@@ -243,6 +259,14 @@ mod tests {
         let diagnostics = check(source);
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn doc_attribute_on_declaration_is_flagged_over_the_attribute() {
+        let source = "#[doc = \"What the manifests declare\"]\npub mod manifests;";
+
+        let diagnostics = check(source);
+
         assert_diagnostic(&diagnostics[0]).has_span("<test>", 0, 37);
     }
 
@@ -271,6 +295,14 @@ mod tests {
         let diagnostics = check(source);
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn doc_comment_above_other_attributes_is_flagged_with_the_declaration_in_the_message() {
+        let source = "/// Tests for the manifests\n#[cfg(test)]\n#[path = \"manifests_tests.rs\"]\nmod tests;";
+
+        let diagnostics = check(source);
+
         assert_diagnostic(&diagnostics[0]).message_contains("`mod tests;`");
     }
 
@@ -281,6 +313,14 @@ mod tests {
         let diagnostics = check(source);
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn doc_comment_above_plain_comment_is_flagged_over_the_doc_comment_only() {
+        let source = "/// Manifests\n// keeps the parser happy\nmod manifests;";
+
+        let diagnostics = check(source);
+
         assert_diagnostic(&diagnostics[0]).has_span("<test>", 0, 13);
     }
 
@@ -300,6 +340,14 @@ mod tests {
         let diagnostics = check(source);
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn doc_comment_on_declaration_is_flagged_with_the_full_diagnostic() {
+        let source = "/// What the manifests of a workspace declare\npub mod manifests;";
+
+        let diagnostics = check(source);
+
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.outer-module-doc")
             .has_severity(Severity::Warn)
@@ -333,17 +381,33 @@ mod tests {
         let diagnostics = check(source);
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn doc_comment_over_declaration_with_inner_comment_is_flagged_over_the_doc_comment_only() {
+        let source = "/// Manifests\npub /* re-exported below */ mod manifests;";
+
+        let diagnostics = check(source);
+
         assert_diagnostic(&diagnostics[0]).has_span("<test>", 0, 13);
     }
 
     #[test]
-    fn doc_comment_split_by_attribute_is_flagged_once_across_both() {
+    fn doc_comment_split_by_attribute_is_flagged_across_both() {
+        let source = "/// Manifests\n#[cfg(test)]\n#[doc = \"More\"]\n/// Even more\nmod tests;";
+
+        let diagnostics = check(source);
+
+        assert_diagnostic(&diagnostics[0]).has_span("<test>", 0, source.len() - 11);
+    }
+
+    #[test]
+    fn doc_comment_split_by_attribute_is_flagged_once() {
         let source = "/// Manifests\n#[cfg(test)]\n#[doc = \"More\"]\n/// Even more\nmod tests;";
 
         let diagnostics = check(source);
 
         assert_eq!(diagnostics.len(), 1);
-        assert_diagnostic(&diagnostics[0]).has_span("<test>", 0, source.len() - 11);
     }
 
     #[test]
@@ -353,6 +417,14 @@ mod tests {
         let diagnostics = check(source);
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn doc_comment_trailing_previous_item_is_flagged_over_the_trailing_comment() {
+        let source = "fn f() {} /// Manifests\nmod manifests;";
+
+        let diagnostics = check(source);
+
         assert_diagnostic(&diagnostics[0]).has_span("<test>", 10, 23);
     }
 
@@ -362,8 +434,16 @@ mod tests {
 
         let diagnostics = check(source);
 
-        assert_eq!(diagnostics.len(), 1);
         assert_diagnostic(&diagnostics[0]).has_span("<test>", 0, 13);
+    }
+
+    #[test]
+    fn doc_comment_with_crlf_is_flagged() {
+        let source = "/// Manifests\r\nmod manifests;";
+
+        let diagnostics = check(source);
+
+        assert_eq!(diagnostics.len(), 1);
     }
 
     #[test]
@@ -409,6 +489,14 @@ mod tests {
         let diagnostics = check(source);
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn doc_on_previous_declaration_is_flagged_with_its_name() {
+        let source = "/// Manifests\nmod manifests;\nmod next_action;";
+
+        let diagnostics = check(source);
+
         assert_diagnostic(&diagnostics[0]).message_contains("`mod manifests;`");
     }
 
@@ -455,6 +543,14 @@ mod tests {
         let diagnostics = check(source);
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn multi_line_doc_comment_is_flagged_over_all_lines() {
+        let source = "/// What the manifests\n/// of a workspace declare\npub mod manifests;";
+
+        let diagnostics = check(source);
+
         assert_diagnostic(&diagnostics[0]).has_span("<test>", 0, 49);
     }
 

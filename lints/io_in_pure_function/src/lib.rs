@@ -270,11 +270,17 @@ mod tests {
     }
 
     #[test]
-    fn aliased_module_import_is_flagged() {
+    fn aliased_module_import_is_flagged_naming_the_resolved_path() {
+        let diagnostics = run("use std::fs as filesystem;\nfn new() { filesystem::read(p); }");
+
+        assert_diagnostic(&diagnostics[0]).message_contains("`std::fs::read`");
+    }
+
+    #[test]
+    fn aliased_module_import_is_flagged_once() {
         let diagnostics = run("use std::fs as filesystem;\nfn new() { filesystem::read(p); }");
 
         assert_eq!(diagnostics.len(), 1);
-        assert_diagnostic(&diagnostics[0]).message_contains("`std::fs::read`");
     }
 
     #[test]
@@ -293,12 +299,19 @@ mod tests {
     }
 
     #[test]
-    fn bare_call_through_function_import_is_flagged() {
+    fn bare_call_through_function_import_is_flagged_naming_the_resolved_path() {
+        let diagnostics =
+            run("use std::fs::read_to_string;\nfn from_str(s: &str) { read_to_string(s); }");
+
+        assert_diagnostic(&diagnostics[0]).message_contains("`std::fs::read_to_string`");
+    }
+
+    #[test]
+    fn bare_call_through_function_import_is_flagged_once() {
         let diagnostics =
             run("use std::fs::read_to_string;\nfn from_str(s: &str) { read_to_string(s); }");
 
         assert_eq!(diagnostics.len(), 1);
-        assert_diagnostic(&diagnostics[0]).message_contains("`std::fs::read_to_string`");
     }
 
     #[test]
@@ -395,16 +408,24 @@ mod tests {
     }
 
     #[test]
-    fn command_new_is_flagged() {
+    fn command_new_is_flagged_as_a_warning_naming_the_call() {
+        let diagnostics = run(
+            "use std::process::Command;\nfn plan_build() { Command::new(\"cargo\").arg(\"build\"); }",
+        );
+
+        assert_diagnostic(&diagnostics[0])
+            .has_rule_id("lint.io-in-pure-function")
+            .has_severity(Severity::Warn)
+            .message_contains("`plan_build` reaches `std::process::Command::new`");
+    }
+
+    #[test]
+    fn command_new_is_flagged_once() {
         let diagnostics = run(
             "use std::process::Command;\nfn plan_build() { Command::new(\"cargo\").arg(\"build\"); }",
         );
 
         assert_eq!(diagnostics.len(), 1);
-        assert_diagnostic(&diagnostics[0])
-            .has_rule_id("lint.io-in-pure-function")
-            .has_severity(Severity::Warn)
-            .message_contains("`plan_build` reaches `std::process::Command::new`");
     }
 
     #[test]
@@ -646,14 +667,22 @@ mod tests {
     }
 
     #[test]
-    fn new_is_flagged() {
+    fn new_is_flagged_naming_the_call() {
+        let diagnostics = run(
+            "impl CheckPlan {\n    pub fn new(path: &Path) -> anyhow::Result<Self> {\n        let config = std::fs::read_to_string(path.join(\"whisker.toml\"))?;\n        todo!()\n    }\n}",
+        );
+
+        assert_diagnostic(&diagnostics[0])
+            .message_contains("`new` reaches `std::fs::read_to_string`");
+    }
+
+    #[test]
+    fn new_is_flagged_once() {
         let diagnostics = run(
             "impl CheckPlan {\n    pub fn new(path: &Path) -> anyhow::Result<Self> {\n        let config = std::fs::read_to_string(path.join(\"whisker.toml\"))?;\n        todo!()\n    }\n}",
         );
 
         assert_eq!(diagnostics.len(), 1);
-        assert_diagnostic(&diagnostics[0])
-            .message_contains("`new` reaches `std::fs::read_to_string`");
     }
 
     #[test]

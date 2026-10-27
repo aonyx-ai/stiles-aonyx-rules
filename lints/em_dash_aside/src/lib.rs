@@ -624,6 +624,16 @@ mod tests {
     }
 
     #[test]
+    fn dash_on_a_continuation_line_is_flagged_once() {
+        let source =
+            "/// Returns the resolved type\n/// — or nothing, when there is no span\nfn f() {}";
+
+        let diagnostics = check(source);
+
+        assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
     fn double_hyphen_flag_name_is_not_flagged() {
         let source = "/// Pass --deny-warnings to fail on a warning\nfn f() {}";
 
@@ -669,16 +679,24 @@ mod tests {
     }
 
     #[test]
-    fn em_dash_in_an_inner_doc_comment_is_flagged() {
+    fn em_dash_in_an_inner_doc_comment_is_flagged_as_an_em_dash_warning() {
+        let source = "//! Loads a project — and reports what it skipped\nfn f() {}";
+
+        let diagnostics = check(source);
+
+        assert_diagnostic(&diagnostics[0])
+            .has_rule_id("lint.em-dash-aside")
+            .has_severity(Severity::Warn)
+            .message_contains("em dash");
+    }
+
+    #[test]
+    fn em_dash_in_an_inner_doc_comment_is_flagged_once() {
         let source = "//! Loads a project — and reports what it skipped\nfn f() {}";
 
         let diagnostics = check(source);
 
         assert_eq!(diagnostics.len(), 1);
-        assert_diagnostic(&diagnostics[0])
-            .has_rule_id("lint.em-dash-aside")
-            .has_severity(Severity::Warn)
-            .message_contains("em dash");
     }
 
     #[test]
@@ -719,13 +737,21 @@ mod tests {
     }
 
     #[test]
-    fn en_dash_with_spaces_is_flagged() {
+    fn en_dash_with_spaces_is_flagged_as_an_en_dash() {
+        let source = "/// Returns the type – or nothing, when there is no span\nfn f() {}";
+
+        let diagnostics = check(source);
+
+        assert_diagnostic(&diagnostics[0]).message_contains("en dash");
+    }
+
+    #[test]
+    fn en_dash_with_spaces_is_flagged_once() {
         let source = "/// Returns the type – or nothing, when there is no span\nfn f() {}";
 
         let diagnostics = check(source);
 
         assert_eq!(diagnostics.len(), 1);
-        assert_diagnostic(&diagnostics[0]).message_contains("en dash");
     }
 
     #[test]
@@ -830,14 +856,32 @@ mod tests {
     }
 
     #[test]
-    fn spaced_hyphen_mid_sentence_is_flagged() {
+    fn single_em_dash_is_flagged_once() {
+        let source = "/// Returns a type — or nothing\nfn f() {}";
+
+        let diagnostics = check(source);
+
+        assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn spaced_hyphen_mid_sentence_is_flagged_as_a_spaced_hyphen() {
+        let source =
+            "/// The walk records the failure - and carries on - so it stays complete\nfn f() {}";
+
+        let diagnostics = check(source);
+
+        assert_diagnostic(&diagnostics[0]).message_contains("spaced hyphen");
+    }
+
+    #[test]
+    fn spaced_hyphen_mid_sentence_is_flagged_twice() {
         let source =
             "/// The walk records the failure - and carries on - so it stays complete\nfn f() {}";
 
         let diagnostics = check(source);
 
         assert_eq!(diagnostics.len(), 2);
-        assert_diagnostic(&diagnostics[0]).message_contains("spaced hyphen");
     }
 
     #[test]
@@ -848,7 +892,6 @@ mod tests {
 
         let diagnostics = check(source);
 
-        assert_eq!(diagnostics.len(), 1);
         assert_diagnostic(&diagnostics[0]).has_span("<test>", start, start + "—".len());
     }
 
@@ -859,7 +902,6 @@ mod tests {
 
         let diagnostics = check(source);
 
-        assert_eq!(diagnostics.len(), 1);
         assert_diagnostic(&diagnostics[0]).has_span("<test>", start, start + "—".len());
     }
 
@@ -991,7 +1033,6 @@ mod tests {
 
             let diagnostics = check(source);
 
-            assert_eq!(diagnostics.len(), 2);
             let start = source.find('\u{2014}').unwrap();
             assert_diagnostic(&diagnostics[0])
                 .has_rule_id("lint.em-dash-aside")
@@ -1000,13 +1041,30 @@ mod tests {
         }
 
         #[test]
-        fn doc_comment_with_spaced_hyphen_in_prose_is_flagged() {
+        fn doc_comment_with_em_dash_is_flagged_twice() {
+            let source = "/**\n * Adds two numbers \u{2014} quickly \u{2014} and returns them\n */\nfunction f() {}";
+
+            let diagnostics = check(source);
+
+            assert_eq!(diagnostics.len(), 2);
+        }
+
+        #[test]
+        fn doc_comment_with_spaced_hyphen_in_prose_is_flagged_as_a_spaced_hyphen() {
+            let source = "/**\n * Reads the file - all of it - into memory\n */\nfunction f() {}";
+
+            let diagnostics = check(source);
+
+            assert_diagnostic(&diagnostics[0]).message_contains("spaced hyphen");
+        }
+
+        #[test]
+        fn doc_comment_with_spaced_hyphen_in_prose_is_flagged_twice() {
             let source = "/**\n * Reads the file - all of it - into memory\n */\nfunction f() {}";
 
             let diagnostics = check(source);
 
             assert_eq!(diagnostics.len(), 2);
-            assert_diagnostic(&diagnostics[0]).message_contains("spaced hyphen");
         }
 
         #[test]

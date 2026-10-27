@@ -28,14 +28,23 @@ mod tests {
     use super::*;
 
     #[test]
-    fn accessors_return_builder_arguments() {
+    fn offset_returns_the_builder_argument() {
+        let line = DocLine::builder()
+            .text(" Returns the length")
+            .offset(7)
+            .build();
+
+        assert_eq!(line.offset(), 7);
+    }
+
+    #[test]
+    fn text_returns_the_builder_argument() {
         let line = DocLine::builder()
             .text(" Returns the length")
             .offset(7)
             .build();
 
         assert_eq!(line.text(), " Returns the length");
-        assert_eq!(line.offset(), 7);
     }
 
     #[test]

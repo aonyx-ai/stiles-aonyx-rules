@@ -523,10 +523,16 @@ mod tests {
     }
 
     #[test]
-    fn diagnostic_names_the_fix() {
+    fn diagnostic_is_reported_once() {
         let diagnostics = run("mod error;\nuse error::Kind;");
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn diagnostic_names_the_fix() {
+        let diagnostics = run("mod error;\nuse error::Kind;");
+
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.unprefixed-submodule-path")
             .has_severity(Severity::Warn)
@@ -818,8 +824,14 @@ mod tests {
     fn raw_path_message_keeps_the_prefix() {
         let diagnostics = run("mod r#match;\nuse r#match::Arm;");
 
-        assert_eq!(diagnostics.len(), 1);
         assert_diagnostic(&diagnostics[0]).message_contains("write `self::r#match`");
+    }
+
+    #[test]
+    fn raw_path_with_raw_declaration_is_flagged_once() {
+        let diagnostics = run("mod r#match;\nuse r#match::Arm;");
+
+        assert_eq!(diagnostics.len(), 1);
     }
 
     #[test]

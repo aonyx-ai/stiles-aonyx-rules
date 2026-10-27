@@ -465,9 +465,13 @@ mod tests {
     }
 
     #[test]
+    fn is_abbreviation_accepts_a_three_letter_abbreviation() {
+        assert!(is_abbreviation("a.k.a."));
+    }
+
+    #[test]
     fn is_abbreviation_accepts_inner_periods() {
         assert!(is_abbreviation("e.g."));
-        assert!(is_abbreviation("a.k.a."));
     }
 
     #[test]
@@ -481,9 +485,13 @@ mod tests {
     }
 
     #[test]
+    fn is_heading_accepts_a_second_level_heading() {
+        assert!(is_heading("## Panics"));
+    }
+
+    #[test]
     fn is_heading_accepts_a_section_heading() {
         assert!(is_heading("# Errors"));
-        assert!(is_heading("## Panics"));
     }
 
     #[test]
@@ -581,12 +589,24 @@ mod tests {
     }
 
     #[test]
-    fn sentences_maps_offsets_back_to_the_file() {
+    fn sentences_maps_offsets_of_the_first_sentence_back_to_the_file() {
+        let found = sentences(&lines("Abc def.\nGhi."));
+
+        assert_eq!((found[0].start(), found[0].end()), (0, 8));
+    }
+
+    #[test]
+    fn sentences_maps_offsets_of_the_second_sentence_back_to_the_file() {
+        let found = sentences(&lines("Abc def.\nGhi."));
+
+        assert_eq!((found[1].start(), found[1].end()), (9, 13));
+    }
+
+    #[test]
+    fn sentences_maps_two_lines_to_two_sentences() {
         let found = sentences(&lines("Abc def.\nGhi."));
 
         assert_eq!(found.len(), 2);
-        assert_eq!((found[0].start(), found[0].end()), (0, 8));
-        assert_eq!((found[1].start(), found[1].end()), (9, 13));
     }
 
     #[test]
@@ -671,26 +691,56 @@ mod tests {
     }
 
     #[test]
-    fn trait_send() {
+    fn trait_send_holds_for_fence() {
         fn assert_send<T: Send>() {}
         assert_send::<Fence>();
+    }
+
+    #[test]
+    fn trait_send_holds_for_prose() {
+        fn assert_send<T: Send>() {}
         assert_send::<Prose>();
+    }
+
+    #[test]
+    fn trait_send_holds_for_sentence() {
+        fn assert_send<T: Send>() {}
         assert_send::<Sentence>();
     }
 
     #[test]
-    fn trait_sync() {
+    fn trait_sync_holds_for_fence() {
         fn assert_sync<T: Sync>() {}
         assert_sync::<Fence>();
+    }
+
+    #[test]
+    fn trait_sync_holds_for_prose() {
+        fn assert_sync<T: Sync>() {}
         assert_sync::<Prose>();
+    }
+
+    #[test]
+    fn trait_sync_holds_for_sentence() {
+        fn assert_sync<T: Sync>() {}
         assert_sync::<Sentence>();
     }
 
     #[test]
-    fn trait_unpin() {
+    fn trait_unpin_holds_for_fence() {
         fn assert_unpin<T: Unpin>() {}
         assert_unpin::<Fence>();
+    }
+
+    #[test]
+    fn trait_unpin_holds_for_prose() {
+        fn assert_unpin<T: Unpin>() {}
         assert_unpin::<Prose>();
+    }
+
+    #[test]
+    fn trait_unpin_holds_for_sentence() {
+        fn assert_unpin<T: Unpin>() {}
         assert_unpin::<Sentence>();
     }
 }

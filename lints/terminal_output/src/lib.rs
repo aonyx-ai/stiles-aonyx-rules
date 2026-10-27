@@ -482,11 +482,22 @@ mod tests {
 
         let diagnostics = execute(&tree, &mut passes);
 
-        assert_eq!(diagnostics.len(), 1);
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.terminal-output")
             .has_severity(Severity::Warn)
             .has_span(LIBRARY, 9, 22);
+    }
+
+    #[test]
+    fn diagnostic_is_reported_once() {
+        let source = "fn f() { println!(\"x\"); }";
+        let tree = parse_at(Path::new(LIBRARY), source);
+        let mut passes: Vec<Box<dyn LintPass>> =
+            vec![Box::new(RustLintPassAdapter::new(TerminalOutput))];
+
+        let diagnostics = execute(&tree, &mut passes);
+
+        assert_eq!(diagnostics.len(), 1);
     }
 
     #[test]

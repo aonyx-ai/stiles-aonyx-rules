@@ -664,13 +664,21 @@ mod tests {
     }
 
     #[test]
+    fn diagnostic_for_the_type_name_is_reported_once() {
+        let source = "pub struct Foo;";
+
+        let diagnostics = run(source);
+
+        assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
     fn diagnostic_span_covers_the_type_name() {
         let source = "pub struct Foo;";
         let start = source.find("Foo").expect("source should contain the name");
 
         let diagnostics = run(source);
 
-        assert_eq!(diagnostics.len(), 1);
         assert_diagnostic(&diagnostics[0]).has_span("<test>", start, start + "Foo".len());
     }
 
@@ -710,14 +718,20 @@ mod tests {
     }
 
     #[test]
-    fn enum_without_tests_is_flagged() {
+    fn enum_without_tests_is_flagged_as_a_warning_naming_all_three_traits() {
         let diagnostics = run("pub enum Foo { A, B }");
 
-        assert_eq!(diagnostics.len(), 1);
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.missing-trait-tests")
             .has_severity(Severity::Warn)
             .message_contains("`Foo` has no `Send`, `Sync`, or `Unpin` trait test");
+    }
+
+    #[test]
+    fn enum_without_tests_is_flagged_once() {
+        let diagnostics = run("pub enum Foo { A, B }");
+
+        assert_eq!(diagnostics.len(), 1);
     }
 
     #[test]
@@ -925,9 +939,48 @@ mod tests {
 
         let diagnostics = run(source);
 
-        assert_eq!(diagnostics.len(), 1);
         assert_diagnostic(&diagnostics[0])
             .message_contains("`Foo` has no `Send`, `Sync`, or `Unpin` trait test");
+    }
+
+    #[test]
+    fn nested_type_argument_leaves_the_inner_type_flagged_once() {
+        let source = r#"
+pub struct Foo;
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn trait_send() {
+        fn assert_send<T: Send>() {}
+        assert_send::<Vec<Foo>>();
+    }
+}
+"#;
+
+        let diagnostics = run(source);
+
+        assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn partially_tested_type_is_flagged_once() {
+        let source = r#"
+pub struct Foo;
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn trait_send() {
+        fn assert_send<T: Send>() {}
+        assert_send::<Foo>();
+    }
+}
+"#;
+
+        let diagnostics = run(source);
+
+        assert_eq!(diagnostics.len(), 1);
     }
 
     #[test]
@@ -947,7 +1000,6 @@ mod tests {
 
         let diagnostics = run(source);
 
-        assert_eq!(diagnostics.len(), 1);
         assert_diagnostic(&diagnostics[0])
             .message_contains("`Foo` has no `Sync` or `Unpin` trait test");
     }
@@ -989,9 +1041,25 @@ pub fn run(value: Foo) {
 
         let diagnostics = run(source);
 
-        assert_eq!(diagnostics.len(), 1);
         assert_diagnostic(&diagnostics[0])
             .message_contains("`Foo` has no `Send`, `Sync`, or `Unpin` trait test");
+    }
+
+    #[test]
+    fn shipped_call_leaves_the_type_flagged_once() {
+        let source = r#"
+pub struct Foo;
+
+pub fn spawn<T: Send>(value: T) {}
+
+pub fn run(value: Foo) {
+    spawn::<Foo>(value);
+}
+"#;
+
+        let diagnostics = run(source);
+
+        assert_eq!(diagnostics.len(), 1);
     }
 
     #[test]
@@ -1062,14 +1130,20 @@ mod tests {
     }
 
     #[test]
-    fn struct_without_tests_is_flagged() {
+    fn struct_without_tests_is_flagged_as_a_warning_naming_all_three_traits() {
         let diagnostics = run("pub struct Foo;");
 
-        assert_eq!(diagnostics.len(), 1);
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.missing-trait-tests")
             .has_severity(Severity::Warn)
             .message_contains("`Foo` has no `Send`, `Sync`, or `Unpin` trait test");
+    }
+
+    #[test]
+    fn struct_without_tests_is_flagged_once() {
+        let diagnostics = run("pub struct Foo;");
+
+        assert_eq!(diagnostics.len(), 1);
     }
 
     #[test]
@@ -1089,8 +1163,27 @@ mod tests {
 
         let diagnostics = run(source);
 
-        assert_eq!(diagnostics.len(), 1);
         assert_diagnostic(&diagnostics[0]).message_contains("`Foo`");
+    }
+
+    #[test]
+    fn test_for_another_type_leaves_this_one_flagged_once() {
+        let source = r#"
+pub struct Foo;
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn trait_send() {
+        fn assert_send<T: Send>() {}
+        assert_send::<Bar>();
+    }
+}
+"#;
+
+        let diagnostics = run(source);
+
+        assert_eq!(diagnostics.len(), 1);
     }
 
     #[test]
@@ -1206,8 +1299,20 @@ mod tests {
         let diagnostics = run("pub struct Foo;\npub enum Bar { A }");
 
         assert_eq!(diagnostics.len(), 2);
-        assert_diagnostic(&diagnostics[0]).message_contains("`Foo`");
+    }
+
+    #[test]
+    fn two_untested_types_report_bar_second() {
+        let diagnostics = run("pub struct Foo;\npub enum Bar { A }");
+
         assert_diagnostic(&diagnostics[1]).message_contains("`Bar`");
+    }
+
+    #[test]
+    fn two_untested_types_report_foo_first() {
+        let diagnostics = run("pub struct Foo;\npub enum Bar { A }");
+
+        assert_diagnostic(&diagnostics[0]).message_contains("`Foo`");
     }
 
     #[test]
@@ -1218,7 +1323,36 @@ mod tests {
     }
 
     #[test]
-    fn undocumented_negative_test_is_flagged() {
+    fn undocumented_negative_test_is_flagged_for_the_missing_send_test() {
+        let source = r#"
+pub struct Foo;
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn trait_not_send() {}
+
+    #[test]
+    fn trait_sync() {
+        fn assert_sync<T: Sync>() {}
+        assert_sync::<Foo>();
+    }
+
+    #[test]
+    fn trait_unpin() {
+        fn assert_unpin<T: Unpin>() {}
+        assert_unpin::<Foo>();
+    }
+}
+"#;
+
+        let diagnostics = run(source);
+
+        assert_diagnostic(&diagnostics[0]).message_contains("`Foo` has no `Send` trait test");
+    }
+
+    #[test]
+    fn undocumented_negative_test_is_flagged_once() {
         let source = r#"
 pub struct Foo;
 
@@ -1244,7 +1378,6 @@ mod tests {
         let diagnostics = run(source);
 
         assert_eq!(diagnostics.len(), 1);
-        assert_diagnostic(&diagnostics[0]).message_contains("`Foo` has no `Send` trait test");
     }
 
     #[test]
@@ -1255,7 +1388,20 @@ mod tests {
     }
 
     #[test]
-    fn untested_type_in_shipped_module_is_flagged() {
+    fn untested_type_in_shipped_module_is_flagged_by_name() {
+        let source = r#"
+pub mod inner {
+    pub struct Foo;
+}
+"#;
+
+        let diagnostics = run(source);
+
+        assert_diagnostic(&diagnostics[0]).message_contains("`Foo`");
+    }
+
+    #[test]
+    fn untested_type_in_shipped_module_is_flagged_once() {
         let source = r#"
 pub mod inner {
     pub struct Foo;
@@ -1265,6 +1411,5 @@ pub mod inner {
         let diagnostics = run(source);
 
         assert_eq!(diagnostics.len(), 1);
-        assert_diagnostic(&diagnostics[0]).message_contains("`Foo`");
     }
 }

@@ -347,23 +347,38 @@ mod tests {
     }
 
     #[test]
-    fn trait_send() {
+    fn trait_send_holds_for_form() {
         fn assert_send<T: Send>() {}
-        assert_send::<Predicate<'static>>();
         assert_send::<Form<'static>>();
     }
 
     #[test]
-    fn trait_sync() {
+    fn trait_send_holds_for_predicate() {
+        fn assert_send<T: Send>() {}
+        assert_send::<Predicate<'static>>();
+    }
+
+    #[test]
+    fn trait_sync_holds_for_form() {
         fn assert_sync<T: Sync>() {}
-        assert_sync::<Predicate<'static>>();
         assert_sync::<Form<'static>>();
     }
 
     #[test]
-    fn trait_unpin() {
+    fn trait_sync_holds_for_predicate() {
+        fn assert_sync<T: Sync>() {}
+        assert_sync::<Predicate<'static>>();
+    }
+
+    #[test]
+    fn trait_unpin_holds_for_form() {
+        fn assert_unpin<T: Unpin>() {}
+        assert_unpin::<Form<'static>>();
+    }
+
+    #[test]
+    fn trait_unpin_holds_for_predicate() {
         fn assert_unpin<T: Unpin>() {}
         assert_unpin::<Predicate<'static>>();
-        assert_unpin::<Form<'static>>();
     }
 }

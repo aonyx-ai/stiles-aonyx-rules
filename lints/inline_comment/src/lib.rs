@@ -397,7 +397,15 @@ mod tests {
         let diagnostics = run(source);
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn comment_above_a_safety_comment_is_flagged_at_the_note_span() {
+        let source = "fn f() {\n    // an ordinary note\n    // SAFETY: the caller checks the pointer\n    unsafe { g() }\n}";
         let start = source.find("// an").expect("source contains the note");
+
+        let diagnostics = run(source);
+
         assert_diagnostic(&diagnostics[0]).has_span(
             "<test>",
             start,
@@ -413,12 +421,20 @@ mod tests {
     }
 
     #[test]
-    fn comment_after_the_file_header_is_flagged() {
+    fn comment_after_the_file_header_is_flagged_once() {
         let source = "// Copyright 2026 The Whisker Authors\n\n// an ordinary comment\nfn f() {}";
 
         let diagnostics = run(source);
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn comment_after_the_file_header_is_flagged_with_a_doc_comment_hint() {
+        let source = "// Copyright 2026 The Whisker Authors\n\n// an ordinary comment\nfn f() {}";
+
+        let diagnostics = run(source);
+
         assert_diagnostic(&diagnostics[0]).message_contains("doc comment");
     }
 
@@ -458,12 +474,17 @@ mod tests {
     }
 
     #[test]
-    fn comment_run_reports_its_whole_span() {
+    fn comment_run_is_reported_once() {
         let source = "fn f() {\n    // first\n    // second\n}";
 
         let diagnostics = run(source);
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn comment_run_reports_its_whole_span() {
+        let source = "fn f() {\n    // first\n    // second\n}";
         let start = source
             .find("// first")
             .expect("source contains the first line");
@@ -471,6 +492,9 @@ mod tests {
             .find("// second")
             .expect("source contains the second line")
             + "// second".len();
+
+        let diagnostics = run(source);
+
         assert_diagnostic(&diagnostics[0]).has_span("<test>", start, end);
     }
 
@@ -510,11 +534,17 @@ mod tests {
     fn divider_is_reported_as_a_section_divider() {
         let diagnostics = run("use std::fmt;\n// ========================\nfn f() {}");
 
-        assert_eq!(diagnostics.len(), 1);
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.inline-comment")
             .has_severity(Severity::Warn)
             .message_contains("section divider");
+    }
+
+    #[test]
+    fn divider_is_reported_once() {
+        let diagnostics = run("use std::fmt;\n// ========================\nfn f() {}");
+
+        assert_eq!(diagnostics.len(), 1);
     }
 
     #[test]
@@ -597,10 +627,16 @@ mod tests {
     }
 
     #[test]
-    fn module_level_comment_is_flagged() {
+    fn module_level_comment_is_flagged_once() {
         let diagnostics = run("use std::fmt;\n// helpers live below\nfn f() {}");
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn module_level_comment_is_flagged_with_a_warning_that_suggests_a_doc_comment() {
+        let diagnostics = run("use std::fmt;\n// helpers live below\nfn f() {}");
+
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.inline-comment")
             .has_severity(Severity::Warn)
@@ -663,8 +699,14 @@ mod tests {
     fn section_header_is_reported_as_a_section_divider() {
         let diagnostics = run("use std::fmt;\n// --- Helper functions ---\nfn f() {}");
 
-        assert_eq!(diagnostics.len(), 1);
         assert_diagnostic(&diagnostics[0]).message_contains("section divider");
+    }
+
+    #[test]
+    fn section_header_is_reported_once() {
+        let diagnostics = run("use std::fmt;\n// --- Helper functions ---\nfn f() {}");
+
+        assert_eq!(diagnostics.len(), 1);
     }
 
     #[test]
@@ -721,6 +763,11 @@ mod tests {
     fn trait_send() {
         fn assert_send<T: Send>() {}
         assert_send::<InlineComment>();
+    }
+
+    #[test]
+    fn trait_send_comment_kind() {
+        fn assert_send<T: Send>() {}
         assert_send::<CommentKind>();
     }
 
@@ -728,6 +775,11 @@ mod tests {
     fn trait_sync() {
         fn assert_sync<T: Sync>() {}
         assert_sync::<InlineComment>();
+    }
+
+    #[test]
+    fn trait_sync_comment_kind() {
+        fn assert_sync<T: Sync>() {}
         assert_sync::<CommentKind>();
     }
 
@@ -735,6 +787,11 @@ mod tests {
     fn trait_unpin() {
         fn assert_unpin<T: Unpin>() {}
         assert_unpin::<InlineComment>();
+    }
+
+    #[test]
+    fn trait_unpin_comment_kind() {
+        fn assert_unpin<T: Unpin>() {}
         assert_unpin::<CommentKind>();
     }
 
@@ -751,33 +808,46 @@ mod tests {
         }
 
         #[test]
-        fn block_comment_is_flagged() {
+        fn block_comment_is_flagged_once() {
             let diagnostics = run("const a = 1;\n/* explains a */\nconst b = a;");
 
             assert_eq!(diagnostics.len(), 1);
+        }
+
+        #[test]
+        fn block_comment_is_flagged_under_the_inline_comment_rule() {
+            let diagnostics = run("const a = 1;\n/* explains a */\nconst b = a;");
+
             assert_diagnostic(&diagnostics[0]).has_rule_id("lint.inline-comment");
         }
 
         #[test]
-        fn comment_run_reports_its_whole_span() {
+        fn comment_run_is_reported_once() {
             let source = "const a = 1;\n// first\n// second\nconst b = a;";
 
             let diagnostics = run(source);
 
             assert_eq!(diagnostics.len(), 1);
+        }
+
+        #[test]
+        fn comment_run_reports_its_whole_span() {
+            let source = "const a = 1;\n// first\n// second\nconst b = a;";
             let start = source.find("// first").unwrap();
             let end = source.find("second").unwrap() + "second".len();
+
+            let diagnostics = run(source);
+
             assert_diagnostic(&diagnostics[0]).has_span("<test>", start, end);
         }
 
         #[test]
-        fn comment_under_a_directive_is_flagged() {
+        fn comment_under_a_directive_is_flagged_at_its_own_span() {
             let source = "const a = 1;\n// eslint-disable-next-line no-console\n// log while debugging\nconsole.log(a);";
+            let start = source.find("// log").unwrap();
 
             let diagnostics = run(source);
 
-            assert_eq!(diagnostics.len(), 1);
-            let start = source.find("// log").unwrap();
             assert_diagnostic(&diagnostics[0]).has_span(
                 "<test>",
                 start,
@@ -786,11 +856,26 @@ mod tests {
         }
 
         #[test]
+        fn comment_under_a_directive_is_flagged_once() {
+            let source = "const a = 1;\n// eslint-disable-next-line no-console\n// log while debugging\nconsole.log(a);";
+
+            let diagnostics = run(source);
+
+            assert_eq!(diagnostics.len(), 1);
+        }
+
+        #[test]
         fn divider_is_reported_as_a_section_divider() {
             let diagnostics = run("const a = 1;\n// ---- helpers ----\nconst b = a;");
 
-            assert_eq!(diagnostics.len(), 1);
             assert_diagnostic(&diagnostics[0]).message_contains("section divider");
+        }
+
+        #[test]
+        fn divider_is_reported_once() {
+            let diagnostics = run("const a = 1;\n// ---- helpers ----\nconst b = a;");
+
+            assert_eq!(diagnostics.len(), 1);
         }
 
         #[test]

@@ -224,6 +224,22 @@ mod tests {
         let diagnostics = execute(&tree, &mut passes());
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn in_anyhow_fn_without_context_is_flagged_with_the_full_diagnostic() {
+        let source = "fn foo() -> Result<(), Error> { something()?; }";
+        let mut tree = parse(source, Language::Rust);
+        let operand_id = find_try_operand_id(&tree);
+        let fn_id = find_node_by_kind(&tree.root_node(), "function_item").expect("should find fn");
+
+        let mut map = DecorationMap::new();
+        map.insert(operand_id, result_type());
+        map.insert(fn_id, anyhow_fn_sig());
+        decorate(&mut tree, map);
+
+        let diagnostics = execute(&tree, &mut passes());
+
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.anyhow-missing-context")
             .has_severity(Severity::Warn)

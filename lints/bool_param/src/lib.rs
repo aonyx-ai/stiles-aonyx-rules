@@ -212,10 +212,16 @@ mod tests {
     }
 
     #[test]
-    fn bool_param_in_function_flagged() {
+    fn bool_param_in_function_flagged_once() {
         let diagnostics = run("fn foo(x: bool) {}");
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn bool_param_in_function_flagged_with_rule_id_severity_and_message() {
+        let diagnostics = run("fn foo(x: bool) {}");
+
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.bool-param")
             .has_severity(Severity::Warn)
@@ -223,10 +229,16 @@ mod tests {
     }
 
     #[test]
-    fn bool_param_on_a_trait_declaration_flagged() {
+    fn bool_param_on_a_trait_declaration_flagged_once() {
         let diagnostics = run("trait T {\n    fn f(&self, x: bool);\n}");
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn bool_param_on_a_trait_declaration_flagged_with_rule_id_and_message() {
+        let diagnostics = run("trait T {\n    fn f(&self, x: bool);\n}");
+
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.bool-param")
             .message_contains("parameter has type `bool`");
@@ -269,27 +281,46 @@ mod tests {
     }
 
     #[test]
-    fn bool_param_behind_an_attribute_nobody_configured_flagged() {
+    fn bool_param_behind_an_attribute_nobody_configured_flagged_once() {
         let diagnostics = run("#[shard]\nfn foo(x: bool) {}");
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn bool_param_behind_an_attribute_nobody_configured_flagged_with_the_parameter_message() {
+        let diagnostics = run("#[shard]\nfn foo(x: bool) {}");
+
         assert_diagnostic(&diagnostics[0]).message_contains("parameter has type `bool`");
     }
 
     #[test]
-    fn bool_param_behind_another_attribute_flagged() {
+    fn bool_param_behind_another_attribute_flagged_once() {
         let diagnostics = run_with_boundary_attributes("#[inline]\nfn foo(x: bool) {}", &["shard"]);
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn bool_param_behind_another_attribute_flagged_with_the_parameter_message() {
+        let diagnostics = run_with_boundary_attributes("#[inline]\nfn foo(x: bool) {}", &["shard"]);
+
         assert_diagnostic(&diagnostics[0]).message_contains("parameter has type `bool`");
     }
 
     #[test]
-    fn bool_struct_field_behind_a_configured_attribute_flagged() {
+    fn bool_struct_field_behind_a_configured_attribute_flagged_once() {
         let diagnostics =
             run_with_boundary_attributes("#[shard]\nstruct Config { verbose: bool }", &["shard"]);
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn bool_struct_field_behind_a_configured_attribute_flagged_with_the_field_message() {
+        let diagnostics =
+            run_with_boundary_attributes("#[shard]\nstruct Config { verbose: bool }", &["shard"]);
+
         assert_diagnostic(&diagnostics[0]).message_contains("struct field has type `bool`");
     }
 
@@ -301,10 +332,16 @@ mod tests {
     }
 
     #[test]
-    fn bool_struct_field_flagged() {
+    fn bool_struct_field_flagged_once() {
         let diagnostics = run("struct Config { verbose: bool }");
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn bool_struct_field_flagged_with_rule_id_severity_and_message() {
+        let diagnostics = run("struct Config { verbose: bool }");
+
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.bool-param")
             .has_severity(Severity::Warn)
@@ -312,14 +349,26 @@ mod tests {
     }
 
     #[test]
-    fn multiple_bool_params_each_flagged() {
+    fn multiple_bool_params_each_flagged_first_with_rule_id_severity_and_message() {
         let diagnostics = run("fn foo(a: bool, b: bool) {}");
 
-        assert_eq!(diagnostics.len(), 2);
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.bool-param")
             .has_severity(Severity::Warn)
             .message_contains("parameter has type `bool`");
+    }
+
+    #[test]
+    fn multiple_bool_params_each_flagged_once() {
+        let diagnostics = run("fn foo(a: bool, b: bool) {}");
+
+        assert_eq!(diagnostics.len(), 2);
+    }
+
+    #[test]
+    fn multiple_bool_params_each_flagged_second_with_rule_id_severity_and_message() {
+        let diagnostics = run("fn foo(a: bool, b: bool) {}");
+
         assert_diagnostic(&diagnostics[1])
             .has_rule_id("lint.bool-param")
             .has_severity(Severity::Warn)

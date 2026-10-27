@@ -516,14 +516,20 @@ mod tests {
     }
 
     #[test]
-    fn commented_out_function_is_flagged() {
+    fn commented_out_function_is_flagged_as_a_commented_out_code_warning() {
         let diagnostics = check("// fn old_way() { }\nfn f() {}");
 
-        assert_eq!(diagnostics.len(), 1);
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.commented-out-code")
             .has_severity(Severity::Warn)
             .message_contains("commented-out code");
+    }
+
+    #[test]
+    fn commented_out_function_is_flagged_once() {
+        let diagnostics = check("// fn old_way() { }\nfn f() {}");
+
+        assert_eq!(diagnostics.len(), 1);
     }
 
     #[test]
@@ -559,6 +565,12 @@ mod tests {
         let diagnostics = check("// fn old() {\n//     let x = 1;\n// }\nfn f() {}");
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn consecutive_comment_lines_report_one_span_across_all_lines() {
+        let diagnostics = check("// fn old() {\n//     let x = 1;\n// }\nfn f() {}");
+
         assert_diagnostic(&diagnostics[0]).has_span("<test>", 0, 36);
     }
 
@@ -689,6 +701,11 @@ mod tests {
     fn trait_send() {
         fn assert_send<T: Send>() {}
         assert_send::<CommentedOutCode>();
+    }
+
+    #[test]
+    fn trait_send_fragment() {
+        fn assert_send<T: Send>() {}
         assert_send::<Fragment>();
     }
 
@@ -696,6 +713,11 @@ mod tests {
     fn trait_sync() {
         fn assert_sync<T: Sync>() {}
         assert_sync::<CommentedOutCode>();
+    }
+
+    #[test]
+    fn trait_sync_fragment() {
+        fn assert_sync<T: Sync>() {}
         assert_sync::<Fragment>();
     }
 
@@ -703,6 +725,11 @@ mod tests {
     fn trait_unpin() {
         fn assert_unpin<T: Unpin>() {}
         assert_unpin::<CommentedOutCode>();
+    }
+
+    #[test]
+    fn trait_unpin_fragment() {
+        fn assert_unpin<T: Unpin>() {}
         assert_unpin::<Fragment>();
     }
 

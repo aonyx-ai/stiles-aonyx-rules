@@ -434,6 +434,12 @@ mod tests {
         let diagnostics = run("#[command]\nfn a() {}\npub fn b() -> Result<()> {}");
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn attribute_on_earlier_item_does_not_exempt_the_later_function() {
+        let diagnostics = run("#[command]\nfn a() {}\npub fn b() -> Result<()> {}");
+
         assert_diagnostic(&diagnostics[0]).message_contains("`b`");
     }
 
@@ -539,6 +545,13 @@ mod tests {
             run("#[command]\npub fn a() -> Result<()> {}\n\npub fn b() -> Result<()> {}");
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn command_attribute_exempts_only_its_function_and_flags_the_other() {
+        let diagnostics =
+            run("#[command]\npub fn a() -> Result<()> {}\n\npub fn b() -> Result<()> {}");
+
         assert_diagnostic(&diagnostics[0]).message_contains("`b`");
     }
 
@@ -565,10 +578,16 @@ mod tests {
     }
 
     #[test]
-    fn diagnostic_spans_the_return_type() {
+    fn diagnostic_is_reported_once_for_one_pub_fn() {
         let diagnostics = run("pub fn f() -> Result<()> {}");
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn diagnostic_spans_the_return_type() {
+        let diagnostics = run("pub fn f() -> Result<()> {}");
+
         assert_diagnostic(&diagnostics[0]).has_span("<test>", 14, 24);
     }
 
@@ -613,6 +632,12 @@ mod tests {
         let diagnostics = run("impl S {\n    pub fn f(&self) -> Result<()> {}\n}");
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn inherent_pub_method_flagged_by_name() {
+        let diagnostics = run("impl S {\n    pub fn f(&self) -> Result<()> {}\n}");
+
         assert_diagnostic(&diagnostics[0]).message_contains("`f`");
     }
 
@@ -727,6 +752,14 @@ mod tests {
         let diagnostics = run("fn outer() {\n    pub fn inner() -> Result<()> {}\n}");
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    /// A function nested in a body is reported like any other, because the
+    /// rule reads the visibility the author wrote
+    #[test]
+    fn nested_pub_fn_flagged_by_name() {
+        let diagnostics = run("fn outer() {\n    pub fn inner() -> Result<()> {}\n}");
+
         assert_diagnostic(&diagnostics[0]).message_contains("`inner`");
     }
 
@@ -782,6 +815,12 @@ mod tests {
         let diagnostics = run("pub fn run() -> anyhow::Result<()> {}");
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn pub_fn_flagged_with_the_anyhow_message() {
+        let diagnostics = run("pub fn run() -> anyhow::Result<()> {}");
+
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.pub-anyhow-result")
             .has_severity(Severity::Warn)
@@ -838,6 +877,12 @@ mod tests {
         let diagnostics = run("pub trait Port {\n    fn f(&self) -> Result<()>;\n}");
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn pub_trait_declaration_flagged_by_method_name() {
+        let diagnostics = run("pub trait Port {\n    fn f(&self) -> Result<()>;\n}");
+
         assert_diagnostic(&diagnostics[0]).message_contains("`f`");
     }
 

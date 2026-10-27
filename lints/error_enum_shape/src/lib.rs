@@ -388,13 +388,21 @@ mod tests {
     }
 
     #[test]
+    fn cause_field_diagnostic_reported_once() {
+        let source = "#[derive(Error)]\nenum LoadError { A { #[from] inner: E } }";
+
+        let diagnostics = run(source);
+
+        assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
     fn cause_field_diagnostic_spans_the_field_name() {
         let source = "#[derive(Error)]\nenum LoadError { A { #[from] inner: E } }";
         let start = source.find("inner").expect("the source holds the field");
 
         let diagnostics = run(source);
 
-        assert_eq!(diagnostics.len(), 1);
         assert_diagnostic(&diagnostics[0]).has_span("<test>", start, start + 5);
     }
 
@@ -408,18 +416,30 @@ mod tests {
     }
 
     #[test]
-    fn derive_across_several_attributes_flagged() {
+    fn derive_across_several_attributes_flagged_once() {
         let diagnostics = run("#[derive(Debug)]\n#[derive(Error)]\nenum Plugin { A }");
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn derive_across_several_attributes_flagged_with_the_enum_name() {
+        let diagnostics = run("#[derive(Debug)]\n#[derive(Error)]\nenum Plugin { A }");
+
         assert_diagnostic(&diagnostics[0]).message_contains("error enum `Plugin`");
     }
 
     #[test]
-    fn derive_behind_doc_comment_flagged() {
+    fn derive_behind_doc_comment_flagged_once() {
         let diagnostics = run("#[derive(Error)]\n/// Docs\n#[non_exhaustive]\nenum Plugin { A }");
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn derive_behind_doc_comment_flagged_with_the_enum_name() {
+        let diagnostics = run("#[derive(Error)]\n/// Docs\n#[non_exhaustive]\nenum Plugin { A }");
+
         assert_diagnostic(&diagnostics[0]).message_contains("error enum `Plugin`");
     }
 
@@ -432,11 +452,18 @@ mod tests {
     }
 
     #[test]
-    fn derive_list_over_several_lines_flagged() {
+    fn derive_list_over_several_lines_flagged_once() {
         let diagnostics =
             run("#[derive(\n    Debug,\n    thiserror::Error,\n)]\npub(crate) enum Plugin { A }");
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn derive_list_over_several_lines_flagged_with_the_enum_name() {
+        let diagnostics =
+            run("#[derive(\n    Debug,\n    thiserror::Error,\n)]\npub(crate) enum Plugin { A }");
+
         assert_diagnostic(&diagnostics[0]).message_contains("error enum `Plugin`");
     }
 
@@ -448,10 +475,16 @@ mod tests {
     }
 
     #[test]
-    fn derive_path_ending_in_error_flagged() {
+    fn derive_path_ending_in_error_flagged_once() {
         let diagnostics = run("#[derive(Debug, thiserror::Error)]\nenum Plugin { A }");
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn derive_path_ending_in_error_flagged_with_the_enum_name() {
+        let diagnostics = run("#[derive(Debug, thiserror::Error)]\nenum Plugin { A }");
+
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.error-enum-shape")
             .has_severity(Severity::Warn)
@@ -464,16 +497,30 @@ mod tests {
             "#[derive(Error)]\nenum LoadError {\n    #[error(\"failed to find the plugin\")]\n    /// The plugin is gone\n    Missing,\n}",
         );
 
-        assert_eq!(diagnostics.len(), 1);
         assert_diagnostic(&diagnostics[0])
             .message_contains("message of `Missing` starts with \"failed to\"");
+    }
+
+    #[test]
+    fn doc_comment_between_message_and_variant_yields_one_diagnostic() {
+        let diagnostics = run(
+            "#[derive(Error)]\nenum LoadError {\n    #[error(\"failed to find the plugin\")]\n    /// The plugin is gone\n    Missing,\n}",
+        );
+
+        assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn enum_name_diagnostic_reported_once() {
+        let diagnostics = run("#[derive(Error)]\nenum Plugin { A }");
+
+        assert_eq!(diagnostics.len(), 1);
     }
 
     #[test]
     fn enum_name_diagnostic_spans_the_name() {
         let diagnostics = run("#[derive(Error)]\nenum Plugin { A }");
 
-        assert_eq!(diagnostics.len(), 1);
         assert_diagnostic(&diagnostics[0]).has_span("<test>", 22, 28);
     }
 
@@ -525,8 +572,16 @@ mod tests {
             "#[derive(Error)]\nenum LoadError {\n    #[error(\"failed tomorrow\")]\n    A { source: E },\n}",
         );
 
-        assert_eq!(diagnostics.len(), 1);
         assert_diagnostic(&diagnostics[0]).message_contains("does not start with \"failed to\"");
+    }
+
+    #[test]
+    fn failed_to_inside_word_yields_one_diagnostic() {
+        let diagnostics = run(
+            "#[derive(Error)]\nenum LoadError {\n    #[error(\"failed tomorrow\")]\n    A { source: E },\n}",
+        );
+
+        assert_eq!(diagnostics.len(), 1);
     }
 
     #[test]
@@ -544,8 +599,16 @@ mod tests {
             "#[derive(Error)]\nenum LoadError {\n    #[error(\"the read broke\")]\n    A { source: E },\n}",
         );
 
-        assert_eq!(diagnostics.len(), 1);
         assert_diagnostic(&diagnostics[0]).message_contains("does not start with \"failed to\"");
+    }
+
+    #[test]
+    fn field_named_source_without_attribute_yields_one_diagnostic() {
+        let diagnostics = run(
+            "#[derive(Error)]\nenum LoadError {\n    #[error(\"the read broke\")]\n    A { source: E },\n}",
+        );
+
+        assert_eq!(diagnostics.len(), 1);
     }
 
     #[test]
@@ -576,12 +639,20 @@ mod tests {
     }
 
     #[test]
-    fn from_field_not_named_source_flagged() {
+    fn from_field_not_named_source_flagged_once() {
         let diagnostics = run(
             "#[derive(Error)]\nenum LoadError {\n    #[error(\"failed to open\")]\n    Open { #[from] inner: E },\n}",
         );
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn from_field_not_named_source_flagged_with_the_field_name() {
+        let diagnostics = run(
+            "#[derive(Error)]\nenum LoadError {\n    #[error(\"failed to open\")]\n    Open { #[from] inner: E },\n}",
+        );
+
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.error-enum-shape")
             .has_severity(Severity::Warn)
@@ -592,8 +663,23 @@ mod tests {
     fn generic_enum_name_read_without_parameters() {
         let diagnostics = run("#[derive(Error)]\nenum Plugin<T> { A { value: T } }");
 
-        assert_eq!(diagnostics.len(), 1);
         assert_diagnostic(&diagnostics[0]).message_contains("error enum `Plugin` does not end");
+    }
+
+    #[test]
+    fn generic_enum_name_yields_one_diagnostic() {
+        let diagnostics = run("#[derive(Error)]\nenum Plugin<T> { A { value: T } }");
+
+        assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn message_diagnostic_reported_once() {
+        let source = "#[derive(Error)]\nenum LoadError {\n    #[error(\"open failed\")]\n    A { source: E },\n}";
+
+        let diagnostics = run(source);
+
+        assert_eq!(diagnostics.len(), 1);
     }
 
     #[test]
@@ -603,27 +689,42 @@ mod tests {
 
         let diagnostics = run(source);
 
-        assert_eq!(diagnostics.len(), 1);
         assert_diagnostic(&diagnostics[0]).has_span("<test>", start, start + 13);
     }
 
     #[test]
-    fn message_with_capital_failed_to_and_cause_flagged() {
+    fn message_with_capital_failed_to_and_cause_flagged_as_not_starting_with_failed_to() {
+        let diagnostics = run(
+            "#[derive(Error)]\nenum LoadError {\n    #[error(\"Failed to open\")]\n    A { source: E },\n}",
+        );
+
+        assert_diagnostic(&diagnostics[0]).message_contains("does not start with \"failed to\"");
+    }
+
+    #[test]
+    fn message_with_capital_failed_to_and_cause_flagged_once() {
         let diagnostics = run(
             "#[derive(Error)]\nenum LoadError {\n    #[error(\"Failed to open\")]\n    A { source: E },\n}",
         );
 
         assert_eq!(diagnostics.len(), 1);
-        assert_diagnostic(&diagnostics[0]).message_contains("does not start with \"failed to\"");
     }
 
     #[test]
-    fn message_with_cause_not_failed_to_flagged() {
+    fn message_with_cause_not_failed_to_flagged_once() {
         let diagnostics = run(
             "#[derive(Error)]\nenum LoadError {\n    #[error(\"open failed for {path}\")]\n    Open { path: u32, source: E },\n}",
         );
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn message_with_cause_not_failed_to_flagged_with_the_variant_name() {
+        let diagnostics = run(
+            "#[derive(Error)]\nenum LoadError {\n    #[error(\"open failed for {path}\")]\n    Open { path: u32, source: E },\n}",
+        );
+
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.error-enum-shape")
             .has_severity(Severity::Warn)
@@ -631,18 +732,26 @@ mod tests {
     }
 
     #[test]
-    fn message_without_cause_failed_to_flagged() {
+    fn message_without_cause_failed_to_flagged_as_having_no_cause() {
         let diagnostics = run(
             "#[derive(Error)]\nenum LoadError {\n    #[error(\"failed to match {host}\")]\n    Mismatch { host: String },\n}",
         );
 
-        assert_eq!(diagnostics.len(), 1);
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.error-enum-shape")
             .has_severity(Severity::Warn)
             .message_contains(
                 "message of `Mismatch` starts with \"failed to\" but the variant has no cause",
             );
+    }
+
+    #[test]
+    fn message_without_cause_failed_to_flagged_once() {
+        let diagnostics = run(
+            "#[derive(Error)]\nenum LoadError {\n    #[error(\"failed to match {host}\")]\n    Mismatch { host: String },\n}",
+        );
+
+        assert_eq!(diagnostics.len(), 1);
     }
 
     #[test]
@@ -665,12 +774,20 @@ mod tests {
     }
 
     #[test]
-    fn nested_enum_in_module_and_function_flagged() {
+    fn nested_enum_in_module_and_function_flagged_once() {
         let diagnostics = run(
             "mod inner {\n    fn f() {\n        #[derive(Error)]\n        enum Plugin { A }\n    }\n}",
         );
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn nested_enum_in_module_and_function_flagged_with_the_enum_name() {
+        let diagnostics = run(
+            "mod inner {\n    fn f() {\n        #[derive(Error)]\n        enum Plugin { A }\n    }\n}",
+        );
+
         assert_diagnostic(&diagnostics[0]).message_contains("error enum `Plugin`");
     }
 
@@ -680,18 +797,34 @@ mod tests {
             "#[derive(Error)]\nenum LoadError {\n    #[error(r#\"failed to read \"{path}\"\"#)]\n    A { path: u32, source: E },\n    #[error(r\"failed to match\")]\n    B,\n}",
         );
 
-        assert_eq!(diagnostics.len(), 1);
         assert_diagnostic(&diagnostics[0])
             .message_contains("message of `B` starts with \"failed to\"");
     }
 
     #[test]
-    fn source_attribute_field_not_named_source_flagged() {
+    fn raw_string_message_yields_one_diagnostic() {
+        let diagnostics = run(
+            "#[derive(Error)]\nenum LoadError {\n    #[error(r#\"failed to read \"{path}\"\"#)]\n    A { path: u32, source: E },\n    #[error(r\"failed to match\")]\n    B,\n}",
+        );
+
+        assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn source_attribute_field_not_named_source_flagged_once() {
         let diagnostics = run(
             "#[derive(Error)]\nenum LoadError {\n    #[error(\"failed to open\")]\n    Open { path: u32, #[source] cause: E },\n}",
         );
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn source_attribute_field_not_named_source_flagged_with_the_field_name() {
+        let diagnostics = run(
+            "#[derive(Error)]\nenum LoadError {\n    #[error(\"failed to open\")]\n    Open { path: u32, #[source] cause: E },\n}",
+        );
+
         assert_diagnostic(&diagnostics[0])
             .message_contains("field `cause` holds the cause of `Open`");
     }
@@ -758,6 +891,15 @@ mod tests {
     }
 
     #[test]
+    fn tuple_variant_diagnostic_reported_once() {
+        let source = "#[derive(Error)]\nenum LoadError { Mismatch(u32) }";
+
+        let diagnostics = run(source);
+
+        assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
     fn tuple_variant_diagnostic_spans_the_variant_name() {
         let source = "#[derive(Error)]\nenum LoadError { Mismatch(u32) }";
         let start = source
@@ -766,15 +908,20 @@ mod tests {
 
         let diagnostics = run(source);
 
-        assert_eq!(diagnostics.len(), 1);
         assert_diagnostic(&diagnostics[0]).has_span("<test>", start, start + 8);
     }
 
     #[test]
-    fn tuple_variant_flagged() {
+    fn tuple_variant_flagged_once() {
         let diagnostics = run("#[derive(Error)]\nenum LoadError { Mismatch(String, String) }");
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn tuple_variant_flagged_with_the_variant_name() {
+        let diagnostics = run("#[derive(Error)]\nenum LoadError { Mismatch(String, String) }");
+
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.error-enum-shape")
             .has_severity(Severity::Warn)
@@ -785,8 +932,14 @@ mod tests {
     fn tuple_variant_with_source_attribute_names_the_cause() {
         let diagnostics = run("#[derive(Error)]\nenum LoadError { Read(u32, #[source] E) }");
 
-        assert_eq!(diagnostics.len(), 1);
         assert_diagnostic(&diagnostics[0]).message_contains("with the cause in `source`");
+    }
+
+    #[test]
+    fn tuple_variant_with_source_attribute_yields_one_diagnostic() {
+        let diagnostics = run("#[derive(Error)]\nenum LoadError { Read(u32, #[source] E) }");
+
+        assert_eq!(diagnostics.len(), 1);
     }
 
     #[test]
@@ -799,12 +952,20 @@ mod tests {
     }
 
     #[test]
-    fn unit_variant_with_failed_to_flagged() {
+    fn unit_variant_with_failed_to_flagged_once() {
         let diagnostics = run(
             "#[derive(Error)]\nenum LoadError {\n    #[error(\"failed to find the plugin\")]\n    Missing,\n}",
         );
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn unit_variant_with_failed_to_flagged_with_the_variant_name() {
+        let diagnostics = run(
+            "#[derive(Error)]\nenum LoadError {\n    #[error(\"failed to find the plugin\")]\n    Missing,\n}",
+        );
+
         assert_diagnostic(&diagnostics[0])
             .message_contains("message of `Missing` starts with \"failed to\"");
     }

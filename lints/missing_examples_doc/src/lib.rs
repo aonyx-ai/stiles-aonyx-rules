@@ -413,10 +413,16 @@ mod tests {
     }
 
     #[test]
-    fn constant_without_examples_is_flagged() {
+    fn constant_without_examples_is_flagged_once() {
         let diagnostics = run("/// Docs\npub const LIMIT: usize = 1;");
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn constant_without_examples_is_flagged_with_the_kind_and_name() {
+        let diagnostics = run("/// Docs\npub const LIMIT: usize = 1;");
+
         assert_diagnostic(&diagnostics[0]).message_contains("public constant `LIMIT`");
     }
 
@@ -449,10 +455,16 @@ mod tests {
     }
 
     #[test]
-    fn enum_without_examples_is_flagged() {
+    fn enum_without_examples_is_flagged_once() {
         let diagnostics = run("/// Docs\npub enum Color {\n    Red,\n}");
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn enum_without_examples_is_flagged_with_the_kind_and_name() {
+        let diagnostics = run("/// Docs\npub enum Color {\n    Red,\n}");
+
         assert_diagnostic(&diagnostics[0]).message_contains("public enum `Color`");
     }
 
@@ -538,10 +550,16 @@ mod tests {
     }
 
     #[test]
-    fn inherent_impl_public_method_without_examples_is_flagged() {
+    fn inherent_impl_public_method_without_examples_is_flagged_once() {
         let diagnostics = run("impl Foo {\n    /// Docs\n    pub fn f(&self) {}\n}");
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn inherent_impl_public_method_without_examples_is_flagged_with_the_kind_and_name() {
+        let diagnostics = run("impl Foo {\n    /// Docs\n    pub fn f(&self) {}\n}");
+
         assert_diagnostic(&diagnostics[0]).message_contains("public function `f`");
     }
 
@@ -595,10 +613,16 @@ mod tests {
     }
 
     #[test]
-    fn static_without_examples_is_flagged() {
+    fn static_without_examples_is_flagged_once() {
         let diagnostics = run("/// Docs\npub static NAME: &str = \"x\";");
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn static_without_examples_is_flagged_with_the_kind_and_name() {
+        let diagnostics = run("/// Docs\npub static NAME: &str = \"x\";");
+
         assert_diagnostic(&diagnostics[0]).message_contains("public static `NAME`");
     }
 
@@ -618,12 +642,20 @@ mod tests {
     }
 
     #[test]
-    fn struct_without_examples_is_flagged() {
+    fn struct_without_examples_is_flagged_once() {
         let source = "/// Reads a file\n///\n/// # Errors\n///\n/// Fails.\npub struct Foo;";
 
         let diagnostics = run(source);
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn struct_without_examples_is_flagged_with_rule_id_severity_message_and_span() {
+        let source = "/// Reads a file\n///\n/// # Errors\n///\n/// Fails.\npub struct Foo;";
+
+        let diagnostics = run(source);
+
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.missing-examples-doc")
             .has_severity(Severity::Warn)
@@ -651,8 +683,23 @@ mod tests {
     fn trait_send() {
         fn assert_send<T: Send>() {}
         assert_send::<MissingExamplesDoc>();
+    }
+
+    #[test]
+    fn trait_send_code_fence() {
+        fn assert_send<T: Send>() {}
         assert_send::<CodeFence>();
+    }
+
+    #[test]
+    fn trait_send_fence_marker() {
+        fn assert_send<T: Send>() {}
         assert_send::<FenceMarker>();
+    }
+
+    #[test]
+    fn trait_send_item_kind() {
+        fn assert_send<T: Send>() {}
         assert_send::<ItemKind>();
     }
 
@@ -660,8 +707,23 @@ mod tests {
     fn trait_sync() {
         fn assert_sync<T: Sync>() {}
         assert_sync::<MissingExamplesDoc>();
+    }
+
+    #[test]
+    fn trait_sync_code_fence() {
+        fn assert_sync<T: Sync>() {}
         assert_sync::<CodeFence>();
+    }
+
+    #[test]
+    fn trait_sync_fence_marker() {
+        fn assert_sync<T: Sync>() {}
         assert_sync::<FenceMarker>();
+    }
+
+    #[test]
+    fn trait_sync_item_kind() {
+        fn assert_sync<T: Sync>() {}
         assert_sync::<ItemKind>();
     }
 
@@ -669,32 +731,65 @@ mod tests {
     fn trait_unpin() {
         fn assert_unpin<T: Unpin>() {}
         assert_unpin::<MissingExamplesDoc>();
+    }
+
+    #[test]
+    fn trait_unpin_code_fence() {
+        fn assert_unpin<T: Unpin>() {}
         assert_unpin::<CodeFence>();
+    }
+
+    #[test]
+    fn trait_unpin_fence_marker() {
+        fn assert_unpin<T: Unpin>() {}
         assert_unpin::<FenceMarker>();
+    }
+
+    #[test]
+    fn trait_unpin_item_kind() {
+        fn assert_unpin<T: Unpin>() {}
         assert_unpin::<ItemKind>();
     }
 
     #[test]
-    fn trait_without_examples_is_flagged() {
+    fn trait_without_examples_is_flagged_once() {
         let diagnostics = run("/// Docs\npub trait Read {}");
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn trait_without_examples_is_flagged_with_the_kind_and_name() {
+        let diagnostics = run("/// Docs\npub trait Read {}");
+
         assert_diagnostic(&diagnostics[0]).message_contains("public trait `Read`");
     }
 
     #[test]
-    fn type_alias_without_examples_is_flagged() {
+    fn type_alias_without_examples_is_flagged_once() {
         let diagnostics = run("/// Docs\npub type Pair = (u8, u8);");
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn type_alias_without_examples_is_flagged_with_the_kind_and_name() {
+        let diagnostics = run("/// Docs\npub type Pair = (u8, u8);");
+
         assert_diagnostic(&diagnostics[0]).message_contains("public type alias `Pair`");
     }
 
     #[test]
-    fn union_without_examples_is_flagged() {
+    fn union_without_examples_is_flagged_once() {
         let diagnostics = run("/// Docs\npub union Bits {\n    a: u8,\n}");
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn union_without_examples_is_flagged_with_the_kind_and_name() {
+        let diagnostics = run("/// Docs\npub union Bits {\n    a: u8,\n}");
+
         assert_diagnostic(&diagnostics[0]).message_contains("public union `Bits`");
     }
 }

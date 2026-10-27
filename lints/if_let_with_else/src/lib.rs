@@ -172,7 +172,7 @@ mod tests {
     }
 
     #[test]
-    fn if_let_with_non_diverging_else_is_flagged() {
+    fn if_let_with_non_diverging_else_is_flagged_once() {
         let source = r#"
             fn f() {
                 if let Some(x) = val {
@@ -187,6 +187,23 @@ mod tests {
         let diagnostics = execute(&tree, &mut passes());
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn if_let_with_non_diverging_else_is_flagged_with_match_advice() {
+        let source = r#"
+            fn f() {
+                if let Some(x) = val {
+                    use_x(x);
+                } else {
+                    do_something();
+                }
+            }
+        "#;
+        let tree = parse(source, Language::Rust);
+
+        let diagnostics = execute(&tree, &mut passes());
+
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.if-let-with-else")
             .has_severity(Severity::Warn)

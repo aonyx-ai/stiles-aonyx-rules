@@ -145,18 +145,23 @@ mod tests {
     }
 
     #[test]
-    fn named_field_diagnostic_spans_the_visibility_modifier() {
+    fn named_field_diagnostic_is_reported_once() {
         let diagnostics = run("struct Config { pub verbose: u32 }");
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn named_field_diagnostic_spans_the_visibility_modifier() {
+        let diagnostics = run("struct Config { pub verbose: u32 }");
+
         assert_diagnostic(&diagnostics[0]).has_span("<test>", 16, 19);
     }
 
     #[test]
-    fn named_pub_field_flagged() {
+    fn named_pub_field_flagged_as_a_warning_naming_the_field() {
         let diagnostics = run("struct Config { pub verbose: u32 }");
 
-        assert_eq!(diagnostics.len(), 1);
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.pub-field")
             .has_severity(Severity::Warn)
@@ -165,40 +170,77 @@ mod tests {
     }
 
     #[test]
+    fn named_pub_field_flagged_once() {
+        let diagnostics = run("struct Config { pub verbose: u32 }");
+
+        assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
     fn named_pub_fields_each_flagged() {
         let diagnostics = run("struct Config { pub a: u32, b: u32, pub c: u32 }");
 
         assert_eq!(diagnostics.len(), 2);
+    }
+
+    #[test]
+    fn named_pub_fields_first_diagnostic_names_a() {
+        let diagnostics = run("struct Config { pub a: u32, b: u32, pub c: u32 }");
+
         assert_diagnostic(&diagnostics[0]).message_contains("field `a` is public");
+    }
+
+    #[test]
+    fn named_pub_fields_second_diagnostic_names_c() {
+        let diagnostics = run("struct Config { pub a: u32, b: u32, pub c: u32 }");
+
         assert_diagnostic(&diagnostics[1]).message_contains("field `c` is public");
     }
 
     #[test]
-    fn nested_struct_in_function_flagged() {
+    fn nested_struct_in_function_flagged_naming_the_field() {
+        let diagnostics = run("fn main() { struct Inner { pub a: u32 } }");
+
+        assert_diagnostic(&diagnostics[0]).message_contains("field `a` is public");
+    }
+
+    #[test]
+    fn nested_struct_in_function_flagged_once() {
         let diagnostics = run("fn main() { struct Inner { pub a: u32 } }");
 
         assert_eq!(diagnostics.len(), 1);
-        assert_diagnostic(&diagnostics[0]).message_contains("field `a` is public");
+    }
+
+    #[test]
+    fn newtype_diagnostic_is_reported_once() {
+        let diagnostics = run("pub struct ProviderName(pub &'static str);");
+
+        assert_eq!(diagnostics.len(), 1);
     }
 
     #[test]
     fn newtype_diagnostic_spans_the_visibility_modifier() {
         let diagnostics = run("pub struct ProviderName(pub &'static str);");
 
-        assert_eq!(diagnostics.len(), 1);
         assert_diagnostic(&diagnostics[0]).has_span("<test>", 24, 27);
     }
 
     #[test]
-    fn newtype_pub_field_flagged() {
+    fn newtype_pub_field_flagged_as_a_warning_naming_the_index() {
         let diagnostics = run("pub struct ProviderName(pub &'static str);");
 
-        assert_eq!(diagnostics.len(), 1);
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.pub-field")
             .has_severity(Severity::Warn)
             .message_contains("field 0 is public")
             .message_contains("accessor method");
+    }
+
+    #[test]
+    fn newtype_pub_field_flagged_once() {
+        let diagnostics = run("pub struct ProviderName(pub &'static str);");
+
+        assert_eq!(diagnostics.len(), 1);
     }
 
     #[test]
@@ -276,35 +318,72 @@ mod tests {
     }
 
     #[test]
-    fn tuple_field_after_attribute_flagged() {
+    fn tuple_field_after_attribute_flagged_as_field_zero() {
+        let diagnostics = run("struct D(#[serde(default)] pub Vec<u32>,);");
+
+        assert_diagnostic(&diagnostics[0]).message_contains("field 0 is public");
+    }
+
+    #[test]
+    fn tuple_field_after_attribute_flagged_once() {
         let diagnostics = run("struct D(#[serde(default)] pub Vec<u32>,);");
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn tuple_field_after_comment_flagged_as_field_zero() {
+        let diagnostics = run("struct A(\n    /// the count\n    pub u32,\n    u8,\n);");
+
         assert_diagnostic(&diagnostics[0]).message_contains("field 0 is public");
     }
 
     #[test]
-    fn tuple_field_after_comment_flagged() {
+    fn tuple_field_after_comment_flagged_once() {
         let diagnostics = run("struct A(\n    /// the count\n    pub u32,\n    u8,\n);");
 
         assert_eq!(diagnostics.len(), 1);
-        assert_diagnostic(&diagnostics[0]).message_contains("field 0 is public");
     }
 
     #[test]
-    fn tuple_field_with_comma_inside_type_indexed_correctly() {
+    fn tuple_field_with_comma_inside_type_first_diagnostic_names_field_one() {
+        let diagnostics = run("struct A(u32, pub Vec<(u8, u8)>, pub fn(u8, u8));");
+
+        assert_diagnostic(&diagnostics[0]).message_contains("field 1 is public");
+    }
+
+    #[test]
+    fn tuple_field_with_comma_inside_type_flagged_twice() {
         let diagnostics = run("struct A(u32, pub Vec<(u8, u8)>, pub fn(u8, u8));");
 
         assert_eq!(diagnostics.len(), 2);
-        assert_diagnostic(&diagnostics[0]).message_contains("field 1 is public");
+    }
+
+    #[test]
+    fn tuple_field_with_comma_inside_type_second_diagnostic_names_field_two() {
+        let diagnostics = run("struct A(u32, pub Vec<(u8, u8)>, pub fn(u8, u8));");
+
         assert_diagnostic(&diagnostics[1]).message_contains("field 2 is public");
     }
 
     #[test]
-    fn tuple_field_with_where_clause_flagged() {
+    fn tuple_field_with_where_clause_flagged_as_field_zero() {
+        let diagnostics = run("pub struct Wrap<T>(pub T) where T: Copy;");
+
+        assert_diagnostic(&diagnostics[0]).message_contains("field 0 is public");
+    }
+
+    #[test]
+    fn tuple_field_with_where_clause_flagged_once() {
         let diagnostics = run("pub struct Wrap<T>(pub T) where T: Copy;");
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn tuple_pub_field_before_restricted_field_flagged_as_field_zero() {
+        let diagnostics = run("struct B(pub u32, String, pub(crate) i8);");
+
         assert_diagnostic(&diagnostics[0]).message_contains("field 0 is public");
     }
 
@@ -313,15 +392,26 @@ mod tests {
         let diagnostics = run("struct B(pub u32, String, pub(crate) i8);");
 
         assert_eq!(diagnostics.len(), 1);
-        assert_diagnostic(&diagnostics[0]).message_contains("field 0 is public");
     }
 
     #[test]
-    fn tuple_pub_fields_report_their_own_index() {
+    fn tuple_pub_fields_first_diagnostic_reports_index_one() {
+        let diagnostics = run("struct B(u32, pub String, pub u8);");
+
+        assert_diagnostic(&diagnostics[0]).message_contains("field 1 is public");
+    }
+
+    #[test]
+    fn tuple_pub_fields_flagged_twice() {
         let diagnostics = run("struct B(u32, pub String, pub u8);");
 
         assert_eq!(diagnostics.len(), 2);
-        assert_diagnostic(&diagnostics[0]).message_contains("field 1 is public");
+    }
+
+    #[test]
+    fn tuple_pub_fields_second_diagnostic_reports_index_two() {
+        let diagnostics = run("struct B(u32, pub String, pub u8);");
+
         assert_diagnostic(&diagnostics[1]).message_contains("field 2 is public");
     }
 
