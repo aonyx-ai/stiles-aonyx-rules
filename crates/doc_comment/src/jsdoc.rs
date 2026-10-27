@@ -198,7 +198,6 @@ mod tests {
         let lines = prose_lines(comment, 0).expect("a doc comment");
 
         assert_eq!(lines[1].text(), "how many - at most ten");
-        assert_eq!(&comment[lines[1].offset()..][..8], "how many");
     }
 
     #[test]
@@ -235,8 +234,16 @@ mod tests {
         let lines = prose_lines(comment, 40).expect("a doc comment");
 
         let line = lines[1];
-        assert_eq!(line.text(), "Returns the sum");
         assert_eq!(&comment[line.offset() - 40..][..15], "Returns the sum");
+    }
+
+    #[test]
+    fn prose_lines_keep_the_offset_of_a_param_description() {
+        let comment = "/**\n * @param {number} count - how many - at most ten\n */";
+
+        let lines = prose_lines(comment, 0).expect("a doc comment");
+
+        assert_eq!(&comment[lines[1].offset()..][..8], "how many");
     }
 
     #[test]
@@ -265,6 +272,16 @@ mod tests {
         let lines = prose_lines("/**/", 0);
 
         assert_eq!(lines, None);
+    }
+
+    #[test]
+    fn prose_lines_with_a_file_offset_keep_the_text() {
+        let comment = "/**\n * Returns the sum\n */";
+
+        let lines = prose_lines(comment, 40).expect("a doc comment");
+
+        let line = lines[1];
+        assert_eq!(line.text(), "Returns the sum");
     }
 
     #[test]

@@ -73,9 +73,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn every_exempt_source_trips_both_rules_when_nothing_exempts_it() {
+    fn every_exempt_source_has_a_bool_parameter() {
         for source in EXEMPT {
             assert!(source.contains("bool"), "no bool parameter in: {source}");
+        }
+    }
+
+    #[test]
+    fn every_exempt_source_has_two_string_parameters() {
+        for source in EXEMPT {
             assert!(
                 source.matches("String").count() >= 2,
                 "fewer than two String parameters in: {source}"
@@ -84,9 +90,15 @@ mod tests {
     }
 
     #[test]
-    fn every_reported_source_trips_both_rules() {
+    fn every_reported_source_has_a_bool_parameter() {
         for source in REPORTED {
             assert!(source.contains("bool"), "no bool parameter in: {source}");
+        }
+    }
+
+    #[test]
+    fn every_reported_source_has_two_string_parameters() {
+        for source in REPORTED {
             assert!(
                 source.matches("String").count() >= 2,
                 "fewer than two String parameters in: {source}"

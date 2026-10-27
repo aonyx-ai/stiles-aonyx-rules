@@ -654,6 +654,11 @@ mod tests {
     fn trait_send() {
         fn assert_send<T: Send>() {}
         assert_send::<DocSummaryPeriod>();
+    }
+
+    #[test]
+    fn trait_send_placement() {
+        fn assert_send<T: Send>() {}
         assert_send::<Placement>();
     }
 
@@ -661,6 +666,11 @@ mod tests {
     fn trait_sync() {
         fn assert_sync<T: Sync>() {}
         assert_sync::<DocSummaryPeriod>();
+    }
+
+    #[test]
+    fn trait_sync_placement() {
+        fn assert_sync<T: Sync>() {}
         assert_sync::<Placement>();
     }
 
@@ -668,6 +678,11 @@ mod tests {
     fn trait_unpin() {
         fn assert_unpin<T: Unpin>() {}
         assert_unpin::<DocSummaryPeriod>();
+    }
+
+    #[test]
+    fn trait_unpin_placement() {
+        fn assert_unpin<T: Unpin>() {}
         assert_unpin::<Placement>();
     }
 

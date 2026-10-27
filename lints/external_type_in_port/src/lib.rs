@@ -691,7 +691,7 @@ mod tests {
     }
 
     #[test]
-    fn aliased_crate_import_is_flagged() {
+    fn aliased_crate_import_is_flagged_once() {
         let source = r#"
 use ra_ap_vfs as vfs;
 
@@ -703,12 +703,26 @@ pub trait Port {
         let diagnostics = run(source);
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn aliased_crate_import_message_names_the_alias_path_and_real_crate() {
+        let source = r#"
+use ra_ap_vfs as vfs;
+
+pub trait Port {
+    fn read(&self, file: &vfs::VfsPath);
+}
+"#;
+
+        let diagnostics = run(source);
+
         assert_diagnostic(&diagnostics[0])
             .message_contains("names `vfs::VfsPath` from the external crate `ra_ap_vfs`");
     }
 
     #[test]
-    fn aliased_type_import_is_flagged() {
+    fn aliased_type_import_is_flagged_once() {
         let source = r#"
 use ra_ap_vfs::VfsPath as File;
 
@@ -720,12 +734,44 @@ pub trait Port {
         let diagnostics = run(source);
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn aliased_type_import_message_names_the_alias_and_real_crate() {
+        let source = r#"
+use ra_ap_vfs::VfsPath as File;
+
+pub trait Port {
+    fn read(&self, file: File);
+}
+"#;
+
+        let diagnostics = run(source);
+
         assert_diagnostic(&diagnostics[0])
             .message_contains("names `File` from the external crate `ra_ap_vfs`");
     }
 
     #[test]
-    fn anyhow_result_return_is_flagged() {
+    fn anyhow_result_return_diagnostic_has_rule_severity_and_message() {
+        let source = r#"
+pub trait DecorationProvider {
+    fn decorate(&self, tree: &DecoratedTree) -> anyhow::Result<Coverage>;
+}
+"#;
+
+        let diagnostics = run(source);
+
+        assert_diagnostic(&diagnostics[0])
+            .has_rule_id("lint.external-type-in-port")
+            .has_severity(Severity::Warn)
+            .message_contains(
+                "port method `decorate` names `anyhow::Result` from the external crate `anyhow`; use a type the domain owns",
+            );
+    }
+
+    #[test]
+    fn anyhow_result_return_is_flagged_once() {
         let source = r#"
 pub trait DecorationProvider {
     fn decorate(&self, tree: &DecoratedTree) -> anyhow::Result<Coverage>;
@@ -735,12 +781,6 @@ pub trait DecorationProvider {
         let diagnostics = run(source);
 
         assert_eq!(diagnostics.len(), 1);
-        assert_diagnostic(&diagnostics[0])
-            .has_rule_id("lint.external-type-in-port")
-            .has_severity(Severity::Warn)
-            .message_contains(
-                "port method `decorate` names `anyhow::Result` from the external crate `anyhow`; use a type the domain owns",
-            );
     }
 
     #[test]
@@ -778,7 +818,7 @@ pub trait Port {
     }
 
     #[test]
-    fn bound_in_type_parameter_is_flagged() {
+    fn bound_in_type_parameter_is_flagged_once() {
         let source = r#"
 pub trait Port {
     fn run<S: ra_ap_hir::Semantics>(&self, semantics: S);
@@ -788,12 +828,24 @@ pub trait Port {
         let diagnostics = run(source);
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn bound_in_type_parameter_message_names_the_bound_and_crate() {
+        let source = r#"
+pub trait Port {
+    fn run<S: ra_ap_hir::Semantics>(&self, semantics: S);
+}
+"#;
+
+        let diagnostics = run(source);
+
         assert_diagnostic(&diagnostics[0])
             .message_contains("names `ra_ap_hir::Semantics` from the external crate `ra_ap_hir`");
     }
 
     #[test]
-    fn bound_in_where_clause_is_flagged() {
+    fn bound_in_where_clause_is_flagged_once() {
         let source = r#"
 use serde::Serialize;
 
@@ -807,8 +859,37 @@ pub trait Port {
         let diagnostics = run(source);
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn bound_in_where_clause_message_names_the_bound_and_crate() {
+        let source = r#"
+use serde::Serialize;
+
+pub trait Port {
+    fn write<T>(&self, value: T)
+    where
+        T: Serialize;
+}
+"#;
+
+        let diagnostics = run(source);
+
         assert_diagnostic(&diagnostics[0])
             .message_contains("names `Serialize` from the external crate `serde`");
+    }
+
+    #[test]
+    fn bracketed_type_reports_one_diagnostic() {
+        let source = r#"
+pub trait Port {
+    fn read<T>(&self) -> <T as serde::Deserialize>::Output;
+}
+"#;
+
+        let diagnostics = run(source);
+
+        assert_eq!(diagnostics.len(), 1);
     }
 
     #[test]
@@ -821,7 +902,6 @@ pub trait Port {
 
         let diagnostics = run(source);
 
-        assert_eq!(diagnostics.len(), 1);
         assert_diagnostic(&diagnostics[0]).message_contains("names `serde::Deserialize`");
     }
 
@@ -864,7 +944,6 @@ pub trait Port {
 
         let diagnostics = run(source);
 
-        assert_eq!(diagnostics.len(), 1);
         assert_diagnostic(&diagnostics[0]).has_span(
             "<test>",
             start,
@@ -873,7 +952,16 @@ pub trait Port {
     }
 
     #[test]
-    fn dyn_and_impl_trait_bounds_are_flagged() {
+    fn diagnostic_span_source_reports_one_diagnostic() {
+        let source = "pub trait Port { fn read(&self) -> anyhow::Result<()>; }";
+
+        let diagnostics = run(source);
+
+        assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn dyn_and_impl_trait_bounds_are_flagged_twice() {
         let source = r#"
 pub trait Port {
     fn write(&self, sink: &mut dyn tokio::io::AsyncWrite) -> impl futures::Stream;
@@ -883,7 +971,31 @@ pub trait Port {
         let diagnostics = run(source);
 
         assert_eq!(diagnostics.len(), 2);
+    }
+
+    #[test]
+    fn dyn_and_impl_trait_bounds_are_flagged_with_the_dyn_crate_first() {
+        let source = r#"
+pub trait Port {
+    fn write(&self, sink: &mut dyn tokio::io::AsyncWrite) -> impl futures::Stream;
+}
+"#;
+
+        let diagnostics = run(source);
+
         assert_diagnostic(&diagnostics[0]).message_contains("external crate `tokio`");
+    }
+
+    #[test]
+    fn dyn_and_impl_trait_bounds_are_flagged_with_the_impl_crate_second() {
+        let source = r#"
+pub trait Port {
+    fn write(&self, sink: &mut dyn tokio::io::AsyncWrite) -> impl futures::Stream;
+}
+"#;
+
+        let diagnostics = run(source);
+
         assert_diagnostic(&diagnostics[1]).message_contains("external crate `futures`");
     }
 
@@ -910,7 +1022,7 @@ pub trait Port {
     }
 
     #[test]
-    fn extern_crate_alias_is_flagged() {
+    fn extern_crate_alias_is_flagged_once() {
         let source = r#"
 extern crate ra_ap_vfs as vfs;
 
@@ -922,6 +1034,20 @@ pub trait Port {
         let diagnostics = run(source);
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn extern_crate_alias_message_names_the_real_crate() {
+        let source = r#"
+extern crate ra_ap_vfs as vfs;
+
+pub trait Port {
+    fn read(&self, file: vfs::VfsPath);
+}
+"#;
+
+        let diagnostics = run(source);
+
         assert_diagnostic(&diagnostics[0]).message_contains("external crate `ra_ap_vfs`");
     }
 
@@ -953,15 +1079,21 @@ pub trait Port {
     }
 
     #[test]
-    fn function_pointer_parameter_is_flagged() {
+    fn function_pointer_parameter_is_flagged_once() {
         let diagnostics = run("pub trait Port { fn visit(&self, f: fn(syn::Item)); }");
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn function_pointer_parameter_message_names_the_parameter_type() {
+        let diagnostics = run("pub trait Port { fn visit(&self, f: fn(syn::Item)); }");
+
         assert_diagnostic(&diagnostics[0]).message_contains("names `syn::Item`");
     }
 
     #[test]
-    fn generic_argument_is_flagged() {
+    fn generic_argument_is_flagged_once() {
         let source = r#"
 use ra_ap_vfs::VfsPath;
 
@@ -973,6 +1105,20 @@ pub trait Port {
         let diagnostics = run(source);
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn generic_argument_message_names_the_argument_type() {
+        let source = r#"
+use ra_ap_vfs::VfsPath;
+
+pub trait Port {
+    fn list(&self) -> Vec<Option<VfsPath>>;
+}
+"#;
+
+        let diagnostics = run(source);
+
         assert_diagnostic(&diagnostics[0]).message_contains("names `VfsPath`");
     }
 
@@ -992,7 +1138,7 @@ pub trait Port {
     }
 
     #[test]
-    fn glob_import_still_reports_proven_external_alias() {
+    fn glob_import_still_reports_proven_external_alias_once() {
         let source = r#"
 use super::*;
 extern crate anyhow as failure;
@@ -1005,11 +1151,26 @@ pub trait Port {
         let diagnostics = run(source);
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn glob_import_still_reports_proven_external_alias_with_the_real_crate() {
+        let source = r#"
+use super::*;
+extern crate anyhow as failure;
+
+pub trait Port {
+    fn read(&self) -> failure::Result<()>;
+}
+"#;
+
+        let diagnostics = run(source);
+
         assert_diagnostic(&diagnostics[0]).message_contains("external crate `anyhow`");
     }
 
     #[test]
-    fn import_chain_to_external_crate_is_flagged() {
+    fn import_chain_to_external_crate_is_flagged_once() {
         let source = r#"
 use ra_ap_hir as hir;
 use hir::Semantics;
@@ -1022,6 +1183,21 @@ pub trait Port {
         let diagnostics = run(source);
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn import_chain_to_external_crate_message_names_the_real_crate() {
+        let source = r#"
+use ra_ap_hir as hir;
+use hir::Semantics;
+
+pub trait Port {
+    fn run(&self, semantics: &Semantics);
+}
+"#;
+
+        let diagnostics = run(source);
+
         assert_diagnostic(&diagnostics[0]).message_contains("external crate `ra_ap_hir`");
     }
 
@@ -1074,7 +1250,7 @@ pub trait Port {
     }
 
     #[test]
-    fn imported_crate_name_is_flagged() {
+    fn imported_crate_name_is_flagged_once() {
         let source = r#"
 use anyhow;
 
@@ -1086,6 +1262,20 @@ pub trait Port {
         let diagnostics = run(source);
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn imported_crate_name_message_names_the_crate() {
+        let source = r#"
+use anyhow;
+
+pub trait Port {
+    fn read(&self) -> anyhow::Error;
+}
+"#;
+
+        let diagnostics = run(source);
+
         assert_diagnostic(&diagnostics[0]).message_contains("external crate `anyhow`");
     }
 
@@ -1124,15 +1314,6 @@ mod fixtures {
     }
 
     #[test]
-    fn leading_colon_path_is_flagged() {
-        let diagnostics = run("pub trait Port { fn read(&self) -> ::anyhow::Error; }");
-
-        assert_eq!(diagnostics.len(), 1);
-        assert_diagnostic(&diagnostics[0])
-            .message_contains("names `::anyhow::Error` from the external crate `anyhow`");
-    }
-
-    #[test]
     fn leading_colon_path_ignores_a_glob() {
         let source = r#"
 use super::*;
@@ -1145,6 +1326,21 @@ pub trait Port {
         let diagnostics = run(source);
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn leading_colon_path_is_flagged_once() {
+        let diagnostics = run("pub trait Port { fn read(&self) -> ::anyhow::Error; }");
+
+        assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn leading_colon_path_message_names_the_path_and_crate() {
+        let diagnostics = run("pub trait Port { fn read(&self) -> ::anyhow::Error; }");
+
+        assert_diagnostic(&diagnostics[0])
+            .message_contains("names `::anyhow::Error` from the external crate `anyhow`");
     }
 
     #[test]
@@ -1219,7 +1415,7 @@ pub trait Port {
     }
 
     #[test]
-    fn method_under_cfg_not_test_is_flagged() {
+    fn method_under_cfg_not_test_is_flagged_once() {
         let source = r#"
 pub trait Port {
     #[cfg(not(test))]
@@ -1230,6 +1426,19 @@ pub trait Port {
         let diagnostics = run(source);
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn method_under_cfg_not_test_message_names_the_type() {
+        let source = r#"
+pub trait Port {
+    #[cfg(not(test))]
+    fn read(&self) -> anyhow::Result<()>;
+}
+"#;
+
+        let diagnostics = run(source);
+
         assert_diagnostic(&diagnostics[0]).message_contains("names `anyhow::Result`");
     }
 
@@ -1265,7 +1474,7 @@ mod inner {
     }
 
     #[test]
-    fn nested_module_with_own_import_is_flagged() {
+    fn nested_module_with_own_import_is_flagged_once() {
         let source = r#"
 pub mod inner {
     use anyhow::Result;
@@ -1279,11 +1488,27 @@ pub mod inner {
         let diagnostics = run(source);
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn nested_module_with_own_import_message_names_the_crate() {
+        let source = r#"
+pub mod inner {
+    use anyhow::Result;
+
+    pub trait Port {
+        fn read(&self) -> Result<()>;
+    }
+}
+"#;
+
+        let diagnostics = run(source);
+
         assert_diagnostic(&diagnostics[0]).message_contains("external crate `anyhow`");
     }
 
     #[test]
-    fn non_sibling_crate_in_a_workspace_is_flagged() {
+    fn non_sibling_crate_in_a_workspace_is_flagged_once() {
         let source = r#"
 use stabby::IStable;
 
@@ -1295,6 +1520,20 @@ pub trait Port {
         let diagnostics = run_at(Path::new("crates/whisker-types/src/lib.rs"), source);
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn non_sibling_crate_in_a_workspace_message_names_the_crate() {
+        let source = r#"
+use stabby::IStable;
+
+pub trait Port {
+    fn read<T: IStable>(&self, value: T);
+}
+"#;
+
+        let diagnostics = run_at(Path::new("crates/whisker-types/src/lib.rs"), source);
+
         assert_diagnostic(&diagnostics[0]).message_contains("external crate `stabby`");
     }
 
@@ -1306,7 +1545,7 @@ pub trait Port {
     }
 
     #[test]
-    fn qualified_path_to_unimported_crate_is_flagged() {
+    fn qualified_path_to_unimported_crate_is_flagged_once() {
         let source = r#"
 pub trait Port {
     fn decorate(&self, file: &ra_ap_vfs::VfsPath) -> Coverage;
@@ -1316,6 +1555,18 @@ pub trait Port {
         let diagnostics = run(source);
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn qualified_path_to_unimported_crate_message_names_method_path_and_crate() {
+        let source = r#"
+pub trait Port {
+    fn decorate(&self, file: &ra_ap_vfs::VfsPath) -> Coverage;
+}
+"#;
+
+        let diagnostics = run(source);
+
         assert_diagnostic(&diagnostics[0]).message_contains(
             "port method `decorate` names `ra_ap_vfs::VfsPath` from the external crate `ra_ap_vfs`",
         );
@@ -1480,7 +1731,7 @@ pub fn build() {
     }
 
     #[test]
-    fn trait_under_cfg_any_test_or_unix_is_flagged() {
+    fn trait_under_cfg_any_test_or_unix_is_flagged_once() {
         let source = r#"
 #[cfg(any(test, unix))]
 pub trait Port {
@@ -1491,6 +1742,19 @@ pub trait Port {
         let diagnostics = run(source);
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn trait_under_cfg_any_test_or_unix_message_names_the_type() {
+        let source = r#"
+#[cfg(any(test, unix))]
+pub trait Port {
+    fn read(&self) -> anyhow::Result<()>;
+}
+"#;
+
+        let diagnostics = run(source);
+
         assert_diagnostic(&diagnostics[0]).message_contains("names `anyhow::Result`");
     }
 
@@ -1554,7 +1818,7 @@ pub trait Port {
     }
 
     #[test]
-    fn type_binding_value_is_flagged() {
+    fn type_binding_value_is_flagged_once() {
         let source = r#"
 pub trait Port {
     fn items(&self) -> impl Iterator<Item = ra_ap_vfs::FileId>;
@@ -1564,6 +1828,18 @@ pub trait Port {
         let diagnostics = run(source);
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn type_binding_value_message_names_the_value_type() {
+        let source = r#"
+pub trait Port {
+    fn items(&self) -> impl Iterator<Item = ra_ap_vfs::FileId>;
+}
+"#;
+
+        let diagnostics = run(source);
+
         assert_diagnostic(&diagnostics[0]).message_contains("names `ra_ap_vfs::FileId`");
     }
 
@@ -1583,10 +1859,16 @@ pub trait Port {
     }
 
     #[test]
-    fn typed_receiver_is_flagged() {
+    fn typed_receiver_is_flagged_once() {
         let diagnostics = run("pub trait Port { fn read(self: triomphe::Arc<Self>); }");
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn typed_receiver_message_names_the_crate() {
+        let diagnostics = run("pub trait Port { fn read(self: triomphe::Arc<Self>); }");
+
         assert_diagnostic(&diagnostics[0]).message_contains("external crate `triomphe`");
     }
 
@@ -1615,7 +1897,7 @@ pub trait Port {
     }
 
     #[test]
-    fn use_list_entries_are_flagged() {
+    fn use_list_entries_are_flagged_three_times() {
         let source = r#"
 use ra_ap_vfs::{FileId, path::{self as paths, VfsPath}};
 
@@ -1627,13 +1909,28 @@ pub trait Port {
         let diagnostics = run(source);
 
         assert_eq!(diagnostics.len(), 3);
-        for diagnostic in &diagnostics {
-            assert_diagnostic(diagnostic).message_contains("external crate `ra_ap_vfs`");
-        }
     }
 
     #[test]
-    fn use_list_self_entry_is_resolved() {
+    fn use_list_entries_are_flagged_with_the_list_crate() {
+        let source = r#"
+use ra_ap_vfs::{FileId, path::{self as paths, VfsPath}};
+
+pub trait Port {
+    fn read(&self, id: FileId, path: VfsPath) -> paths::Kind;
+}
+"#;
+
+        let naming_the_crate = run(source)
+            .iter()
+            .filter(|diagnostic| diagnostic.message().contains("external crate `ra_ap_vfs`"))
+            .count();
+
+        assert_eq!(naming_the_crate, 3);
+    }
+
+    #[test]
+    fn use_list_self_entry_is_resolved_to_one_diagnostic() {
         let source = r#"
 use std::io::{self, Read};
 use ra_ap_vfs::{self};
@@ -1646,6 +1943,21 @@ pub trait Port {
         let diagnostics = run(source);
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn use_list_self_entry_is_resolved_to_the_external_path() {
+        let source = r#"
+use std::io::{self, Read};
+use ra_ap_vfs::{self};
+
+pub trait Port {
+    fn read(&self, reader: &mut dyn Read) -> io::Result<ra_ap_vfs::FileId>;
+}
+"#;
+
+        let diagnostics = run(source);
+
         assert_diagnostic(&diagnostics[0]).message_contains("names `ra_ap_vfs::FileId`");
     }
 

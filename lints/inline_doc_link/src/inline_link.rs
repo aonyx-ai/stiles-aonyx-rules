@@ -726,35 +726,110 @@ mod tests {
     }
 
     #[test]
-    fn trait_send() {
+    fn trait_send_block_state() {
         fn assert_send<T: Send>() {}
         assert_send::<BlockState>();
+    }
+
+    #[test]
+    fn trait_send_fill() {
+        fn assert_send<T: Send>() {}
         assert_send::<Fill>();
+    }
+
+    #[test]
+    fn trait_send_inline_link() {
+        fn assert_send<T: Send>() {}
         assert_send::<InlineLink>();
+    }
+
+    #[test]
+    fn trait_send_line() {
+        fn assert_send<T: Send>() {}
         assert_send::<Line<'_>>();
+    }
+
+    #[test]
+    fn trait_send_line_role() {
+        fn assert_send<T: Send>() {}
         assert_send::<LineRole>();
+    }
+
+    #[test]
+    fn trait_send_prose_range() {
+        fn assert_send<T: Send>() {}
         assert_send::<ProseRange>();
     }
 
     #[test]
-    fn trait_sync() {
+    fn trait_sync_block_state() {
         fn assert_sync<T: Sync>() {}
         assert_sync::<BlockState>();
+    }
+
+    #[test]
+    fn trait_sync_fill() {
+        fn assert_sync<T: Sync>() {}
         assert_sync::<Fill>();
+    }
+
+    #[test]
+    fn trait_sync_inline_link() {
+        fn assert_sync<T: Sync>() {}
         assert_sync::<InlineLink>();
+    }
+
+    #[test]
+    fn trait_sync_line() {
+        fn assert_sync<T: Sync>() {}
         assert_sync::<Line<'_>>();
+    }
+
+    #[test]
+    fn trait_sync_line_role() {
+        fn assert_sync<T: Sync>() {}
         assert_sync::<LineRole>();
+    }
+
+    #[test]
+    fn trait_sync_prose_range() {
+        fn assert_sync<T: Sync>() {}
         assert_sync::<ProseRange>();
     }
 
     #[test]
-    fn trait_unpin() {
+    fn trait_unpin_block_state() {
         fn assert_unpin<T: Unpin>() {}
         assert_unpin::<BlockState>();
+    }
+
+    #[test]
+    fn trait_unpin_fill() {
+        fn assert_unpin<T: Unpin>() {}
         assert_unpin::<Fill>();
+    }
+
+    #[test]
+    fn trait_unpin_inline_link() {
+        fn assert_unpin<T: Unpin>() {}
         assert_unpin::<InlineLink>();
+    }
+
+    #[test]
+    fn trait_unpin_line() {
+        fn assert_unpin<T: Unpin>() {}
         assert_unpin::<Line<'_>>();
+    }
+
+    #[test]
+    fn trait_unpin_line_role() {
+        fn assert_unpin<T: Unpin>() {}
         assert_unpin::<LineRole>();
+    }
+
+    #[test]
+    fn trait_unpin_prose_range() {
+        fn assert_unpin<T: Unpin>() {}
         assert_unpin::<ProseRange>();
     }
 }

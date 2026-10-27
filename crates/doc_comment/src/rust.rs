@@ -167,10 +167,38 @@ mod tests {
     }
 
     #[test]
-    fn rust_with_a_blank_line_splits_the_run() {
+    fn rust_keeps_the_offset_of_each_line() {
+        let source = "/// one\n///   two\nfn f() {}";
+        let tree = parse(source, Language::Rust);
+        let first = tree.root_node().named_child(0).expect("a comment");
+
+        let lines = rust(&first).expect("a doc comment");
+
+        assert_eq!(&source[lines[1].offset()..][..5], "  two");
+    }
+
+    #[test]
+    fn rust_keeps_the_text_of_each_line() {
+        let source = "/// one\n///   two\nfn f() {}";
+        let tree = parse(source, Language::Rust);
+        let first = tree.root_node().named_child(0).expect("a comment");
+
+        let lines = rust(&first).expect("a doc comment");
+
+        assert_eq!(lines[1].text(), "  two");
+    }
+
+    #[test]
+    fn rust_with_a_blank_line_ends_the_first_run() {
         let texts = texts_of("/// one\n\n/// two\nfn f() {}");
 
         assert_eq!(texts[0], Some(vec!["one".to_owned()]));
+    }
+
+    #[test]
+    fn rust_with_a_blank_line_starts_a_second_run() {
+        let texts = texts_of("/// one\n\n/// two\nfn f() {}");
+
         assert_eq!(texts[1], Some(vec!["two".to_owned()]));
     }
 
@@ -190,43 +218,55 @@ mod tests {
     }
 
     #[test]
-    fn rust_with_a_plain_comment_returns_none() {
+    fn rust_with_a_plain_block_comment_returns_none() {
         let texts = texts_of("// not documentation\n/* nor this */\nfn f() {}");
 
-        assert_eq!(texts[0], None);
         assert_eq!(texts[1], None);
     }
 
     #[test]
-    fn rust_with_inner_and_outer_runs_keeps_them_apart() {
-        let texts = texts_of("//! inner\n/// outer\nfn f() {}");
+    fn rust_with_a_plain_line_comment_returns_none() {
+        let texts = texts_of("// not documentation\n/* nor this */\nfn f() {}");
 
-        assert_eq!(texts[0], Some(vec!["inner".to_owned()]));
-        assert_eq!(texts[1], Some(vec!["outer".to_owned()]));
+        assert_eq!(texts[0], None);
     }
 
     #[test]
-    fn rust_with_a_run_returns_it_from_the_first_line_only() {
+    fn rust_with_a_run_returns_it_from_the_first_line() {
         let texts = texts_of("/// one\n/// two\n/// three\nfn f() {}");
 
         assert_eq!(
             texts[0],
             Some(vec!["one".to_owned(), "two".to_owned(), "three".to_owned()])
         );
+    }
+
+    #[test]
+    fn rust_with_a_run_returns_none_from_the_second_line() {
+        let texts = texts_of("/// one\n/// two\n/// three\nfn f() {}");
+
         assert_eq!(texts[1], None);
+    }
+
+    #[test]
+    fn rust_with_a_run_returns_none_from_the_third_line() {
+        let texts = texts_of("/// one\n/// two\n/// three\nfn f() {}");
+
         assert_eq!(texts[2], None);
     }
 
     #[test]
-    fn rust_keeps_the_offset_of_each_line() {
-        let source = "/// one\n///   two\nfn f() {}";
-        let tree = parse(source, Language::Rust);
-        let first = tree.root_node().named_child(0).expect("a comment");
+    fn rust_with_inner_and_outer_runs_returns_the_inner_run_alone() {
+        let texts = texts_of("//! inner\n/// outer\nfn f() {}");
 
-        let lines = rust(&first).expect("a doc comment");
+        assert_eq!(texts[0], Some(vec!["inner".to_owned()]));
+    }
 
-        assert_eq!(lines[1].text(), "  two");
-        assert_eq!(&source[lines[1].offset()..][..5], "  two");
+    #[test]
+    fn rust_with_inner_and_outer_runs_returns_the_outer_run_alone() {
+        let texts = texts_of("//! inner\n/// outer\nfn f() {}");
+
+        assert_eq!(texts[1], Some(vec!["outer".to_owned()]));
     }
 
     #[test]

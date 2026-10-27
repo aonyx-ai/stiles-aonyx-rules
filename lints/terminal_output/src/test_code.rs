@@ -351,23 +351,38 @@ mod tests {
     }
 
     #[test]
-    fn trait_send() {
+    fn trait_send_parser() {
         fn assert_send<T: Send>() {}
-        assert_send::<Token<'static>>();
         assert_send::<Parser<'static, 'static>>();
     }
 
     #[test]
-    fn trait_sync() {
+    fn trait_send_token() {
+        fn assert_send<T: Send>() {}
+        assert_send::<Token<'static>>();
+    }
+
+    #[test]
+    fn trait_sync_parser() {
         fn assert_sync<T: Sync>() {}
-        assert_sync::<Token<'static>>();
         assert_sync::<Parser<'static, 'static>>();
     }
 
     #[test]
-    fn trait_unpin() {
+    fn trait_sync_token() {
+        fn assert_sync<T: Sync>() {}
+        assert_sync::<Token<'static>>();
+    }
+
+    #[test]
+    fn trait_unpin_parser() {
+        fn assert_unpin<T: Unpin>() {}
+        assert_unpin::<Parser<'static, 'static>>();
+    }
+
+    #[test]
+    fn trait_unpin_token() {
         fn assert_unpin<T: Unpin>() {}
         assert_unpin::<Token<'static>>();
-        assert_unpin::<Parser<'static, 'static>>();
     }
 }

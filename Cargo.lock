@@ -489,6 +489,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "multi_assert_test"
+version = "0.1.0"
+dependencies = [
+ "whisker-plugin",
+ "whisker-rust",
+ "whisker-testing",
+ "whisker-types",
+]
+
+[[package]]
 name = "multi_param_constructor"
 version = "0.1.0"
 dependencies = [

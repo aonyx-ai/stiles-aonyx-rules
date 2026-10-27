@@ -280,6 +280,14 @@ mod tests {
         );
 
         assert_reports_one(&diagnostics);
+    }
+
+    #[test]
+    fn builder_attribute_on_the_previous_function_reports_the_next_by_name() {
+        let diagnostics = run_in_impl(
+            "#[builder]\n    fn a(a: u8, b: u8) -> Self { todo!() }\n    fn b(a: u8, b: u8) -> Self { todo!() }",
+        );
+
         assert_diagnostic(&diagnostics[0]).message_contains("`b` builds `Foo`");
     }
 
@@ -428,15 +436,32 @@ mod tests {
     }
 
     #[test]
-    fn diagnostic_points_at_the_function_name() {
+    fn diagnostic_is_reported_once_for_the_constructor() {
         let source = "impl Foo {\n    fn new(a: u8, b: u8) -> Self { todo!() }\n}";
 
         let diagnostics = run(source);
 
         assert_reports_one(&diagnostics);
+    }
+
+    #[test]
+    fn diagnostic_points_at_the_function_name_end() {
+        let source = "impl Foo {\n    fn new(a: u8, b: u8) -> Self { todo!() }\n}";
         let start = source.find("new").expect("the name is in the source");
-        assert_eq!(diagnostics[0].span().start(), start);
+
+        let diagnostics = run(source);
+
         assert_eq!(diagnostics[0].span().end(), start + "new".len());
+    }
+
+    #[test]
+    fn diagnostic_points_at_the_function_name_start() {
+        let source = "impl Foo {\n    fn new(a: u8, b: u8) -> Self { todo!() }\n}";
+        let start = source.find("new").expect("the name is in the source");
+
+        let diagnostics = run(source);
+
+        assert_eq!(diagnostics[0].span().start(), start);
     }
 
     #[test]
@@ -451,15 +476,6 @@ mod tests {
         let diagnostics = run("impl dyn Shape {\n    fn new(a: u8, b: u8) -> Self { todo!() }\n}");
 
         assert_reports_one(&diagnostics);
-    }
-
-    #[test]
-    fn generic_impl_returning_self_flagged() {
-        let diagnostics =
-            run("impl<T: Clone> Foo<T> {\n    fn new(a: T, b: T) -> Self { todo!() }\n}");
-
-        assert_reports_one(&diagnostics);
-        assert_diagnostic(&diagnostics[0]).message_contains("`new` builds `Foo<T>`");
     }
 
     #[test]
@@ -479,6 +495,22 @@ mod tests {
     }
 
     #[test]
+    fn generic_impl_returning_self_flagged_once() {
+        let diagnostics =
+            run("impl<T: Clone> Foo<T> {\n    fn new(a: T, b: T) -> Self { todo!() }\n}");
+
+        assert_reports_one(&diagnostics);
+    }
+
+    #[test]
+    fn generic_impl_returning_self_names_the_generic_type() {
+        let diagnostics =
+            run("impl<T: Clone> Foo<T> {\n    fn new(a: T, b: T) -> Self { todo!() }\n}");
+
+        assert_diagnostic(&diagnostics[0]).message_contains("`new` builds `Foo<T>`");
+    }
+
+    #[test]
     fn io_result_alias_of_self_flagged() {
         let diagnostics = run_in_impl("fn open(a: u8, b: u8) -> io::Result<Self> { todo!() }");
 
@@ -489,7 +521,6 @@ mod tests {
     fn message_names_the_function_the_type_and_the_count() {
         let diagnostics = run_in_impl("fn of(a: u8, b: u8, c: u8) -> Self { todo!() }");
 
-        assert_reports_one(&diagnostics);
         assert_diagnostic(&diagnostics[0])
             .message_contains("`of` builds `Foo` from 3 positional parameters")
             .message_contains("`bon`")
@@ -561,11 +592,18 @@ mod tests {
     }
 
     #[test]
-    fn pattern_parameters_count_once_each() {
+    fn pattern_parameters_constructor_is_flagged_once() {
         let diagnostics =
             run_in_impl("fn new((a, b): (u8, u8), Bar { c }: Bar) -> Self { todo!() }");
 
         assert_reports_one(&diagnostics);
+    }
+
+    #[test]
+    fn pattern_parameters_count_once_each() {
+        let diagnostics =
+            run_in_impl("fn new((a, b): (u8, u8), Bar { c }: Bar) -> Self { todo!() }");
+
         assert_diagnostic(&diagnostics[0]).message_contains("from 2 positional parameters");
     }
 
@@ -653,10 +691,23 @@ mod tests {
     }
 
     #[test]
-    fn two_parameters_returning_self_flagged() {
+    fn three_parameters_returning_self_flagged_once() {
+        let diagnostics = run_in_impl("fn of(a: u8, b: u8, c: u8) -> Self { todo!() }");
+
+        assert_reports_one(&diagnostics);
+    }
+
+    #[test]
+    fn two_parameters_returning_self_flagged_once() {
         let diagnostics = run_in_impl("fn new(a: u8, b: u8) -> Self { todo!() }");
 
         assert_reports_one(&diagnostics);
+    }
+
+    #[test]
+    fn two_parameters_returning_self_names_the_function_the_type_and_the_count() {
+        let diagnostics = run_in_impl("fn new(a: u8, b: u8) -> Self { todo!() }");
+
         assert_diagnostic(&diagnostics[0])
             .message_contains("`new` builds `Foo` from 2 positional parameters");
     }

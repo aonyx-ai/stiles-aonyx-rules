@@ -279,8 +279,14 @@ mod tests {
     fn check_signature_with_an_attribute_nobody_configured_reports_group() {
         let diagnostics = run("#[shard]\nfn f(a: String, b: String) {}");
 
-        assert_eq!(diagnostics.len(), 1);
         assert_diagnostic(&diagnostics[0]).message_contains("share type `String`");
+    }
+
+    #[test]
+    fn check_signature_with_an_attribute_nobody_configured_reports_one_diagnostic() {
+        let diagnostics = run("#[shard]\nfn f(a: String, b: String) {}");
+
+        assert_eq!(diagnostics.len(), 1);
     }
 
     #[test]
@@ -300,8 +306,17 @@ mod tests {
             &["shard"],
         );
 
-        assert_eq!(diagnostics.len(), 1);
         assert_diagnostic(&diagnostics[0]).message_contains("share type `String`");
+    }
+
+    #[test]
+    fn check_signature_after_another_signatures_attribute_reports_one_diagnostic() {
+        let diagnostics = run_with_boundary_attributes(
+            "#[shard]\nfn a(x: String, y: String) {}\nfn b(x: String, y: String) {}",
+            &["shard"],
+        );
+
+        assert_eq!(diagnostics.len(), 1);
     }
 
     #[test]
@@ -309,8 +324,15 @@ mod tests {
         let diagnostics =
             run_with_boundary_attributes("#[inline]\nfn f(a: String, b: String) {}", &["shard"]);
 
-        assert_eq!(diagnostics.len(), 1);
         assert_diagnostic(&diagnostics[0]).message_contains("share type `String`");
+    }
+
+    #[test]
+    fn check_signature_with_another_attribute_reports_one_diagnostic() {
+        let diagnostics =
+            run_with_boundary_attributes("#[inline]\nfn f(a: String, b: String) {}", &["shard"]);
+
+        assert_eq!(diagnostics.len(), 1);
     }
 
     #[test]
@@ -352,17 +374,29 @@ mod tests {
     fn check_signature_with_repeated_lifetime_reference_reports_group() {
         let diagnostics = run("fn f<'a>(a: &'a str, b: &'a str) {}");
 
-        assert_eq!(diagnostics.len(), 1);
         assert_diagnostic(&diagnostics[0]).message_contains("share type `&str`");
+    }
+
+    #[test]
+    fn check_signature_with_repeated_lifetime_reference_reports_one_diagnostic() {
+        let diagnostics = run("fn f<'a>(a: &'a str, b: &'a str) {}");
+
+        assert_eq!(diagnostics.len(), 1);
     }
 
     #[test]
     fn check_signature_with_repeated_mutable_reference_reports_group() {
         let diagnostics = run("fn f(functions: &mut usize, signatures: &mut usize) {}");
 
-        assert_eq!(diagnostics.len(), 1);
         assert_diagnostic(&diagnostics[0])
             .message_contains("parameters `functions` and `signatures` share type `&mut usize`");
+    }
+
+    #[test]
+    fn check_signature_with_repeated_mutable_reference_reports_one_diagnostic() {
+        let diagnostics = run("fn f(functions: &mut usize, signatures: &mut usize) {}");
+
+        assert_eq!(diagnostics.len(), 1);
     }
 
     #[test]
@@ -372,7 +406,6 @@ mod tests {
         let diagnostics = run(source);
 
         let start = source.find("String").expect("source contains a type");
-        assert_eq!(diagnostics.len(), 1);
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.repeated-primitive-params")
             .has_severity(Severity::Warn)
@@ -381,19 +414,40 @@ mod tests {
     }
 
     #[test]
+    fn check_signature_with_repeated_string_reports_one_diagnostic() {
+        let source = "fn send_email(to: String, from: String) {}";
+
+        let diagnostics = run(source);
+
+        assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
     fn check_signature_with_repeated_type_on_method_reports_group() {
         let diagnostics = run("impl S { fn f(&self, a: usize, b: usize) {} }");
 
-        assert_eq!(diagnostics.len(), 1);
         assert_diagnostic(&diagnostics[0]).message_contains("parameters `a` and `b`");
+    }
+
+    #[test]
+    fn check_signature_with_repeated_type_on_method_reports_one_diagnostic() {
+        let diagnostics = run("impl S { fn f(&self, a: usize, b: usize) {} }");
+
+        assert_eq!(diagnostics.len(), 1);
     }
 
     #[test]
     fn check_signature_with_repeated_type_on_trait_method_reports_group() {
         let diagnostics = run("trait T { fn f(&self, a: usize, b: usize); }");
 
-        assert_eq!(diagnostics.len(), 1);
         assert_diagnostic(&diagnostics[0]).message_contains("parameters `a` and `b`");
+    }
+
+    #[test]
+    fn check_signature_with_repeated_type_on_trait_method_reports_one_diagnostic() {
+        let diagnostics = run("trait T { fn f(&self, a: usize, b: usize); }");
+
+        assert_eq!(diagnostics.len(), 1);
     }
 
     #[test]
@@ -404,22 +458,40 @@ mod tests {
     }
 
     #[test]
-    fn check_signature_with_two_repeated_types_reports_each_group() {
+    fn check_signature_with_two_repeated_types_reports_string_group_second() {
+        let diagnostics = run("fn f(a: usize, b: String, c: usize, d: String) {}");
+
+        assert_diagnostic(&diagnostics[1])
+            .message_contains("parameters `b` and `d` share type `String`");
+    }
+
+    #[test]
+    fn check_signature_with_two_repeated_types_reports_two_diagnostics() {
         let diagnostics = run("fn f(a: usize, b: String, c: usize, d: String) {}");
 
         assert_eq!(diagnostics.len(), 2);
+    }
+
+    #[test]
+    fn check_signature_with_two_repeated_types_reports_usize_group_first() {
+        let diagnostics = run("fn f(a: usize, b: String, c: usize, d: String) {}");
+
         assert_diagnostic(&diagnostics[0])
             .message_contains("parameters `a` and `c` share type `usize`");
-        assert_diagnostic(&diagnostics[1])
-            .message_contains("parameters `b` and `d` share type `String`");
     }
 
     #[test]
     fn check_signature_with_unsafe_modifier_reports_group() {
         let diagnostics = run("unsafe fn f(a: usize, b: usize) {}");
 
-        assert_eq!(diagnostics.len(), 1);
         assert_diagnostic(&diagnostics[0]).message_contains("share type `usize`");
+    }
+
+    #[test]
+    fn check_signature_with_unsafe_modifier_reports_one_diagnostic() {
+        let diagnostics = run("unsafe fn f(a: usize, b: usize) {}");
+
+        assert_eq!(diagnostics.len(), 1);
     }
 
     #[test]
@@ -454,17 +526,29 @@ mod tests {
     fn primitive_type_name_with_nested_reference_keeps_both_markers() {
         let diagnostics = run("fn f(a: &&str, b: &&str) {}");
 
-        assert_eq!(diagnostics.len(), 1);
         assert_diagnostic(&diagnostics[0]).message_contains("share type `&&str`");
+    }
+
+    #[test]
+    fn primitive_type_name_with_nested_reference_reports_one_diagnostic() {
+        let diagnostics = run("fn f(a: &&str, b: &&str) {}");
+
+        assert_eq!(diagnostics.len(), 1);
     }
 
     #[test]
     fn primitive_type_name_with_three_repeated_params_lists_all_three() {
         let diagnostics = run("fn f(a: u32, b: u32, c: u32) {}");
 
-        assert_eq!(diagnostics.len(), 1);
         assert_diagnostic(&diagnostics[0])
             .message_contains("parameters `a`, `b`, and `c` share type `u32`");
+    }
+
+    #[test]
+    fn primitive_type_name_with_three_repeated_params_reports_one_diagnostic() {
+        let diagnostics = run("fn f(a: u32, b: u32, c: u32) {}");
+
+        assert_eq!(diagnostics.len(), 1);
     }
 
     #[test]
@@ -475,23 +559,38 @@ mod tests {
     }
 
     #[test]
-    fn trait_send() {
+    fn trait_send_parameter_group() {
         fn assert_send<T: Send>() {}
-        assert_send::<RepeatedPrimitiveParams>();
         assert_send::<ParameterGroup<'_>>();
     }
 
     #[test]
-    fn trait_sync() {
+    fn trait_send_repeated_primitive_params() {
+        fn assert_send<T: Send>() {}
+        assert_send::<RepeatedPrimitiveParams>();
+    }
+
+    #[test]
+    fn trait_sync_parameter_group() {
         fn assert_sync<T: Sync>() {}
-        assert_sync::<RepeatedPrimitiveParams>();
         assert_sync::<ParameterGroup<'_>>();
     }
 
     #[test]
-    fn trait_unpin() {
+    fn trait_sync_repeated_primitive_params() {
+        fn assert_sync<T: Sync>() {}
+        assert_sync::<RepeatedPrimitiveParams>();
+    }
+
+    #[test]
+    fn trait_unpin_parameter_group() {
+        fn assert_unpin<T: Unpin>() {}
+        assert_unpin::<ParameterGroup<'_>>();
+    }
+
+    #[test]
+    fn trait_unpin_repeated_primitive_params() {
         fn assert_unpin<T: Unpin>() {}
         assert_unpin::<RepeatedPrimitiveParams>();
-        assert_unpin::<ParameterGroup<'_>>();
     }
 }

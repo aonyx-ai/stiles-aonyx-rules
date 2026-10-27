@@ -110,7 +110,7 @@ mod tests {
     }
 
     #[test]
-    fn detect_with_enum_scrutinee_flags_wildcard() {
+    fn detect_with_enum_scrutinee_flags_wildcard_once() {
         let source = "fn f() { match x { A => {} _ => {} } }";
         let mut tree = parse(source, Language::Rust);
         let scrutinee_id = find_scrutinee_id(&tree);
@@ -124,6 +124,22 @@ mod tests {
         let diagnostics = execute(&tree, &mut passes());
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn detect_with_enum_scrutinee_flags_wildcard_with_a_warning() {
+        let source = "fn f() { match x { A => {} _ => {} } }";
+        let mut tree = parse(source, Language::Rust);
+        let scrutinee_id = find_scrutinee_id(&tree);
+        let mut map = DecorationMap::new();
+        map.insert(
+            scrutinee_id,
+            ResolvedType::new("MyEnum".into()).with_enum(true),
+        );
+        decorate(&mut tree, map);
+
+        let diagnostics = execute(&tree, &mut passes());
+
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.wildcard-match-arm")
             .has_severity(Severity::Warn)
@@ -191,6 +207,23 @@ mod tests {
         let diagnostics = execute(&tree, &mut passes());
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn non_exhaustive_local_enum_is_flagged_as_a_warning() {
+        let source = "fn f() { match x { A => {} _ => {} } }";
+        let mut tree = parse(source, Language::Rust);
+        let scrutinee_id = find_scrutinee_id(&tree);
+        let mut map = DecorationMap::new();
+        map.insert(
+            scrutinee_id,
+            ResolvedType::new("LocalEnum".into()).with_enum(true),
+        );
+        map.insert(scrutinee_id, AdtFlags::new(false));
+        decorate(&mut tree, map);
+
+        let diagnostics = execute(&tree, &mut passes());
+
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.wildcard-match-arm")
             .has_severity(Severity::Warn);

@@ -184,11 +184,19 @@ mod tests {
 
         let diagnostics = execute(&tree, &mut passes());
 
-        assert_eq!(diagnostics.len(), 1);
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.matches-macro")
             .has_severity(Severity::Warn)
             .message_contains("branch");
+    }
+
+    #[test]
+    fn matches_as_if_condition_reports_one_diagnostic() {
+        let tree = parse("fn f() { if matches!(x, Some(5)) {} }", Language::Rust);
+
+        let diagnostics = execute(&tree, &mut passes());
+
+        assert_eq!(diagnostics.len(), 1);
     }
 
     #[test]
@@ -279,12 +287,30 @@ mod tests {
 
         let diagnostics = execute(&tree, &mut passes());
 
-        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].message(), VALUE_MESSAGE);
+    }
+
+    #[test]
+    fn matches_in_let_binding_has_rule_id_and_severity() {
+        let source = "fn f() { let _ = matches!(x, Some(_)); }";
+        let tree = parse(source, Language::Rust);
+
+        let diagnostics = execute(&tree, &mut passes());
+
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.matches-macro")
             .has_severity(Severity::Warn)
             .message_contains("match");
-        assert_eq!(diagnostics[0].message(), VALUE_MESSAGE);
+    }
+
+    #[test]
+    fn matches_in_let_binding_reports_one_diagnostic() {
+        let source = "fn f() { let _ = matches!(x, Some(_)); }";
+        let tree = parse(source, Language::Rust);
+
+        let diagnostics = execute(&tree, &mut passes());
+
+        assert_eq!(diagnostics.len(), 1);
     }
 
     #[test]
@@ -443,23 +469,38 @@ mod tests {
     }
 
     #[test]
-    fn trait_send() {
+    fn trait_send_matches_macro() {
         fn assert_send<T: Send>() {}
         assert_send::<MatchesMacro>();
+    }
+
+    #[test]
+    fn trait_send_position() {
+        fn assert_send<T: Send>() {}
         assert_send::<Position>();
     }
 
     #[test]
-    fn trait_sync() {
+    fn trait_sync_matches_macro() {
         fn assert_sync<T: Sync>() {}
         assert_sync::<MatchesMacro>();
+    }
+
+    #[test]
+    fn trait_sync_position() {
+        fn assert_sync<T: Sync>() {}
         assert_sync::<Position>();
     }
 
     #[test]
-    fn trait_unpin() {
+    fn trait_unpin_matches_macro() {
         fn assert_unpin<T: Unpin>() {}
         assert_unpin::<MatchesMacro>();
+    }
+
+    #[test]
+    fn trait_unpin_position() {
+        fn assert_unpin<T: Unpin>() {}
         assert_unpin::<Position>();
     }
 }

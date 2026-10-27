@@ -201,19 +201,53 @@ mod tests {
     }
 
     #[test]
-    fn long_sentence_across_lines_is_flagged() {
+    fn long_sentence_across_lines_is_flagged_as_a_warning_with_its_word_count() {
+        let source = "/// Returns the coverage verdict for this file, which is empty when no decoration\n/// providers were configured, since a provider that declines still counts as\n/// having looked and the walk needs to distinguish that from never having run.\npub struct Foo;\n";
+
+        let diagnostics = check(source);
+
+        assert_diagnostic(&diagnostics[0])
+            .has_rule_id("lint.long-doc-sentence")
+            .has_severity(Severity::Warn)
+            .message_contains("37 words");
+    }
+
+    #[test]
+    fn long_sentence_across_lines_is_flagged_once() {
         let source = "/// Returns the coverage verdict for this file, which is empty when no decoration\n/// providers were configured, since a provider that declines still counts as\n/// having looked and the walk needs to distinguish that from never having run.\npub struct Foo;\n";
 
         let diagnostics = check(source);
 
         assert_eq!(diagnostics.len(), 1);
-        assert_diagnostic(&diagnostics[0])
-            .has_rule_id("lint.long-doc-sentence")
-            .has_severity(Severity::Warn)
-            .message_contains("37 words");
+    }
+
+    #[test]
+    fn long_sentence_across_lines_span_ends_at_the_sentence_end() {
+        let source = "/// Returns the coverage verdict for this file, which is empty when no decoration\n/// providers were configured, since a provider that declines still counts as\n/// having looked and the walk needs to distinguish that from never having run.\npub struct Foo;\n";
+
+        let diagnostics = check(source);
+
+        let span = diagnostics[0].span();
+        assert!(source[span.start()..span.end()].ends_with("having run."));
+    }
+
+    #[test]
+    fn long_sentence_across_lines_span_starts_at_the_sentence_start() {
+        let source = "/// Returns the coverage verdict for this file, which is empty when no decoration\n/// providers were configured, since a provider that declines still counts as\n/// having looked and the walk needs to distinguish that from never having run.\npub struct Foo;\n";
+
+        let diagnostics = check(source);
+
         let span = diagnostics[0].span();
         assert!(source[span.start()..span.end()].starts_with("Returns the coverage"));
-        assert!(source[span.start()..span.end()].ends_with("having run."));
+    }
+
+    #[test]
+    fn multibyte_prose_is_flagged_once() {
+        let source = format!("/// 日本語 {}.\npub struct Foo;\n", words(30));
+
+        let diagnostics = check(&source);
+
+        assert_eq!(diagnostics.len(), 1);
     }
 
     #[test]
@@ -222,7 +256,6 @@ mod tests {
 
         let diagnostics = check(&source);
 
-        assert_eq!(diagnostics.len(), 1);
         let span = diagnostics[0].span();
         assert!(source[span.start()..span.end()].starts_with("日本語"));
     }
@@ -262,10 +295,16 @@ mod tests {
     }
 
     #[test]
-    fn sentence_over_the_limit_is_flagged() {
+    fn sentence_over_the_limit_is_flagged_once() {
         let diagnostics = check(&doc_of(MAX_WORDS + 1));
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn sentence_over_the_limit_is_flagged_with_its_word_count() {
+        let diagnostics = check(&doc_of(MAX_WORDS + 1));
+
         assert_diagnostic(&diagnostics[0]).message_contains("26 words");
     }
 
@@ -294,7 +333,6 @@ mod tests {
 
         let diagnostics = check(&source);
 
-        assert_eq!(diagnostics.len(), 1);
         let span = diagnostics[0].span();
         let sentence = source[4..].lines().next().expect("the doc line");
         assert_eq!(&source[span.start()..span.end()], sentence);
@@ -351,13 +389,22 @@ mod tests {
         }
 
         #[test]
-        fn doc_comment_over_the_limit_is_flagged_over_the_sentence() {
+        fn doc_comment_over_the_limit_is_flagged_once() {
             let sentence = format!("{}.", words(26));
             let source = format!("/**\n * {sentence}\n */\nfunction f() {{}}");
 
             let diagnostics = check(&source);
 
             assert_eq!(diagnostics.len(), 1);
+        }
+
+        #[test]
+        fn doc_comment_over_the_limit_is_flagged_over_the_sentence() {
+            let sentence = format!("{}.", words(26));
+            let source = format!("/**\n * {sentence}\n */\nfunction f() {{}}");
+
+            let diagnostics = check(&source);
+
             let start = source.find("word0").unwrap();
             assert_diagnostic(&diagnostics[0])
                 .has_rule_id("lint.long-doc-sentence")
@@ -409,8 +456,20 @@ mod tests {
 
             let diagnostics = check(&source);
 
-            assert_eq!(diagnostics.len(), 1);
             assert_diagnostic(&diagnostics[0]).message_contains("26 words");
+        }
+
+        #[test]
+        fn sentence_across_lines_is_flagged_once() {
+            let source = format!(
+                "/**\n * {}\n * {}.\n */\nfunction f() {{}}",
+                words(13),
+                words(13)
+            );
+
+            let diagnostics = check(&source);
+
+            assert_eq!(diagnostics.len(), 1);
         }
     }
 }

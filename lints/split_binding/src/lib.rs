@@ -418,6 +418,18 @@ mod tests {
             }");
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn chain_inside_a_nested_block_names_the_first_binding() {
+        let diagnostics = run("fn f() {
+                if cond {
+                    let raw_input = read();
+                    let input = raw_input.trim();
+                    use_it(input);
+                }
+            }");
+
         assert_diagnostic(&diagnostics[0]).message_contains("`raw_input`");
     }
 
@@ -431,8 +443,30 @@ mod tests {
             }");
 
         assert_eq!(diagnostics.len(), 2);
+    }
+
+    #[test]
+    fn chain_of_three_bindings_flags_the_first_link() {
+        let diagnostics = run("fn f() {
+                let raw_input = read();
+                let trimmed_input = raw_input.trim();
+                let parsed_input = parse(trimmed_input);
+                use_it(parsed_input);
+            }");
+
         assert_diagnostic(&diagnostics[0])
             .message_contains("`raw_input` is only used to initialize `trimmed_input`");
+    }
+
+    #[test]
+    fn chain_of_three_bindings_flags_the_second_link() {
+        let diagnostics = run("fn f() {
+                let raw_input = read();
+                let trimmed_input = raw_input.trim();
+                let parsed_input = parse(trimmed_input);
+                use_it(parsed_input);
+            }");
+
         assert_diagnostic(&diagnostics[1])
             .message_contains("`trimmed_input` is only used to initialize `parsed_input`");
     }
@@ -450,7 +484,7 @@ mod tests {
     }
 
     #[test]
-    fn diagnostic_names_the_word_both_bindings_share() {
+    fn diagnostic_for_two_bindings_with_a_shared_word_is_reported_once() {
         let diagnostics = run("fn f() {
                 let raw_input = read();
                 let trimmed_input = raw_input.trim();
@@ -458,6 +492,16 @@ mod tests {
             }");
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn diagnostic_names_the_word_both_bindings_share() {
+        let diagnostics = run("fn f() {
+                let raw_input = read();
+                let trimmed_input = raw_input.trim();
+                use_it(trimmed_input);
+            }");
+
         assert_diagnostic(&diagnostics[0]).message_contains("use `input` for both and shadow");
     }
 
@@ -467,9 +511,13 @@ mod tests {
     }
 
     #[test]
+    fn head_with_snake_case_path_name_returns_the_last_word() {
+        assert_eq!(head("config_path"), "path");
+    }
+
+    #[test]
     fn head_with_snake_case_returns_the_last_word() {
         assert_eq!(head("raw_input"), "input");
-        assert_eq!(head("config_path"), "path");
     }
 
     #[test]
@@ -526,7 +574,22 @@ mod tests {
     }
 
     #[test]
-    fn non_adjacent_binding_is_flagged() {
+    fn non_adjacent_binding_is_flagged_naming_the_first_binding() {
+        let diagnostics = run("fn f() {
+                let raw_input = read();
+                let count = 0;
+                let trimmed_input = raw_input.trim();
+                use_it(trimmed_input, count);
+            }");
+
+        assert_diagnostic(&diagnostics[0])
+            .has_rule_id("lint.split-binding")
+            .has_severity(Severity::Warn)
+            .message_contains("`raw_input`");
+    }
+
+    #[test]
+    fn non_adjacent_binding_is_flagged_once() {
         let diagnostics = run("fn f() {
                 let raw_input = read();
                 let count = 0;
@@ -535,10 +598,6 @@ mod tests {
             }");
 
         assert_eq!(diagnostics.len(), 1);
-        assert_diagnostic(&diagnostics[0])
-            .has_rule_id("lint.split-binding")
-            .has_severity(Severity::Warn)
-            .message_contains("`raw_input`");
     }
 
     #[test]
@@ -565,7 +624,19 @@ mod tests {
     }
 
     #[test]
-    fn repeated_use_inside_one_initializer_is_flagged() {
+    fn repeated_use_inside_one_initializer_is_flagged_as_only_initializing_its_successor() {
+        let diagnostics = run("fn f() {
+                let raw_input = read();
+                let trimmed_input = join(raw_input, raw_input);
+                use_it(trimmed_input);
+            }");
+
+        assert_diagnostic(&diagnostics[0])
+            .message_contains("`raw_input` is only used to initialize `trimmed_input`");
+    }
+
+    #[test]
+    fn repeated_use_inside_one_initializer_is_flagged_once() {
         let diagnostics = run("fn f() {
                 let raw_input = read();
                 let trimmed_input = join(raw_input, raw_input);
@@ -573,8 +644,6 @@ mod tests {
             }");
 
         assert_eq!(diagnostics.len(), 1);
-        assert_diagnostic(&diagnostics[0])
-            .message_contains("`raw_input` is only used to initialize `trimmed_input`");
     }
 
     #[test]
@@ -589,8 +658,12 @@ mod tests {
     }
 
     #[test]
+    fn shared_head_with_bare_last_word_returns_it() {
+        assert_eq!(shared_head("raw_input", "input"), Some("input"));
+    }
+
+    #[test]
     fn shared_head_with_different_last_words_returns_none() {
-        assert!(shared_head("config", "config_path").is_none());
         assert!(shared_head("left", "right").is_none());
     }
 
@@ -605,34 +678,67 @@ mod tests {
     }
 
     #[test]
+    fn shared_head_with_one_name_a_prefix_of_the_other_returns_none() {
+        assert!(shared_head("config", "config_path").is_none());
+    }
+
+    #[test]
     fn shared_head_with_shared_last_word_returns_it() {
-        assert_eq!(shared_head("raw_input", "input"), Some("input"));
         assert_eq!(shared_head("raw_input", "trimmed_input"), Some("input"));
     }
 
     #[test]
-    fn trait_send() {
+    fn trait_send_holds_for_binding() {
         fn assert_send<T: Send>() {}
-        assert_send::<SplitBinding>();
         assert_send::<Binding<'_>>();
     }
 
     #[test]
-    fn trait_sync() {
+    fn trait_send_holds_for_split_binding() {
+        fn assert_send<T: Send>() {}
+        assert_send::<SplitBinding>();
+    }
+
+    #[test]
+    fn trait_sync_holds_for_binding() {
         fn assert_sync<T: Sync>() {}
-        assert_sync::<SplitBinding>();
         assert_sync::<Binding<'_>>();
     }
 
     #[test]
-    fn trait_unpin() {
+    fn trait_sync_holds_for_split_binding() {
+        fn assert_sync<T: Sync>() {}
+        assert_sync::<SplitBinding>();
+    }
+
+    #[test]
+    fn trait_unpin_holds_for_binding() {
         fn assert_unpin<T: Unpin>() {}
-        assert_unpin::<SplitBinding>();
         assert_unpin::<Binding<'_>>();
     }
 
     #[test]
-    fn two_bindings_with_shared_head_are_flagged() {
+    fn trait_unpin_holds_for_split_binding() {
+        fn assert_unpin<T: Unpin>() {}
+        assert_unpin::<SplitBinding>();
+    }
+
+    #[test]
+    fn two_bindings_with_shared_head_are_flagged_as_only_initializing_the_first() {
+        let diagnostics = run("fn f() {
+                let raw_input = read();
+                let input = raw_input.trim();
+                use_it(input);
+            }");
+
+        assert_diagnostic(&diagnostics[0])
+            .has_rule_id("lint.split-binding")
+            .has_severity(Severity::Warn)
+            .message_contains("`raw_input` is only used to initialize `input`");
+    }
+
+    #[test]
+    fn two_bindings_with_shared_head_are_flagged_once() {
         let diagnostics = run("fn f() {
                 let raw_input = read();
                 let input = raw_input.trim();
@@ -640,10 +746,6 @@ mod tests {
             }");
 
         assert_eq!(diagnostics.len(), 1);
-        assert_diagnostic(&diagnostics[0])
-            .has_rule_id("lint.split-binding")
-            .has_severity(Severity::Warn)
-            .message_contains("`raw_input` is only used to initialize `input`");
     }
 
     #[test]

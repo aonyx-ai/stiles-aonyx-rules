@@ -298,14 +298,20 @@ mod tests {
     }
 
     #[test]
-    fn block_tail_expression_is_flagged() {
+    fn block_tail_expression_is_flagged_as_two_fields_of_the_binding() {
         let diagnostics = run("fn f() -> u32 { r.width * r.height }");
 
-        assert_eq!(diagnostics.len(), 1);
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.repeated-field-access")
             .has_severity(Severity::Warn)
             .message_contains("2 fields of `r`");
+    }
+
+    #[test]
+    fn block_tail_expression_is_flagged_once() {
+        let diagnostics = run("fn f() -> u32 { r.width * r.height }");
+
+        assert_eq!(diagnostics.len(), 1);
     }
 
     #[test]
@@ -316,11 +322,17 @@ mod tests {
     }
 
     #[test]
-    fn closure_with_a_block_body_is_checked_as_its_own_scope() {
+    fn closure_with_a_block_body_is_flagged_for_the_closure_parameter() {
+        let diagnostics = run("fn f() { g(it.map(|e| { h(e.a, e.b) })); }");
+
+        assert_diagnostic(&diagnostics[0]).message_contains("2 fields of `e`");
+    }
+
+    #[test]
+    fn closure_with_a_block_body_is_flagged_once() {
         let diagnostics = run("fn f() { g(it.map(|e| { h(e.a, e.b) })); }");
 
         assert_eq!(diagnostics.len(), 1);
-        assert_diagnostic(&diagnostics[0]).message_contains("2 fields of `e`");
     }
 
     #[test]
@@ -352,11 +364,17 @@ mod tests {
     }
 
     #[test]
-    fn fields_of_a_nested_value_are_flagged_on_the_outer_binding_only() {
+    fn fields_of_a_nested_value_are_flagged_on_the_outer_binding() {
+        let diagnostics = run("fn f() { g(u.a.x, u.b.y); }");
+
+        assert_diagnostic(&diagnostics[0]).message_contains("2 fields of `u`");
+    }
+
+    #[test]
+    fn fields_of_a_nested_value_are_flagged_once() {
         let diagnostics = run("fn f() { g(u.a.x, u.b.y); }");
 
         assert_eq!(diagnostics.len(), 1);
-        assert_diagnostic(&diagnostics[0]).message_contains("2 fields of `u`");
     }
 
     #[test]
@@ -364,7 +382,19 @@ mod tests {
         let diagnostics = run("fn f() { g(u.a, u.b, v.a, v.b); }");
 
         assert_eq!(diagnostics.len(), 2);
+    }
+
+    #[test]
+    fn fields_of_two_bindings_flag_the_first_binding_first() {
+        let diagnostics = run("fn f() { g(u.a, u.b, v.a, v.b); }");
+
         assert_diagnostic(&diagnostics[0]).message_contains("`u`");
+    }
+
+    #[test]
+    fn fields_of_two_bindings_flag_the_second_binding_second() {
+        let diagnostics = run("fn f() { g(u.a, u.b, v.a, v.b); }");
+
         assert_diagnostic(&diagnostics[1]).message_contains("`v`");
     }
 
@@ -372,18 +402,36 @@ mod tests {
     fn for_pattern_binding_gets_the_pattern_advice() {
         let diagnostics = run("fn f() { for e in it { m.insert(e.key, e.value); } }");
 
-        assert_eq!(diagnostics.len(), 1);
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.repeated-field-access")
             .message_contains("destructure `e` in the `for` pattern");
     }
 
     #[test]
+    fn for_pattern_binding_is_flagged_once() {
+        let diagnostics = run("fn f() { for e in it { m.insert(e.key, e.value); } }");
+
+        assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
     fn for_pattern_that_destructures_behind_a_reference_gets_the_plain_advice() {
         let diagnostics = run("fn f() { for &(a, b) in it { m.insert(b.key, b.value); } }");
 
-        assert_eq!(diagnostics.len(), 1);
         assert_diagnostic(&diagnostics[0]).message_contains("destructure `b`");
+    }
+
+    #[test]
+    fn for_pattern_that_destructures_behind_a_reference_is_flagged_once() {
+        let diagnostics = run("fn f() { for &(a, b) in it { m.insert(b.key, b.value); } }");
+
+        assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn for_pattern_that_destructures_behind_a_reference_omits_the_for_pattern_advice() {
+        let diagnostics = run("fn f() { for &(a, b) in it { m.insert(b.key, b.value); } }");
+
         assert!(!diagnostics[0].message().contains("`for` pattern"));
     }
 
@@ -391,8 +439,20 @@ mod tests {
     fn for_pattern_that_destructures_gets_the_plain_advice() {
         let diagnostics = run("fn f() { for (a, b) in it { m.insert(a.key, a.value); } }");
 
-        assert_eq!(diagnostics.len(), 1);
         assert_diagnostic(&diagnostics[0]).message_contains("destructure `a`");
+    }
+
+    #[test]
+    fn for_pattern_that_destructures_is_flagged_once() {
+        let diagnostics = run("fn f() { for (a, b) in it { m.insert(a.key, a.value); } }");
+
+        assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn for_pattern_that_destructures_omits_the_for_pattern_advice() {
+        let diagnostics = run("fn f() { for (a, b) in it { m.insert(a.key, a.value); } }");
+
         assert!(!diagnostics[0].message().contains("`for` pattern"));
     }
 
@@ -400,40 +460,70 @@ mod tests {
     fn for_pattern_with_mut_binding_gets_the_pattern_advice() {
         let diagnostics = run("fn f() { for mut e in it { m.insert(e.key, e.value); } }");
 
-        assert_eq!(diagnostics.len(), 1);
         assert_diagnostic(&diagnostics[0]).message_contains("destructure `e` in the `for` pattern");
+    }
+
+    #[test]
+    fn for_pattern_with_mut_binding_is_flagged_once() {
+        let diagnostics = run("fn f() { for mut e in it { m.insert(e.key, e.value); } }");
+
+        assert_eq!(diagnostics.len(), 1);
     }
 
     #[test]
     fn for_pattern_with_mutable_reference_binding_gets_the_pattern_advice() {
         let diagnostics = run("fn f() { for &mut e in it { m.insert(e.key, e.value); } }");
 
-        assert_eq!(diagnostics.len(), 1);
         assert_diagnostic(&diagnostics[0]).message_contains("destructure `e` in the `for` pattern");
+    }
+
+    #[test]
+    fn for_pattern_with_mutable_reference_binding_is_flagged_once() {
+        let diagnostics = run("fn f() { for &mut e in it { m.insert(e.key, e.value); } }");
+
+        assert_eq!(diagnostics.len(), 1);
     }
 
     #[test]
     fn for_pattern_with_ref_binding_gets_the_pattern_advice() {
         let diagnostics = run("fn f() { for ref e in it { m.insert(e.key, e.value); } }");
 
-        assert_eq!(diagnostics.len(), 1);
         assert_diagnostic(&diagnostics[0]).message_contains("destructure `e` in the `for` pattern");
+    }
+
+    #[test]
+    fn for_pattern_with_ref_binding_is_flagged_once() {
+        let diagnostics = run("fn f() { for ref e in it { m.insert(e.key, e.value); } }");
+
+        assert_eq!(diagnostics.len(), 1);
     }
 
     #[test]
     fn for_pattern_with_ref_mut_binding_gets_the_pattern_advice() {
         let diagnostics = run("fn f() { for ref mut e in it { m.insert(e.key, e.value); } }");
 
-        assert_eq!(diagnostics.len(), 1);
         assert_diagnostic(&diagnostics[0]).message_contains("destructure `e` in the `for` pattern");
+    }
+
+    #[test]
+    fn for_pattern_with_ref_mut_binding_is_flagged_once() {
+        let diagnostics = run("fn f() { for ref mut e in it { m.insert(e.key, e.value); } }");
+
+        assert_eq!(diagnostics.len(), 1);
     }
 
     #[test]
     fn for_pattern_with_reference_binding_gets_the_pattern_advice() {
         let diagnostics = run("fn f() { for &e in it { m.insert(e.key, e.value); } }");
 
-        assert_eq!(diagnostics.len(), 1);
         assert_diagnostic(&diagnostics[0]).message_contains("destructure `e` in the `for` pattern");
+    }
+
+    #[test]
+    fn for_pattern_with_reference_binding_is_flagged_once() {
+        let diagnostics = run("fn f() { for &e in it { m.insert(e.key, e.value); } }");
+
+        assert_eq!(diagnostics.len(), 1);
     }
 
     #[test]
@@ -444,10 +534,16 @@ mod tests {
     }
 
     #[test]
-    fn method_call_on_a_field_is_still_a_field_read() {
+    fn method_call_on_a_field_is_flagged_once() {
         let diagnostics = run("fn f() { g(u.a.len(), u.b.len()); }");
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn method_call_on_a_field_is_still_a_field_read() {
+        let diagnostics = run("fn f() { g(u.a.len(), u.b.len()); }");
+
         assert_diagnostic(&diagnostics[0]).message_contains("2 fields of `u`");
     }
 
@@ -487,18 +583,30 @@ mod tests {
     }
 
     #[test]
-    fn struct_expression_fields_are_flagged() {
+    fn struct_expression_fields_are_flagged_as_two_fields_of_the_binding() {
         let diagnostics = run("fn f() { let p = Point { x: u.a, y: u.b }; }");
 
-        assert_eq!(diagnostics.len(), 1);
         assert_diagnostic(&diagnostics[0]).message_contains("2 fields of `u`");
     }
 
     #[test]
-    fn three_fields_in_one_call_are_flagged() {
+    fn struct_expression_fields_are_flagged_once() {
+        let diagnostics = run("fn f() { let p = Point { x: u.a, y: u.b }; }");
+
+        assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn three_fields_in_one_call_are_flagged_once() {
         let diagnostics = run("fn f() { process(user.id, user.name, user.email); }");
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn three_fields_in_one_call_are_flagged_with_the_destructure_advice() {
+        let diagnostics = run("fn f() { process(user.id, user.name, user.email); }");
+
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.repeated-field-access")
             .has_severity(Severity::Warn)
@@ -506,24 +614,39 @@ mod tests {
     }
 
     #[test]
-    fn trait_send() {
+    fn trait_send_holds_for_binding_reads() {
         fn assert_send<T: Send>() {}
-        assert_send::<RepeatedFieldAccess>();
         assert_send::<BindingReads<'static>>();
     }
 
     #[test]
-    fn trait_sync() {
+    fn trait_send_holds_for_repeated_field_access() {
+        fn assert_send<T: Send>() {}
+        assert_send::<RepeatedFieldAccess>();
+    }
+
+    #[test]
+    fn trait_sync_holds_for_binding_reads() {
         fn assert_sync<T: Sync>() {}
-        assert_sync::<RepeatedFieldAccess>();
         assert_sync::<BindingReads<'static>>();
     }
 
     #[test]
-    fn trait_unpin() {
+    fn trait_sync_holds_for_repeated_field_access() {
+        fn assert_sync<T: Sync>() {}
+        assert_sync::<RepeatedFieldAccess>();
+    }
+
+    #[test]
+    fn trait_unpin_holds_for_binding_reads() {
+        fn assert_unpin<T: Unpin>() {}
+        assert_unpin::<BindingReads<'static>>();
+    }
+
+    #[test]
+    fn trait_unpin_holds_for_repeated_field_access() {
         fn assert_unpin<T: Unpin>() {}
         assert_unpin::<RepeatedFieldAccess>();
-        assert_unpin::<BindingReads<'static>>();
     }
 
     #[test]

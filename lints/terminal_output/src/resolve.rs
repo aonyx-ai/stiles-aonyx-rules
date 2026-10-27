@@ -596,41 +596,146 @@ mod tests {
     }
 
     #[test]
-    fn trait_send() {
+    fn trait_send_anchor() {
+        fn assert_send<T: Send>() {}
+        assert_send::<Anchor>();
+    }
+
+    #[test]
+    fn trait_send_binding() {
+        fn assert_send<T: Send>() {}
+        assert_send::<Binding>();
+    }
+
+    #[test]
+    fn trait_send_function_boundary() {
+        fn assert_send<T: Send>() {}
+        assert_send::<FunctionBoundary>();
+    }
+
+    #[test]
+    fn trait_send_import() {
+        fn assert_send<T: Send>() {}
+        assert_send::<Import>();
+    }
+
+    #[test]
+    fn trait_send_namespace() {
         fn assert_send<T: Send>() {}
         assert_send::<Namespace>();
-        assert_send::<Binding>();
-        assert_send::<Anchor>();
-        assert_send::<FunctionBoundary>();
+    }
+
+    #[test]
+    fn trait_send_scope_kind() {
+        fn assert_send<T: Send>() {}
         assert_send::<ScopeKind>();
+    }
+
+    #[test]
+    fn trait_send_scope_lookup() {
+        fn assert_send<T: Send>() {}
         assert_send::<ScopeLookup<'static>>();
-        assert_send::<Import>();
+    }
+
+    #[test]
+    fn trait_send_use_prefix() {
+        fn assert_send<T: Send>() {}
         assert_send::<UsePrefix>();
     }
 
     #[test]
-    fn trait_sync() {
+    fn trait_sync_anchor() {
+        fn assert_sync<T: Sync>() {}
+        assert_sync::<Anchor>();
+    }
+
+    #[test]
+    fn trait_sync_binding() {
+        fn assert_sync<T: Sync>() {}
+        assert_sync::<Binding>();
+    }
+
+    #[test]
+    fn trait_sync_function_boundary() {
+        fn assert_sync<T: Sync>() {}
+        assert_sync::<FunctionBoundary>();
+    }
+
+    #[test]
+    fn trait_sync_import() {
+        fn assert_sync<T: Sync>() {}
+        assert_sync::<Import>();
+    }
+
+    #[test]
+    fn trait_sync_namespace() {
         fn assert_sync<T: Sync>() {}
         assert_sync::<Namespace>();
-        assert_sync::<Binding>();
-        assert_sync::<Anchor>();
-        assert_sync::<FunctionBoundary>();
+    }
+
+    #[test]
+    fn trait_sync_scope_kind() {
+        fn assert_sync<T: Sync>() {}
         assert_sync::<ScopeKind>();
+    }
+
+    #[test]
+    fn trait_sync_scope_lookup() {
+        fn assert_sync<T: Sync>() {}
         assert_sync::<ScopeLookup<'static>>();
-        assert_sync::<Import>();
+    }
+
+    #[test]
+    fn trait_sync_use_prefix() {
+        fn assert_sync<T: Sync>() {}
         assert_sync::<UsePrefix>();
     }
 
     #[test]
-    fn trait_unpin() {
+    fn trait_unpin_anchor() {
+        fn assert_unpin<T: Unpin>() {}
+        assert_unpin::<Anchor>();
+    }
+
+    #[test]
+    fn trait_unpin_binding() {
+        fn assert_unpin<T: Unpin>() {}
+        assert_unpin::<Binding>();
+    }
+
+    #[test]
+    fn trait_unpin_function_boundary() {
+        fn assert_unpin<T: Unpin>() {}
+        assert_unpin::<FunctionBoundary>();
+    }
+
+    #[test]
+    fn trait_unpin_import() {
+        fn assert_unpin<T: Unpin>() {}
+        assert_unpin::<Import>();
+    }
+
+    #[test]
+    fn trait_unpin_namespace() {
         fn assert_unpin<T: Unpin>() {}
         assert_unpin::<Namespace>();
-        assert_unpin::<Binding>();
-        assert_unpin::<Anchor>();
-        assert_unpin::<FunctionBoundary>();
+    }
+
+    #[test]
+    fn trait_unpin_scope_kind() {
+        fn assert_unpin<T: Unpin>() {}
         assert_unpin::<ScopeKind>();
+    }
+
+    #[test]
+    fn trait_unpin_scope_lookup() {
+        fn assert_unpin<T: Unpin>() {}
         assert_unpin::<ScopeLookup<'static>>();
-        assert_unpin::<Import>();
+    }
+
+    #[test]
+    fn trait_unpin_use_prefix() {
+        fn assert_unpin<T: Unpin>() {}
         assert_unpin::<UsePrefix>();
     }
 }

@@ -139,11 +139,19 @@ mod tests {
 
         let diagnostics = run(source);
 
-        assert_eq!(diagnostics.len(), 1);
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.inline-doc-link")
             .has_severity(Severity::Warn)
             .message_contains("image");
+    }
+
+    #[test]
+    fn image_link_is_flagged_once() {
+        let source = "/// ![diagram](https://example.com/d.png)\nfn f() {}";
+
+        let diagnostics = run(source);
+
+        assert_eq!(diagnostics.len(), 1);
     }
 
     #[test]
@@ -162,6 +170,14 @@ mod tests {
         let diagnostics = run(source);
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn inline_link_in_doc_comment_is_flagged_with_a_reference_link_hint() {
+        let source = "/// See [the docs](https://example.com/docs) for details\nfn f() {}";
+
+        let diagnostics = run(source);
+
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.inline-doc-link")
             .has_severity(Severity::Warn)
@@ -187,12 +203,20 @@ mod tests {
     }
 
     #[test]
-    fn inline_link_reports_the_span_of_the_link() {
+    fn inline_link_reports_one_diagnostic() {
         let source = "/// See [a](https://example.com) now\nfn f() {}";
 
         let diagnostics = run(source);
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn inline_link_reports_the_span_of_the_link() {
+        let source = "/// See [a](https://example.com) now\nfn f() {}";
+
+        let diagnostics = run(source);
+
         let span = diagnostics[0].span();
         assert_eq!(
             &source[span.start()..span.end()],
@@ -338,12 +362,20 @@ mod tests {
 
             let diagnostics = run(source);
 
-            assert_eq!(diagnostics.len(), 1);
             let start = source.find("[the spec]").unwrap();
             let end = source.find(") exactly").unwrap() + 1;
             assert_diagnostic(&diagnostics[0])
                 .has_rule_id("lint.inline-doc-link")
                 .has_span("<test>", start, end);
+        }
+
+        #[test]
+        fn doc_comment_with_inline_link_is_flagged_once() {
+            let source = "/**\n * Follows [the spec](https://example.com/spec) exactly\n */\nfunction f() {}";
+
+            let diagnostics = run(source);
+
+            assert_eq!(diagnostics.len(), 1);
         }
 
         #[test]

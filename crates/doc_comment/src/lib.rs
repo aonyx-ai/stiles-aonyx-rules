@@ -199,31 +199,44 @@ mod tests {
         let stripped = strip_star(line);
 
         assert_eq!(stripped.text(), " indented");
+    }
+
+    #[test]
+    fn strip_star_shifts_the_offset_past_the_star_and_one_space() {
+        let line = DocLine {
+            text: "   *  indented",
+            offset: 10,
+        };
+
+        let stripped = strip_star(line);
+
         assert_eq!(stripped.offset(), 15);
     }
 
     #[test]
-    fn unindent_keeps_deeper_indentation() {
+    fn unindent_ignores_blank_lines_and_leaves_them_empty() {
         let mut lines = [
             DocLine {
-                text: " text",
+                text: "  a",
                 offset: 0,
             },
             DocLine {
-                text: "     code",
-                offset: 10,
+                text: "",
+                offset: 5,
+            },
+            DocLine {
+                text: "  b",
+                offset: 6,
             },
         ];
 
         unindent(&mut lines);
 
-        assert_eq!(lines[0].text(), "text");
-        assert_eq!(lines[1].text(), "    code");
-        assert_eq!(lines[1].offset(), 11);
+        assert_eq!(lines[1].text(), "");
     }
 
     #[test]
-    fn unindent_ignores_blank_lines() {
+    fn unindent_ignores_blank_lines_and_strips_the_first_line() {
         let mut lines = [
             DocLine {
                 text: "  a",
@@ -242,8 +255,82 @@ mod tests {
         unindent(&mut lines);
 
         assert_eq!(lines[0].text(), "a");
-        assert_eq!(lines[1].text(), "");
+    }
+
+    #[test]
+    fn unindent_ignores_blank_lines_and_strips_the_last_line() {
+        let mut lines = [
+            DocLine {
+                text: "  a",
+                offset: 0,
+            },
+            DocLine {
+                text: "",
+                offset: 5,
+            },
+            DocLine {
+                text: "  b",
+                offset: 6,
+            },
+        ];
+
+        unindent(&mut lines);
+
         assert_eq!(lines[2].text(), "b");
+    }
+
+    #[test]
+    fn unindent_keeps_deeper_indentation() {
+        let mut lines = [
+            DocLine {
+                text: " text",
+                offset: 0,
+            },
+            DocLine {
+                text: "     code",
+                offset: 10,
+            },
+        ];
+
+        unindent(&mut lines);
+
+        assert_eq!(lines[1].text(), "    code");
+    }
+
+    #[test]
+    fn unindent_shifts_the_deeper_line_offset_past_the_common_indentation() {
+        let mut lines = [
+            DocLine {
+                text: " text",
+                offset: 0,
+            },
+            DocLine {
+                text: "     code",
+                offset: 10,
+            },
+        ];
+
+        unindent(&mut lines);
+
+        assert_eq!(lines[1].offset(), 11);
+    }
+
+    #[test]
+    fn unindent_strips_the_common_indentation() {
+        let mut lines = [
+            DocLine {
+                text: " text",
+                offset: 0,
+            },
+            DocLine {
+                text: "     code",
+                offset: 10,
+            },
+        ];
+
+        unindent(&mut lines);
+
+        assert_eq!(lines[0].text(), "text");
     }
 
     #[test]

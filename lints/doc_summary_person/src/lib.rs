@@ -531,6 +531,14 @@ mod tests {
         let diagnostics = check(source);
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn imperative_is_flagged_with_the_full_diagnostic() {
+        let source = "/// Return the length of the string\nfn len() {}";
+
+        let diagnostics = check(source);
+
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.doc-summary-person")
             .has_severity(Severity::Warn)
@@ -735,10 +743,18 @@ mod tests {
     }
 
     #[test]
-    fn ly_verb_list_is_sorted_lowercase_and_unique() {
-        assert!(LY_VERBS.windows(2).all(|pair| pair[0] < pair[1]));
-        assert!(LY_VERBS.iter().all(|verb| *verb == verb.to_lowercase()));
+    fn ly_verb_list_entries_end_in_ly() {
         assert!(LY_VERBS.iter().all(|verb| verb.ends_with("ly")));
+    }
+
+    #[test]
+    fn ly_verb_list_is_lowercase() {
+        assert!(LY_VERBS.iter().all(|verb| *verb == verb.to_lowercase()));
+    }
+
+    #[test]
+    fn ly_verb_list_is_sorted_and_unique() {
+        assert!(LY_VERBS.windows(2).all(|pair| pair[0] < pair[1]));
     }
 
     #[test]
@@ -746,6 +762,12 @@ mod tests {
         let diagnostics = check("/// `len` of the string\nfn len() {}");
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn code_span_opening_is_flagged_at_the_code_span() {
+        let diagnostics = check("/// `len` of the string\nfn len() {}");
+
         assert_diagnostic(&diagnostics[0])
             .message_contains("opens with \"`len`\"")
             .has_span("<test>", 4, 9);
@@ -891,6 +913,13 @@ mod tests {
             check("impl Foo {\n    /// Create a new foo\n    pub fn new() -> Self {}\n}");
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn associated_function_in_impl_is_flagged_with_the_verb_in_the_message() {
+        let diagnostics =
+            check("impl Foo {\n    /// Create a new foo\n    pub fn new() -> Self {}\n}");
+
         assert_diagnostic(&diagnostics[0]).message_contains("opens with \"Create\"");
     }
 
@@ -910,6 +939,14 @@ mod tests {
         let diagnostics = check(source);
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn trait_method_without_body_is_flagged_at_the_verb() {
+        let source = "trait Len {\n    /// Return the length\n    fn len(&self) -> usize;\n}";
+
+        let diagnostics = check(source);
+
         let start = source.find("Return").unwrap();
         assert_diagnostic(&diagnostics[0]).has_span("<test>", start, start + "Return".len());
     }
@@ -929,6 +966,14 @@ mod tests {
         let diagnostics = check(source);
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn block_doc_comment_is_flagged_at_the_verb() {
+        let source = "/**\n * Return the length\n */\nfn len() {}";
+
+        let diagnostics = check(source);
+
         let start = source.find("Return").unwrap();
         assert_diagnostic(&diagnostics[0]).has_span("<test>", start, start + "Return".len());
     }
@@ -1088,11 +1133,23 @@ mod tests {
     }
 
     #[test]
-    fn test_target_paths_are_test_code() {
-        assert!(is_test_target(Path::new("crates/core/tests/common/mod.rs")));
-        assert!(is_test_target(Path::new("benches/throughput.rs")));
-        assert!(!is_test_target(Path::new("crates/core/src/tests.rs")));
+    fn test_target_paths_exclude_a_src_lib_file() {
         assert!(!is_test_target(Path::new("crates/core/src/lib.rs")));
+    }
+
+    #[test]
+    fn test_target_paths_exclude_a_src_tests_file() {
+        assert!(!is_test_target(Path::new("crates/core/src/tests.rs")));
+    }
+
+    #[test]
+    fn test_target_paths_include_a_benches_file() {
+        assert!(is_test_target(Path::new("benches/throughput.rs")));
+    }
+
+    #[test]
+    fn test_target_paths_include_a_tests_directory_file() {
+        assert!(is_test_target(Path::new("crates/core/tests/common/mod.rs")));
     }
 
     #[test]

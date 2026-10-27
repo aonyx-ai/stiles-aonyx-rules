@@ -617,7 +617,7 @@ mod tests {
     }
 
     #[test]
-    fn any_box_behind_bounds_flagged() {
+    fn any_box_behind_bounds_flagged_once() {
         let types = [
             "Box<dyn Any>",
             "Box<dyn Any + Send>",
@@ -636,8 +636,39 @@ mod tests {
             let diagnostics = run(&format!("pub struct S {{ pub slot: {declared} }}"));
 
             assert_eq!(diagnostics.len(), 1, "{declared}");
+        }
+    }
+
+    #[test]
+    fn any_box_behind_bounds_flagged_with_the_box_message() {
+        let types = [
+            "Box<dyn Any>",
+            "Box<dyn Any + Send>",
+            "Box<dyn Any + Send + Sync>",
+            "Box<dyn Any + Send + Sync + 'static>",
+            "Box<dyn Send + Any>",
+            "Box<dyn Send + Sync + Any>",
+            "Box<dyn std::any::Any + Send>",
+            "Box<dyn ::std::any::Any>",
+            "Box<dyn core::any::Any>",
+            "std::boxed::Box<dyn Any>",
+            "alloc::boxed::Box<dyn Any + Send>",
+        ];
+
+        for declared in types {
+            let diagnostics = run(&format!("pub struct S {{ pub slot: {declared} }}"));
+
             assert_diagnostic(&diagnostics[0]).message_contains("holds a `Box<dyn Any>`");
         }
+    }
+
+    #[test]
+    fn any_box_diagnostic_is_reported_once() {
+        let source = "pub struct S { pub slot: Option<Box<dyn Any + Send>> }";
+
+        let diagnostics = run(source);
+
+        assert_eq!(diagnostics.len(), 1);
     }
 
     #[test]
@@ -651,7 +682,6 @@ mod tests {
             .find(needle)
             .expect("the needle should be in the source");
         let end = start + needle.len();
-        assert_eq!(diagnostics.len(), 1);
         assert_diagnostic(&diagnostics[0]).has_span("<test>", start, end);
     }
 
@@ -689,6 +719,15 @@ mod tests {
     }
 
     #[test]
+    fn catch_all_diagnostic_is_reported_once() {
+        let source = "pub enum Kind { Known, Other(String) }";
+
+        let diagnostics = run(source);
+
+        assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
     fn catch_all_diagnostic_spans_the_variant_name() {
         let source = "pub enum Kind { Known, Other(String) }";
 
@@ -699,7 +738,6 @@ mod tests {
             .find(needle)
             .expect("the needle should be in the source");
         let end = start + needle.len();
-        assert_eq!(diagnostics.len(), 1);
         assert_diagnostic(&diagnostics[0]).has_span("<test>", start, end);
     }
 
@@ -718,11 +756,10 @@ mod tests {
     }
 
     #[test]
-    fn catch_all_name_with_tuple_payload_flagged() {
+    fn catch_all_name_with_tuple_payload_flagged_as_a_catch_all_warning() {
         for name in CATCH_ALL_NAMES {
             let diagnostics = run(&format!("pub enum Kind {{ Known, {name}(u32) }}"));
 
-            assert_eq!(diagnostics.len(), 1, "{name}");
             assert_diagnostic(&diagnostics[0])
                 .has_rule_id("lint.open-vocabulary")
                 .has_severity(Severity::Warn)
@@ -731,11 +768,33 @@ mod tests {
     }
 
     #[test]
-    fn catch_all_with_named_payload_flagged() {
+    fn catch_all_name_with_tuple_payload_flagged_once() {
+        for name in CATCH_ALL_NAMES {
+            let diagnostics = run(&format!("pub enum Kind {{ Known, {name}(u32) }}"));
+
+            assert_eq!(diagnostics.len(), 1, "{name}");
+        }
+    }
+
+    #[test]
+    fn catch_all_with_named_payload_flagged_naming_the_variant() {
+        let diagnostics = run("pub enum Kind { Known, Unknown { code: u16 } }");
+
+        assert_diagnostic(&diagnostics[0]).message_contains("variant `Unknown`");
+    }
+
+    #[test]
+    fn catch_all_with_named_payload_flagged_once() {
         let diagnostics = run("pub enum Kind { Known, Unknown { code: u16 } }");
 
         assert_eq!(diagnostics.len(), 1);
-        assert_diagnostic(&diagnostics[0]).message_contains("variant `Unknown`");
+    }
+
+    #[test]
+    fn catch_all_with_open_payload_first_diagnostic_names_the_catch_all() {
+        let diagnostics = run("pub enum Kind { Known, Custom(Box<dyn Any + Send>) }");
+
+        assert_diagnostic(&diagnostics[0]).message_contains("variant `Custom` is a catch-all");
     }
 
     #[test]
@@ -743,7 +802,12 @@ mod tests {
         let diagnostics = run("pub enum Kind { Known, Custom(Box<dyn Any + Send>) }");
 
         assert_eq!(diagnostics.len(), 2);
-        assert_diagnostic(&diagnostics[0]).message_contains("variant `Custom` is a catch-all");
+    }
+
+    #[test]
+    fn catch_all_with_open_payload_second_diagnostic_names_the_any_box_field() {
+        let diagnostics = run("pub enum Kind { Known, Custom(Box<dyn Any + Send>) }");
+
         assert_diagnostic(&diagnostics[1])
             .message_contains("field 0 of variant `Custom` holds a `Box<dyn Any>`");
     }
@@ -858,7 +922,7 @@ mod tests {
     }
 
     #[test]
-    fn json_value_spellings_flagged() {
+    fn json_value_spellings_flagged_once() {
         let sources = [
             "pub struct S { pub data: serde_json::Value }",
             "pub struct S { pub data: ::serde_json::Value }",
@@ -879,6 +943,30 @@ mod tests {
             let diagnostics = run(source);
 
             assert_eq!(diagnostics.len(), 1, "{source}");
+        }
+    }
+
+    #[test]
+    fn json_value_spellings_flagged_with_the_field_message() {
+        let sources = [
+            "pub struct S { pub data: serde_json::Value }",
+            "pub struct S { pub data: ::serde_json::Value }",
+            "pub struct S { pub data: serde_json :: Value }",
+            "pub struct S { pub data: serde_json::value::Value }",
+            "use serde_json::Value;\npub struct S { pub data: Value }",
+            "use ::serde_json::Value;\npub struct S { pub data: Value }",
+            "use serde_json::{json, Value};\npub struct S { pub data: Value }",
+            "use serde_json::{value::Value};\npub struct S { pub data: Value }",
+            "use serde_json::Value as Json;\npub struct S { pub data: Json }",
+            "use serde_json as json;\npub struct S { pub data: json::Value }",
+            "use serde_json::{self as json};\npub struct S { pub data: json::Value }",
+            "use serde_json::value;\npub struct S { pub data: value::Value }",
+            "pub struct S { pub data: Value }\nuse serde_json::Value;",
+        ];
+
+        for source in sources {
+            let diagnostics = run(source);
+
             assert_diagnostic(&diagnostics[0])
                 .message_contains("field `data` holds a `serde_json::Value`");
         }
@@ -904,7 +992,20 @@ mod tests {
     }
 
     #[test]
-    fn open_vocabulary_from_issue_flagged() {
+    fn open_vocabulary_from_issue_first_diagnostic_names_other() {
+        let source = "pub enum CheckEvent {
+    FileChecked { file: PathBuf, diagnostics: usize },
+    Other(String),
+    Custom(Box<dyn Any + Send>),
+}";
+
+        let diagnostics = run(source);
+
+        assert_diagnostic(&diagnostics[0]).message_contains("variant `Other`");
+    }
+
+    #[test]
+    fn open_vocabulary_from_issue_flagged_three_times() {
         let source = "pub enum CheckEvent {
     FileChecked { file: PathBuf, diagnostics: usize },
     Other(String),
@@ -914,13 +1015,36 @@ mod tests {
         let diagnostics = run(source);
 
         assert_eq!(diagnostics.len(), 3);
-        assert_diagnostic(&diagnostics[0]).message_contains("variant `Other`");
+    }
+
+    #[test]
+    fn open_vocabulary_from_issue_second_diagnostic_names_custom() {
+        let source = "pub enum CheckEvent {
+    FileChecked { file: PathBuf, diagnostics: usize },
+    Other(String),
+    Custom(Box<dyn Any + Send>),
+}";
+
+        let diagnostics = run(source);
+
         assert_diagnostic(&diagnostics[1]).message_contains("variant `Custom`");
+    }
+
+    #[test]
+    fn open_vocabulary_from_issue_third_diagnostic_names_the_custom_field() {
+        let source = "pub enum CheckEvent {
+    FileChecked { file: PathBuf, diagnostics: usize },
+    Other(String),
+    Custom(Box<dyn Any + Send>),
+}";
+
+        let diagnostics = run(source);
+
         assert_diagnostic(&diagnostics[2]).message_contains("field 0 of variant `Custom`");
     }
 
     #[test]
-    fn outermost_slot_reported_once() {
+    fn outermost_slot_diagnostic_names_the_map_over_its_span() {
         let source = "pub struct S { pub extra: HashMap<String, serde_json::Value> }";
 
         let diagnostics = run(source);
@@ -930,10 +1054,18 @@ mod tests {
             .find(needle)
             .expect("the needle should be in the source");
         let end = start + needle.len();
-        assert_eq!(diagnostics.len(), 1);
         assert_diagnostic(&diagnostics[0])
             .message_contains("holds a map keyed by `String`")
             .has_span("<test>", start, end);
+    }
+
+    #[test]
+    fn outermost_slot_reported_once() {
+        let source = "pub struct S { pub extra: HashMap<String, serde_json::Value> }";
+
+        let diagnostics = run(source);
+
+        assert_eq!(diagnostics.len(), 1);
     }
 
     #[test]
@@ -968,7 +1100,7 @@ mod tests {
     }
 
     #[test]
-    fn string_keyed_map_spellings_flagged() {
+    fn string_keyed_map_spellings_flagged_once() {
         let types = [
             "HashMap<String, u32>",
             "HashMap<String, u32, RandomState>",
@@ -984,6 +1116,25 @@ mod tests {
             let diagnostics = run(&format!("pub struct S {{ pub map: {declared} }}"));
 
             assert_eq!(diagnostics.len(), 1, "{declared}");
+        }
+    }
+
+    #[test]
+    fn string_keyed_map_spellings_flagged_with_the_map_message() {
+        let types = [
+            "HashMap<String, u32>",
+            "HashMap<String, u32, RandomState>",
+            "BTreeMap<String, String>",
+            "IndexMap<String, Vec<u8>>",
+            "std::collections::HashMap<String, u32>",
+            "std::collections::btree_map::BTreeMap<String, u32>",
+            "indexmap::IndexMap<String, u32>",
+            "HashMap<std::string::String, u32>",
+        ];
+
+        for declared in types {
+            let diagnostics = run(&format!("pub struct S {{ pub map: {declared} }}"));
+
             assert_diagnostic(&diagnostics[0]).message_contains("holds a map keyed by `String`");
         }
     }
@@ -998,54 +1149,143 @@ mod tests {
     }
 
     #[test]
-    fn struct_tuple_field_after_comment_and_attribute_flagged() {
+    fn struct_tuple_field_after_comment_and_attribute_flagged_once() {
         let diagnostics = run(
             "pub struct S(\n    /// the payload\n    #[serde(default)]\n    pub serde_json::Value,\n);",
         );
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn struct_tuple_field_after_comment_and_attribute_flagged_with_its_index() {
+        let diagnostics = run(
+            "pub struct S(\n    /// the payload\n    #[serde(default)]\n    pub serde_json::Value,\n);",
+        );
+
         assert_diagnostic(&diagnostics[0]).message_contains("field 0 holds");
+    }
+
+    #[test]
+    fn struct_tuple_field_flagged_once() {
+        let diagnostics = run("pub struct S(u8, pub serde_json::Value, pub u32);");
+
+        assert_eq!(diagnostics.len(), 1);
     }
 
     #[test]
     fn struct_tuple_field_flagged_with_its_index() {
         let diagnostics = run("pub struct S(u8, pub serde_json::Value, pub u32);");
 
-        assert_eq!(diagnostics.len(), 1);
         assert_diagnostic(&diagnostics[0]).message_contains("field 1 holds a `serde_json::Value`");
     }
 
     #[test]
-    fn trait_send() {
+    fn trait_send_exposure() {
         fn assert_send<T: Send>() {}
-        assert_send::<OpenVocabulary>();
-        assert_send::<KnownType>();
-        assert_send::<OpenSlot>();
         assert_send::<Exposure>();
+    }
+
+    #[test]
+    fn trait_send_field() {
+        fn assert_send<T: Send>() {}
         assert_send::<Field<'static>>();
+    }
+
+    #[test]
+    fn trait_send_imports() {
+        fn assert_send<T: Send>() {}
         assert_send::<Imports>();
     }
 
     #[test]
-    fn trait_sync() {
+    fn trait_send_known_type() {
+        fn assert_send<T: Send>() {}
+        assert_send::<KnownType>();
+    }
+
+    #[test]
+    fn trait_send_open_slot() {
+        fn assert_send<T: Send>() {}
+        assert_send::<OpenSlot>();
+    }
+
+    #[test]
+    fn trait_send_open_vocabulary() {
+        fn assert_send<T: Send>() {}
+        assert_send::<OpenVocabulary>();
+    }
+
+    #[test]
+    fn trait_sync_exposure() {
         fn assert_sync<T: Sync>() {}
-        assert_sync::<OpenVocabulary>();
-        assert_sync::<KnownType>();
-        assert_sync::<OpenSlot>();
         assert_sync::<Exposure>();
+    }
+
+    #[test]
+    fn trait_sync_field() {
+        fn assert_sync<T: Sync>() {}
         assert_sync::<Field<'static>>();
+    }
+
+    #[test]
+    fn trait_sync_imports() {
+        fn assert_sync<T: Sync>() {}
         assert_sync::<Imports>();
     }
 
     #[test]
-    fn trait_unpin() {
+    fn trait_sync_known_type() {
+        fn assert_sync<T: Sync>() {}
+        assert_sync::<KnownType>();
+    }
+
+    #[test]
+    fn trait_sync_open_slot() {
+        fn assert_sync<T: Sync>() {}
+        assert_sync::<OpenSlot>();
+    }
+
+    #[test]
+    fn trait_sync_open_vocabulary() {
+        fn assert_sync<T: Sync>() {}
+        assert_sync::<OpenVocabulary>();
+    }
+
+    #[test]
+    fn trait_unpin_exposure() {
+        fn assert_unpin<T: Unpin>() {}
+        assert_unpin::<Exposure>();
+    }
+
+    #[test]
+    fn trait_unpin_field() {
+        fn assert_unpin<T: Unpin>() {}
+        assert_unpin::<Field<'static>>();
+    }
+
+    #[test]
+    fn trait_unpin_imports() {
+        fn assert_unpin<T: Unpin>() {}
+        assert_unpin::<Imports>();
+    }
+
+    #[test]
+    fn trait_unpin_known_type() {
+        fn assert_unpin<T: Unpin>() {}
+        assert_unpin::<KnownType>();
+    }
+
+    #[test]
+    fn trait_unpin_open_slot() {
+        fn assert_unpin<T: Unpin>() {}
+        assert_unpin::<OpenSlot>();
+    }
+
+    #[test]
+    fn trait_unpin_open_vocabulary() {
         fn assert_unpin<T: Unpin>() {}
         assert_unpin::<OpenVocabulary>();
-        assert_unpin::<KnownType>();
-        assert_unpin::<OpenSlot>();
-        assert_unpin::<Exposure>();
-        assert_unpin::<Field<'static>>();
-        assert_unpin::<Imports>();
     }
 
     #[test]
@@ -1070,21 +1310,35 @@ mod tests {
     }
 
     #[test]
-    fn variant_named_field_flagged() {
+    fn variant_named_field_flagged_once() {
         let source = "enum Event { Loaded { extra: HashMap<String, u32> } }";
 
         let diagnostics = run(source);
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn variant_named_field_flagged_with_field_and_variant_names() {
+        let source = "enum Event { Loaded { extra: HashMap<String, u32> } }";
+
+        let diagnostics = run(source);
+
         assert_diagnostic(&diagnostics[0])
             .message_contains("field `extra` of variant `Loaded` holds a map keyed by `String`");
+    }
+
+    #[test]
+    fn variant_tuple_field_flagged_once() {
+        let diagnostics = run("pub enum Event { Payload(u8, serde_json::Value) }");
+
+        assert_eq!(diagnostics.len(), 1);
     }
 
     #[test]
     fn variant_tuple_field_flagged_with_its_index() {
         let diagnostics = run("pub enum Event { Payload(u8, serde_json::Value) }");
 
-        assert_eq!(diagnostics.len(), 1);
         assert_diagnostic(&diagnostics[0])
             .message_contains("field 1 of variant `Payload` holds a `serde_json::Value`");
     }

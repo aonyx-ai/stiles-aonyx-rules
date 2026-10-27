@@ -322,14 +322,20 @@ mod tests {
     }
 
     #[test]
-    fn function_import_is_flagged() {
+    fn function_import_is_flagged_as_a_warning_pointing_to_the_module_top() {
         let diagnostics = run("fn f() { use std::collections::HashMap; }");
 
-        assert_eq!(diagnostics.len(), 1);
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.function-scoped-import")
             .has_severity(Severity::Warn)
             .message_contains("top of the module");
+    }
+
+    #[test]
+    fn function_import_is_flagged_once() {
+        let diagnostics = run("fn f() { use std::collections::HashMap; }");
+
+        assert_eq!(diagnostics.len(), 1);
     }
 
     #[test]

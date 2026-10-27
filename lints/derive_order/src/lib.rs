@@ -195,10 +195,16 @@ mod tests {
     }
 
     #[test]
-    fn third_party_before_std_flagged() {
+    fn third_party_before_std_flagged_once() {
         let diagnostics = run("#[derive(Builder, Clone, Debug)]\nstruct Foo;");
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn third_party_before_std_flagged_with_rule_id_severity_and_the_expected_order() {
+        let diagnostics = run("#[derive(Builder, Clone, Debug)]\nstruct Foo;");
+
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.derive-order")
             .has_severity(Severity::Warn)
@@ -206,10 +212,16 @@ mod tests {
     }
 
     #[test]
-    fn third_party_out_of_alpha_order_flagged() {
+    fn third_party_out_of_alpha_order_flagged_once() {
         let diagnostics = run("#[derive(Clone, Debug, Gamma, Alpha)]\nstruct Foo;");
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn third_party_out_of_alpha_order_flagged_with_rule_id_severity_and_the_expected_order() {
+        let diagnostics = run("#[derive(Clone, Debug, Gamma, Alpha)]\nstruct Foo;");
+
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.derive-order")
             .has_severity(Severity::Warn)
@@ -235,10 +247,16 @@ mod tests {
     }
 
     #[test]
-    fn wrong_std_and_third_party_flagged() {
+    fn wrong_std_and_third_party_flagged_once() {
         let diagnostics = run("#[derive(Debug, Clone, Beta, Alpha)]\nstruct Foo;");
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn wrong_std_and_third_party_flagged_with_rule_id_severity_and_the_expected_order() {
+        let diagnostics = run("#[derive(Debug, Clone, Beta, Alpha)]\nstruct Foo;");
+
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.derive-order")
             .has_severity(Severity::Warn)
@@ -246,10 +264,16 @@ mod tests {
     }
 
     #[test]
-    fn wrong_std_order_flagged() {
+    fn wrong_std_order_flagged_once() {
         let diagnostics = run("#[derive(Debug, Clone, Default)]\nstruct Foo;");
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn wrong_std_order_flagged_with_rule_id_severity_and_the_expected_order() {
+        let diagnostics = run("#[derive(Debug, Clone, Default)]\nstruct Foo;");
+
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.derive-order")
             .has_severity(Severity::Warn)
@@ -257,10 +281,16 @@ mod tests {
     }
 
     #[test]
-    fn wrong_std_order_multiple_flagged() {
+    fn wrong_std_order_multiple_flagged_once() {
         let diagnostics = run("#[derive(Default, Copy, Clone)]\nstruct Foo;");
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn wrong_std_order_multiple_flagged_with_rule_id_severity_and_the_expected_order() {
+        let diagnostics = run("#[derive(Default, Copy, Clone)]\nstruct Foo;");
+
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.derive-order")
             .has_severity(Severity::Warn)

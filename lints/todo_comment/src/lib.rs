@@ -141,12 +141,20 @@ mod tests {
     }
 
     #[test]
-    fn block_comment_with_marker_on_inner_line_is_flagged() {
+    fn block_comment_with_marker_on_inner_line_is_flagged_once() {
         let source = "/*\n * FIXME: this breaks on empty input\n */\nfn f() {}";
 
         let diagnostics = execute(&parse(source, Language::Rust), &mut passes());
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn block_comment_with_marker_on_inner_line_is_flagged_with_the_marker_in_the_message() {
+        let source = "/*\n * FIXME: this breaks on empty input\n */\nfn f() {}";
+
+        let diagnostics = execute(&parse(source, Language::Rust), &mut passes());
+
         assert_diagnostic(&diagnostics[0]).message_contains("`FIXME`");
     }
 
@@ -166,8 +174,24 @@ mod tests {
         let diagnostics = execute(&parse(source, Language::Rust), &mut passes());
 
         assert_eq!(diagnostics.len(), 2);
-        assert_diagnostic(&diagnostics[0]).message_contains("`TODO`");
+    }
+
+    #[test]
+    fn block_comment_with_two_markers_is_flagged_with_hack_in_the_second_message() {
+        let source = "/*\n * TODO: one\n * HACK: two\n */\nfn f() {}";
+
+        let diagnostics = execute(&parse(source, Language::Rust), &mut passes());
+
         assert_diagnostic(&diagnostics[1]).message_contains("`HACK`");
+    }
+
+    #[test]
+    fn block_comment_with_two_markers_is_flagged_with_todo_in_the_first_message() {
+        let source = "/*\n * TODO: one\n * HACK: two\n */\nfn f() {}";
+
+        let diagnostics = execute(&parse(source, Language::Rust), &mut passes());
+
+        assert_diagnostic(&diagnostics[0]).message_contains("`TODO`");
     }
 
     #[test]
@@ -180,13 +204,21 @@ mod tests {
     }
 
     #[test]
+    fn doc_comment_with_marker_is_flagged_at_the_marker() {
+        let source = "/// TODO: document this\nfn f() {}";
+
+        let diagnostics = execute(&parse(source, Language::Rust), &mut passes());
+
+        assert_diagnostic(&diagnostics[0]).has_span("<test>", 4, 8);
+    }
+
+    #[test]
     fn doc_comment_with_marker_is_flagged_once() {
         let source = "/// TODO: document this\nfn f() {}";
 
         let diagnostics = execute(&parse(source, Language::Rust), &mut passes());
 
         assert_eq!(diagnostics.len(), 1);
-        assert_diagnostic(&diagnostics[0]).has_span("<test>", 4, 8);
     }
 
     #[test]
@@ -270,13 +302,30 @@ mod tests {
     }
 
     #[test]
-    fn hack_comment_is_flagged() {
+    fn hack_comment_is_flagged_once() {
         let source = "// HACK: works around a borrow checker limit\nfn f() {}";
 
         let diagnostics = execute(&parse(source, Language::Rust), &mut passes());
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn hack_comment_is_flagged_with_the_marker_in_the_message() {
+        let source = "// HACK: works around a borrow checker limit\nfn f() {}";
+
+        let diagnostics = execute(&parse(source, Language::Rust), &mut passes());
+
         assert_diagnostic(&diagnostics[0]).message_contains("`HACK`");
+    }
+
+    #[test]
+    fn inner_doc_comment_with_marker_is_flagged_at_the_marker() {
+        let source = "//! XXX: this module needs a rewrite\nfn f() {}";
+
+        let diagnostics = execute(&parse(source, Language::Rust), &mut passes());
+
+        assert_diagnostic(&diagnostics[0]).has_span("<test>", 4, 7);
     }
 
     #[test]
@@ -286,7 +335,6 @@ mod tests {
         let diagnostics = execute(&parse(source, Language::Rust), &mut passes());
 
         assert_eq!(diagnostics.len(), 1);
-        assert_diagnostic(&diagnostics[0]).has_span("<test>", 4, 7);
     }
 
     #[test]
@@ -337,13 +385,30 @@ mod tests {
     }
 
     #[test]
+    fn nested_block_comment_with_marker_is_flagged_at_the_inner_marker() {
+        let source = "/* outer\n/* TODO: inner */\n*/\nfn f() {}";
+
+        let diagnostics = execute(&parse(source, Language::Rust), &mut passes());
+
+        assert_diagnostic(&diagnostics[0]).has_span("<test>", 12, 16);
+    }
+
+    #[test]
     fn nested_block_comment_with_marker_is_flagged_once() {
         let source = "/* outer\n/* TODO: inner */\n*/\nfn f() {}";
 
         let diagnostics = execute(&parse(source, Language::Rust), &mut passes());
 
         assert_eq!(diagnostics.len(), 1);
-        assert_diagnostic(&diagnostics[0]).has_span("<test>", 12, 16);
+    }
+
+    #[test]
+    fn outer_block_doc_comment_with_marker_is_flagged_at_the_marker() {
+        let source = "/** TODO: document this */\nfn f() {}";
+
+        let diagnostics = execute(&parse(source, Language::Rust), &mut passes());
+
+        assert_diagnostic(&diagnostics[0]).has_span("<test>", 4, 8);
     }
 
     #[test]
@@ -353,7 +418,6 @@ mod tests {
         let diagnostics = execute(&parse(source, Language::Rust), &mut passes());
 
         assert_eq!(diagnostics.len(), 1);
-        assert_diagnostic(&diagnostics[0]).has_span("<test>", 4, 8);
     }
 
     #[test]
@@ -366,12 +430,20 @@ mod tests {
     }
 
     #[test]
-    fn todo_comment_is_flagged() {
+    fn todo_comment_is_flagged_once() {
         let source = "// TODO: refactor this later\nfn helper() {}";
 
         let diagnostics = execute(&parse(source, Language::Rust), &mut passes());
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn todo_comment_is_flagged_with_rule_id_severity_message_and_span() {
+        let source = "// TODO: refactor this later\nfn helper() {}";
+
+        let diagnostics = execute(&parse(source, Language::Rust), &mut passes());
+
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.todo-comment")
             .has_severity(Severity::Warn)
@@ -389,13 +461,21 @@ mod tests {
     }
 
     #[test]
-    fn todo_with_author_is_flagged() {
+    fn todo_with_author_is_flagged_at_the_marker() {
+        let source = "// TODO(marts): finish this\nfn f() {}";
+
+        let diagnostics = execute(&parse(source, Language::Rust), &mut passes());
+
+        assert_diagnostic(&diagnostics[0]).has_span("<test>", 3, 7);
+    }
+
+    #[test]
+    fn todo_with_author_is_flagged_once() {
         let source = "// TODO(marts): finish this\nfn f() {}";
 
         let diagnostics = execute(&parse(source, Language::Rust), &mut passes());
 
         assert_eq!(diagnostics.len(), 1);
-        assert_diagnostic(&diagnostics[0]).has_span("<test>", 3, 7);
     }
 
     #[test]
@@ -435,23 +515,47 @@ mod tests {
     }
 
     #[test]
+    fn two_line_comments_with_markers_are_flagged_at_the_fixme_second() {
+        let source = "// TODO: one\n// FIXME: two\nfn f() {}";
+
+        let diagnostics = execute(&parse(source, Language::Rust), &mut passes());
+
+        assert_diagnostic(&diagnostics[1]).has_span("<test>", 16, 21);
+    }
+
+    #[test]
+    fn two_line_comments_with_markers_are_flagged_at_the_todo_first() {
+        let source = "// TODO: one\n// FIXME: two\nfn f() {}";
+
+        let diagnostics = execute(&parse(source, Language::Rust), &mut passes());
+
+        assert_diagnostic(&diagnostics[0]).has_span("<test>", 3, 7);
+    }
+
+    #[test]
     fn two_line_comments_with_markers_are_flagged_twice() {
         let source = "// TODO: one\n// FIXME: two\nfn f() {}";
 
         let diagnostics = execute(&parse(source, Language::Rust), &mut passes());
 
         assert_eq!(diagnostics.len(), 2);
-        assert_diagnostic(&diagnostics[0]).has_span("<test>", 3, 7);
-        assert_diagnostic(&diagnostics[1]).has_span("<test>", 16, 21);
     }
 
     #[test]
-    fn xxx_comment_is_flagged() {
+    fn xxx_comment_is_flagged_once() {
         let source = "// XXX\nfn f() {}";
 
         let diagnostics = execute(&parse(source, Language::Rust), &mut passes());
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn xxx_comment_is_flagged_with_the_marker_in_the_message() {
+        let source = "// XXX\nfn f() {}";
+
+        let diagnostics = execute(&parse(source, Language::Rust), &mut passes());
+
         assert_diagnostic(&diagnostics[0]).message_contains("`XXX`");
     }
 
@@ -465,33 +569,57 @@ mod tests {
         }
 
         #[test]
-        fn block_comment_with_marker_on_inner_line_is_flagged() {
+        fn block_comment_with_marker_on_inner_line_is_flagged_once() {
             let source = "/*\n * FIXME: this breaks on empty input\n */\nlet a = 1;";
 
             let diagnostics = execute(&parse(source, Language::TypeScript), &mut passes());
 
             assert_eq!(diagnostics.len(), 1);
+        }
+
+        #[test]
+        fn block_comment_with_marker_on_inner_line_is_flagged_with_the_marker_in_the_message() {
+            let source = "/*\n * FIXME: this breaks on empty input\n */\nlet a = 1;";
+
+            let diagnostics = execute(&parse(source, Language::TypeScript), &mut passes());
+
             assert_diagnostic(&diagnostics[0]).message_contains("`FIXME`");
         }
 
         #[test]
         fn doc_comment_with_marker_is_flagged_at_the_marker() {
             let source = "/**\n * TODO: describe the return value\n */\nfunction f() {}";
+            let start = source.find("TODO").unwrap();
 
             let diagnostics = execute(&parse(source, Language::TypeScript), &mut passes());
 
-            assert_eq!(diagnostics.len(), 1);
-            let start = source.find("TODO").unwrap();
             assert_diagnostic(&diagnostics[0]).has_span("<test>", start, start + 4);
         }
 
         #[test]
-        fn line_comment_with_marker_is_flagged() {
+        fn doc_comment_with_marker_is_flagged_once() {
+            let source = "/**\n * TODO: describe the return value\n */\nfunction f() {}";
+
+            let diagnostics = execute(&parse(source, Language::TypeScript), &mut passes());
+
+            assert_eq!(diagnostics.len(), 1);
+        }
+
+        #[test]
+        fn line_comment_with_marker_is_flagged_once() {
             let source = "// HACK: work around the parser\nconst a = 1;";
 
             let diagnostics = execute(&parse(source, Language::TypeScript), &mut passes());
 
             assert_eq!(diagnostics.len(), 1);
+        }
+
+        #[test]
+        fn line_comment_with_marker_is_flagged_with_rule_id_severity_and_marker() {
+            let source = "// HACK: work around the parser\nconst a = 1;";
+
+            let diagnostics = execute(&parse(source, Language::TypeScript), &mut passes());
+
             assert_diagnostic(&diagnostics[0])
                 .has_rule_id("lint.todo-comment")
                 .has_severity(Severity::Warn)

@@ -162,23 +162,38 @@ mod tests {
     }
 
     #[test]
-    fn trait_send() {
+    fn trait_send_doc_block() {
         fn assert_send<T: Send>() {}
         assert_send::<DocBlock>();
+    }
+
+    #[test]
+    fn trait_send_line() {
+        fn assert_send<T: Send>() {}
         assert_send::<Line>();
     }
 
     #[test]
-    fn trait_sync() {
+    fn trait_sync_doc_block() {
         fn assert_sync<T: Sync>() {}
         assert_sync::<DocBlock>();
+    }
+
+    #[test]
+    fn trait_sync_line() {
+        fn assert_sync<T: Sync>() {}
         assert_sync::<Line>();
     }
 
     #[test]
-    fn trait_unpin() {
+    fn trait_unpin_doc_block() {
         fn assert_unpin<T: Unpin>() {}
         assert_unpin::<DocBlock>();
+    }
+
+    #[test]
+    fn trait_unpin_line() {
+        fn assert_unpin<T: Unpin>() {}
         assert_unpin::<Line>();
     }
 }
