@@ -78,11 +78,6 @@ impl<'a> DocLine<'a> {
         self.offset
     }
 
-    /// Returns a line of `text` that starts at `offset`
-    fn new(text: &'a str, offset: usize) -> Self {
-        Self { text, offset }
-    }
-
     /// Returns the line without its first `consumed` bytes
     fn advance(self, consumed: usize) -> Self {
         Self {
@@ -183,7 +178,10 @@ mod tests {
 
     #[test]
     fn strip_star_keeps_bold_text() {
-        let line = DocLine::new("**Note** this", 0);
+        let line = DocLine {
+            text: "**Note** this",
+            offset: 0,
+        };
 
         let stripped = strip_star(line);
 
@@ -192,7 +190,10 @@ mod tests {
 
     #[test]
     fn strip_star_removes_the_star_and_one_space() {
-        let line = DocLine::new("   *  indented", 10);
+        let line = DocLine {
+            text: "   *  indented",
+            offset: 10,
+        };
 
         let stripped = strip_star(line);
 
@@ -202,7 +203,16 @@ mod tests {
 
     #[test]
     fn unindent_keeps_deeper_indentation() {
-        let mut lines = [DocLine::new(" text", 0), DocLine::new("     code", 10)];
+        let mut lines = [
+            DocLine {
+                text: " text",
+                offset: 0,
+            },
+            DocLine {
+                text: "     code",
+                offset: 10,
+            },
+        ];
 
         unindent(&mut lines);
 
@@ -214,9 +224,18 @@ mod tests {
     #[test]
     fn unindent_ignores_blank_lines() {
         let mut lines = [
-            DocLine::new("  a", 0),
-            DocLine::new("", 5),
-            DocLine::new("  b", 6),
+            DocLine {
+                text: "  a",
+                offset: 0,
+            },
+            DocLine {
+                text: "",
+                offset: 5,
+            },
+            DocLine {
+                text: "  b",
+                offset: 6,
+            },
         ];
 
         unindent(&mut lines);

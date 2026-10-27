@@ -1,20 +1,17 @@
+use bon::Builder;
+
 /// One line of doc comment text, with the marker gone
 ///
 /// A sentence often runs across several lines, so the reassembled prose has
 /// offsets of its own. The file offset of each line lets a diagnostic point
 /// at the sentence rather than at the whole comment.
-#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
+#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Builder)]
 pub(crate) struct DocLine<'a> {
     text: &'a str,
     offset: usize,
 }
 
 impl<'a> DocLine<'a> {
-    /// Creates a line holding `text`, which starts at `offset` in the file
-    pub(crate) fn new(text: &'a str, offset: usize) -> Self {
-        Self { text, offset }
-    }
-
     /// Returns the text of the line
     pub(crate) fn text(&self) -> &'a str {
         self.text
@@ -31,8 +28,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn accessors_return_constructor_arguments() {
-        let line = DocLine::new(" Returns the length", 7);
+    fn accessors_return_builder_arguments() {
+        let line = DocLine::builder()
+            .text(" Returns the length")
+            .offset(7)
+            .build();
 
         assert_eq!(line.text(), " Returns the length");
         assert_eq!(line.offset(), 7);

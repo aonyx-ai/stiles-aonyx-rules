@@ -52,7 +52,11 @@ fn check(lines: Option<Vec<DocLine<'_>>>, node: &DecoratedNode<'_>) -> Vec<Diagn
     let Some(lines) = lines else {
         return Vec::new();
     };
-    let Some(block) = DocBlock::new(node.span().file_path().clone(), &lines) else {
+    let Some(block) = DocBlock::builder()
+        .file(node.span().file_path().clone())
+        .doc(&lines)
+        .build()
+    else {
         return Vec::new();
     };
 

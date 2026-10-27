@@ -24,6 +24,7 @@ default = ["plugin"]
 plugin = []
 
 [dependencies]
+bon = { workspace = true }
 doc_comment = { workspace = true }
 whisker-plugin = { workspace = true }
 whisker-rust = { workspace = true }

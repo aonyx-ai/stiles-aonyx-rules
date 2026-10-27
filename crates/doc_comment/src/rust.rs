@@ -79,7 +79,10 @@ fn block_lines<'a>(node: &DecoratedNode<'a>) -> Option<Vec<DocLine<'a>>> {
     let mut consumed = 0;
     for raw in doc.text().split('\n') {
         let text = raw.strip_suffix('\r').unwrap_or(raw);
-        lines.push(strip_star(DocLine::new(text, base + consumed)));
+        lines.push(strip_star(DocLine {
+            text,
+            offset: base + consumed,
+        }));
         consumed += raw.len() + 1;
     }
 
@@ -137,7 +140,10 @@ fn line_of<'a>(node: &DecoratedNode<'a>) -> Option<DocLine<'a>> {
     let text = text.strip_suffix('\n').unwrap_or(text);
     let text = text.strip_suffix('\r').unwrap_or(text);
 
-    Some(DocLine::new(text, doc.span().start()))
+    Some(DocLine {
+        text,
+        offset: doc.span().start(),
+    })
 }
 
 #[cfg(test)]
