@@ -27,7 +27,12 @@ const WRAPPERS: [&str; 2] = ["Result", "Option"];
 /// `impl<T> Foo<T>` counts too.
 ///
 /// The rule skips a function that carries `#[builder]`, because `bon` then
-/// generates a builder from the function itself. It skips a trait impl,
+/// generates a builder from the function itself and hides the function. A
+/// `#[builder]` that names a `start_fn` does not count, because `bon` then
+/// keeps the function callable under its own name beside the builder. The
+/// other arguments of `#[builder]` leave the function hidden. A `const fn`
+/// counts like any other, because `#[builder(const)]` gives it a builder
+/// that runs in a const context. The rule skips a trait impl,
 /// because the trait fixes the signature. It skips test code, which is a
 /// function under a test attribute or under a `cfg` that holds only under
 /// `test`. Every file in a `tests` or `benches` directory is test code too.
@@ -87,24 +92,64 @@ fn check_function(function: &DecoratedNode<'_>) -> Option<Diagnostic> {
         return None;
     }
 
-    let has_builder = outer_attributes(function)
-        .iter()
-        .any(|attribute| attribute_name(attribute) == Some("builder"));
-    if has_builder || is_test_code(function) {
+    let builders: Vec<_> = outer_attributes(function)
+        .into_iter()
+        .filter(|attribute| attribute_name(attribute) == Some("builder"))
+        .collect();
+    let keeps_function = builders.iter().any(names_a_start_fn);
+    if (!builders.is_empty() && !keeps_function) || is_test_code(function) {
         return None;
     }
 
+    let advice = if keeps_function {
+        "remove the `start_fn` name from `#[builder]` so that the builder replaces the function"
+    } else {
+        "derive a builder with `bon`, or put `#[builder]` on the function"
+    };
     Some(Diagnostic::new(
         RULE_ID,
         Severity::Warn,
         format!(
-            "`{}` builds `{}` from {count} positional parameters; derive a builder with \
-             `bon`, or put `#[builder]` on the function",
+            "`{}` builds `{}` from {count} positional parameters; {advice}",
             name.text(),
             impl_type.text(),
         ),
         name.span(),
     ))
+}
+
+/// Returns whether a `#[builder]` attribute names its start function
+///
+/// `bon` reads the name from `start_fn = name`, or from `name = ...` inside
+/// `start_fn(...)`. With a name, it keeps the original function callable
+/// beside the builder. `start_fn(vis = "...")` without a name leaves the
+/// function hidden. Only the attribute's own arguments count, so a
+/// `start_fn` inside another argument does not.
+fn names_a_start_fn(attribute: &DecoratedNode<'_>) -> bool {
+    let Some(arguments) = attribute.child_by_field_name("arguments") else {
+        return false;
+    };
+    children(&arguments).windows(2).any(|pair| {
+        if pair[0].kind() != "identifier" || pair[0].text() != "start_fn" {
+            return false;
+        }
+        match pair[1].kind() {
+            "=" => true,
+            "token_tree" => children(&pair[1])
+                .windows(2)
+                .any(|inner| inner[0].text() == "name" && inner[1].kind() == "="),
+            _ => false,
+        }
+    })
+}
+
+/// Returns every child of `node` in order, the unnamed ones included
+///
+/// A token tree holds its `=` signs and commas as unnamed children.
+fn children<'a>(node: &DecoratedNode<'a>) -> Vec<DecoratedNode<'a>> {
+    (0..node.child_count() as u32)
+        .filter_map(|index| node.child(index))
+        .collect()
 }
 
 /// Returns whether `parameter` is a receiver with a type, as in
@@ -267,6 +312,51 @@ mod tests {
     }
 
     #[test]
+    fn builder_attribute_naming_a_start_fn_advises_removing_the_name() {
+        let diagnostics = run_in_impl(
+            "#[builder(start_fn = builder)]\n    fn new(a: u8, b: u8) -> Self { todo!() }",
+        );
+
+        assert_diagnostic(&diagnostics[0]).message_contains("remove the `start_fn` name");
+    }
+
+    #[test]
+    fn builder_attribute_naming_a_start_fn_after_another_argument_flagged() {
+        let diagnostics = run_in_impl(
+            "#[builder(on(String, into), start_fn = builder)]\n    fn new(a: u8, b: u8) -> Self { todo!() }",
+        );
+
+        assert_reports_one(&diagnostics);
+    }
+
+    #[test]
+    fn builder_attribute_naming_a_start_fn_flagged() {
+        let diagnostics = run_in_impl(
+            "#[builder(start_fn = builder)]\n    fn new(a: u8, b: u8) -> Self { todo!() }",
+        );
+
+        assert_reports_one(&diagnostics);
+    }
+
+    #[test]
+    fn builder_attribute_naming_a_start_fn_in_a_list_flagged() {
+        let diagnostics = run_in_impl(
+            "#[builder(start_fn(vis = \"pub(crate)\", name = builder))]\n    fn new(a: u8, b: u8) -> Self { todo!() }",
+        );
+
+        assert_reports_one(&diagnostics);
+    }
+
+    #[test]
+    fn builder_attribute_naming_a_start_fn_written_in_full_flagged() {
+        let diagnostics = run_in_impl(
+            "#[bon::builder(start_fn = builder)]\n    fn new(a: u8, b: u8) -> Self { todo!() }",
+        );
+
+        assert_reports_one(&diagnostics);
+    }
+
+    #[test]
     fn builder_attribute_not_flagged() {
         let diagnostics = run_in_impl("#[builder]\n    fn new(a: u8, b: u8) -> Self { todo!() }");
 
@@ -301,9 +391,54 @@ mod tests {
     }
 
     #[test]
+    fn builder_attribute_with_a_finish_fn_list_not_flagged() {
+        let diagnostics = run_in_impl(
+            "#[builder(finish_fn(name = call, vis = \"pub\"))]\n    fn new(a: u8, b: u8) -> Self { todo!() }",
+        );
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn builder_attribute_with_a_finish_fn_not_flagged() {
+        let diagnostics = run_in_impl(
+            "#[builder(finish_fn = call)]\n    fn new(a: u8, b: u8) -> Self { todo!() }",
+        );
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn builder_attribute_with_a_start_fn_inside_another_argument_not_flagged() {
+        let diagnostics = run_in_impl(
+            "#[builder(on(String, start_fn = builder))]\n    fn new(a: u8, b: u8) -> Self { todo!() }",
+        );
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn builder_attribute_with_a_start_fn_visibility_only_not_flagged() {
+        let diagnostics = run_in_impl(
+            "#[builder(start_fn(vis = \"pub(crate)\"))]\n    fn new(a: u8, b: u8) -> Self { todo!() }",
+        );
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
     fn builder_attribute_written_in_full_not_flagged() {
         let diagnostics =
             run_in_impl("#[bon::builder]\n    fn new(a: u8, b: u8) -> Self { todo!() }");
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn builder_const_attribute_on_a_const_fn_not_flagged() {
+        let diagnostics = run_in_impl(
+            "#[builder(const)]\n    pub const fn new(a: u8, b: u8) -> Self { todo!() }",
+        );
 
         assert_no_diagnostics(&diagnostics);
     }
@@ -351,6 +486,13 @@ mod tests {
     #[test]
     fn const_fn_flagged() {
         let diagnostics = run_in_impl("pub const fn new(a: u8, b: u8) -> Self { todo!() }");
+
+        assert_reports_one(&diagnostics);
+    }
+
+    #[test]
+    fn const_fn_without_a_visibility_flagged() {
+        let diagnostics = run_in_impl("const fn new(a: u8, b: u8) -> Self { todo!() }");
 
         assert_reports_one(&diagnostics);
     }
