@@ -1096,21 +1096,21 @@ mod tests {
         }
 
         #[test]
-        fn param_hyphen_is_not_flagged() {
-            let source = "/**\n * Adds two numbers\n * @param a - the first\n * @param {number} b - the second\n */\nfunction add(a: number, b: number) {}";
-
-            let diagnostics = check(source);
-
-            assert_no_diagnostics(&diagnostics);
-        }
-
-        #[test]
         fn param_description_with_an_aside_is_flagged() {
             let source = "/**\n * @param a - the first \u{2014} never negative \u{2014} value\n */\nfunction f(a: number) {}";
 
             let diagnostics = check(source);
 
             assert_eq!(diagnostics.len(), 2);
+        }
+
+        #[test]
+        fn param_hyphen_is_not_flagged() {
+            let source = "/**\n * Adds two numbers\n * @param a - the first\n * @param {number} b - the second\n */\nfunction add(a: number, b: number) {}";
+
+            let diagnostics = check(source);
+
+            assert_no_diagnostics(&diagnostics);
         }
     }
 }

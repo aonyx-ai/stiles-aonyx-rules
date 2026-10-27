@@ -207,52 +207,23 @@ mod tests {
     }
 
     #[test]
-    fn check_signature_with_bool_pair_reports_nothing() {
-        let diagnostics = run("fn f(a: bool, b: bool) {}");
+    fn check_signature_after_another_signatures_attribute_reports_group() {
+        let diagnostics = run_with_boundary_attributes(
+            "#[shard]\nfn a(x: String, y: String) {}\nfn b(x: String, y: String) {}",
+            &["shard"],
+        );
 
-        assert_no_diagnostics(&diagnostics);
-    }
-
-    /// Pins that this rule ignores every signature the shared corpus holds
-    ///
-    /// The corpus is what stops two rules reading one option from drifting
-    /// apart. `bool_param` once reported an `extern` signature that
-    /// `repeated_primitive_params` skipped, and no test failed, because
-    /// only one of them had `extern` cases.
-    #[test]
-    fn every_boundary_in_the_shared_corpus_reports_nothing() {
-        for source in boundary::corpus::EXEMPT {
-            let diagnostics = run_with_boundary_attributes(source, boundary::corpus::ATTRIBUTES);
-
-            assert!(
-                diagnostics.is_empty(),
-                "should report nothing for a boundary: {source}"
-            );
-        }
-    }
-
-    /// Pins that this rule still reports what the corpus says it must
-    ///
-    /// A rule that exempts too much reports nothing, which reads exactly
-    /// like a rule that found no fault.
-    #[test]
-    fn every_signature_off_the_boundary_in_the_shared_corpus_reports() {
-        for source in boundary::corpus::REPORTED {
-            let diagnostics = run_with_boundary_attributes(source, boundary::corpus::ATTRIBUTES);
-
-            assert!(
-                !diagnostics.is_empty(),
-                "should report a signature on no boundary: {source}"
-            );
-        }
+        assert_diagnostic(&diagnostics[0]).message_contains("share type `String`");
     }
 
     #[test]
-    fn check_signature_with_a_configured_attribute_reports_nothing() {
-        let diagnostics =
-            run_with_boundary_attributes("#[shard]\nfn f(a: String, b: String) {}", &["shard"]);
+    fn check_signature_after_another_signatures_attribute_reports_one_diagnostic() {
+        let diagnostics = run_with_boundary_attributes(
+            "#[shard]\nfn a(x: String, y: String) {}\nfn b(x: String, y: String) {}",
+            &["shard"],
+        );
 
-        assert_no_diagnostics(&diagnostics);
+        assert_eq!(diagnostics.len(), 1);
     }
 
     #[test]
@@ -261,6 +232,24 @@ mod tests {
             "#[shard]\n/// Doc\n#[inline]\nfn f(a: String, b: String) {}",
             &["shard"],
         );
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn check_signature_with_a_configured_attribute_on_a_method_reports_nothing() {
+        let diagnostics = run_with_boundary_attributes(
+            "impl S {\n    #[shard]\n    fn f(a: String, b: String) {}\n}",
+            &["shard"],
+        );
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn check_signature_with_a_configured_attribute_reports_nothing() {
+        let diagnostics =
+            run_with_boundary_attributes("#[shard]\nfn f(a: String, b: String) {}", &["shard"]);
 
         assert_no_diagnostics(&diagnostics);
     }
@@ -290,36 +279,6 @@ mod tests {
     }
 
     #[test]
-    fn check_signature_with_a_configured_attribute_on_a_method_reports_nothing() {
-        let diagnostics = run_with_boundary_attributes(
-            "impl S {\n    #[shard]\n    fn f(a: String, b: String) {}\n}",
-            &["shard"],
-        );
-
-        assert_no_diagnostics(&diagnostics);
-    }
-
-    #[test]
-    fn check_signature_after_another_signatures_attribute_reports_group() {
-        let diagnostics = run_with_boundary_attributes(
-            "#[shard]\nfn a(x: String, y: String) {}\nfn b(x: String, y: String) {}",
-            &["shard"],
-        );
-
-        assert_diagnostic(&diagnostics[0]).message_contains("share type `String`");
-    }
-
-    #[test]
-    fn check_signature_after_another_signatures_attribute_reports_one_diagnostic() {
-        let diagnostics = run_with_boundary_attributes(
-            "#[shard]\nfn a(x: String, y: String) {}\nfn b(x: String, y: String) {}",
-            &["shard"],
-        );
-
-        assert_eq!(diagnostics.len(), 1);
-    }
-
-    #[test]
     fn check_signature_with_another_attribute_reports_group() {
         let diagnostics =
             run_with_boundary_attributes("#[inline]\nfn f(a: String, b: String) {}", &["shard"]);
@@ -336,8 +295,8 @@ mod tests {
     }
 
     #[test]
-    fn check_signature_with_extern_function_reports_nothing() {
-        let diagnostics = run("pub extern \"C\" fn f(a: usize, b: usize) {}");
+    fn check_signature_with_bool_pair_reports_nothing() {
+        let diagnostics = run("fn f(a: bool, b: bool) {}");
 
         assert_no_diagnostics(&diagnostics);
     }
@@ -345,6 +304,13 @@ mod tests {
     #[test]
     fn check_signature_with_extern_block_reports_nothing() {
         let diagnostics = run("unsafe extern \"C\" { fn f(a: usize, b: usize); }");
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn check_signature_with_extern_function_reports_nothing() {
+        let diagnostics = run("pub extern \"C\" fn f(a: usize, b: usize) {}");
 
         assert_no_diagnostics(&diagnostics);
     }
@@ -492,6 +458,40 @@ mod tests {
         let diagnostics = run("unsafe fn f(a: usize, b: usize) {}");
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    /// Pins that this rule ignores every signature the shared corpus holds
+    ///
+    /// The corpus is what stops two rules reading one option from drifting
+    /// apart. `bool_param` once reported an `extern` signature that
+    /// `repeated_primitive_params` skipped, and no test failed, because
+    /// only one of them had `extern` cases.
+    #[test]
+    fn every_boundary_in_the_shared_corpus_reports_nothing() {
+        for source in boundary::corpus::EXEMPT {
+            let diagnostics = run_with_boundary_attributes(source, boundary::corpus::ATTRIBUTES);
+
+            assert!(
+                diagnostics.is_empty(),
+                "should report nothing for a boundary: {source}"
+            );
+        }
+    }
+
+    /// Pins that this rule still reports what the corpus says it must
+    ///
+    /// A rule that exempts too much reports nothing, which reads exactly
+    /// like a rule that found no fault.
+    #[test]
+    fn every_signature_off_the_boundary_in_the_shared_corpus_reports() {
+        for source in boundary::corpus::REPORTED {
+            let diagnostics = run_with_boundary_attributes(source, boundary::corpus::ATTRIBUTES);
+
+            assert!(
+                !diagnostics.is_empty(),
+                "should report a signature on no boundary: {source}"
+            );
+        }
     }
 
     #[test]

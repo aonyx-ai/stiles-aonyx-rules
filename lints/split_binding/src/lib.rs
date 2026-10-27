@@ -320,6 +320,23 @@ mod tests {
         execute(&tree, &mut passes())
     }
 
+    /// A binding the next one borrows from cannot merge with it at all
+    ///
+    /// Taken from raft. `author` is already a parameter, so the suggested
+    /// rewrite would have the binding borrow from itself and would not
+    /// compile.
+    #[test]
+    fn a_binding_borrowed_by_its_successor_is_not_flagged() {
+        let source = "fn f(author: Option<&Author>) -> &str {\n    \
+             let default_author = Author::default_raft();\n    \
+             let author = author.unwrap_or(&default_author);\n    \
+             author.name\n}";
+
+        let diagnostics = run(source);
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
     /// A binding that is one argument among several is not a stage of the
     /// value that follows it
     ///
@@ -332,23 +349,6 @@ mod tests {
              let app_id = app_id_for(conn, payload);\n    \
              let id: i64 = conn.query_row(SQL, (kind, payload, app_id), read)?;\n    \
              id\n}";
-
-        let diagnostics = run(source);
-
-        assert_no_diagnostics(&diagnostics);
-    }
-
-    /// A binding the next one borrows from cannot merge with it at all
-    ///
-    /// Taken from raft. `author` is already a parameter, so the suggested
-    /// rewrite would have the binding borrow from itself and would not
-    /// compile.
-    #[test]
-    fn a_binding_borrowed_by_its_successor_is_not_flagged() {
-        let source = "fn f(author: Option<&Author>) -> &str {\n    \
-             let default_author = Author::default_raft();\n    \
-             let author = author.unwrap_or(&default_author);\n    \
-             author.name\n}";
 
         let diagnostics = run(source);
 

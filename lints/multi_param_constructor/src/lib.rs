@@ -698,6 +698,24 @@ mod tests {
     }
 
     #[test]
+    fn trait_send() {
+        fn assert_send<T: Send>() {}
+        assert_send::<MultiParamConstructor>();
+    }
+
+    #[test]
+    fn trait_sync() {
+        fn assert_sync<T: Sync>() {}
+        assert_sync::<MultiParamConstructor>();
+    }
+
+    #[test]
+    fn trait_unpin() {
+        fn assert_unpin<T: Unpin>() {}
+        assert_unpin::<MultiParamConstructor>();
+    }
+
+    #[test]
     fn two_parameters_returning_self_flagged_once() {
         let diagnostics = run_in_impl("fn new(a: u8, b: u8) -> Self { todo!() }");
 
@@ -731,23 +749,5 @@ mod tests {
         let diagnostics = run_in_impl("fn new() -> Self { todo!() }");
 
         assert_no_diagnostics(&diagnostics);
-    }
-
-    #[test]
-    fn trait_send() {
-        fn assert_send<T: Send>() {}
-        assert_send::<MultiParamConstructor>();
-    }
-
-    #[test]
-    fn trait_sync() {
-        fn assert_sync<T: Sync>() {}
-        assert_sync::<MultiParamConstructor>();
-    }
-
-    #[test]
-    fn trait_unpin() {
-        fn assert_unpin<T: Unpin>() {}
-        assert_unpin::<MultiParamConstructor>();
     }
 }
