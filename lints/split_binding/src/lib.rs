@@ -124,15 +124,17 @@ fn analyze(block: &DecoratedNode<'_>) -> Vec<Diagnostic> {
             continue;
         }
 
-        diagnostics.push(Diagnostic::new(
-            RULE_ID,
-            Severity::Warn,
-            format!(
-                "`{}` is only used to initialize `{}`; use `{}` for both and shadow",
-                binding.name, successor.name, shared
-            ),
-            binding.pattern.span(),
-        ));
+        diagnostics.push(
+            Diagnostic::builder()
+                .rule_id(RULE_ID)
+                .severity(Severity::Warn)
+                .message(format!(
+                    "`{}` is only used to initialize `{}`; use `{}` for both and shadow",
+                    binding.name, successor.name, shared
+                ))
+                .span(binding.pattern.span())
+                .build(),
+        );
     }
 
     diagnostics

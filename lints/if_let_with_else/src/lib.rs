@@ -34,12 +34,14 @@ impl RustLintPass for IfLetWithElse {
             return Vec::new();
         }
 
-        vec![Diagnostic::new(
-            RuleId::new("lint.if-let-with-else"),
-            Severity::Warn,
-            "`if let` with `else` should be written as a `match` expression".into(),
-            node.span(),
-        )]
+        vec![
+            Diagnostic::builder()
+                .rule_id(RuleId::new("lint.if-let-with-else"))
+                .severity(Severity::Warn)
+                .message("`if let` with `else` should be written as a `match` expression")
+                .span(node.span())
+                .build(),
+        ]
     }
 }
 

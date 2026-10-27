@@ -231,17 +231,19 @@ impl RustLintPass for IoInPureFunction {
             if !is_io_path(&path) {
                 continue;
             }
-            diagnostics.push(Diagnostic::new(
-                RULE_ID,
-                Severity::Warn,
-                format!(
-                    "`{name}` reaches `{}`, which is I/O; a function with this name builds a \
+            diagnostics.push(
+                Diagnostic::builder()
+                    .rule_id(RULE_ID)
+                    .severity(Severity::Warn)
+                    .message(format!(
+                        "`{name}` reaches `{}`, which is I/O; a function with this name builds a \
                      value from its inputs alone, so move the I/O into a `load`, `fetch`, \
                      `build`, or `run` function",
-                    path.join("::"),
-                ),
-                reference.span(),
-            ));
+                        path.join("::"),
+                    ))
+                    .span(reference.span())
+                    .build(),
+            );
         }
         diagnostics
     }

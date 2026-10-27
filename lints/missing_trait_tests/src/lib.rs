@@ -371,12 +371,17 @@ impl<'a> FileScan<'a> {
                 continue;
             }
 
-            diagnostics.push(Diagnostic::new(
-                RuleId::new("lint.missing-trait-tests"),
-                Severity::Warn,
-                format!("`{name}` has no {} trait test", join_traits(&missing)),
-                span.clone(),
-            ));
+            diagnostics.push(
+                Diagnostic::builder()
+                    .rule_id(RuleId::new("lint.missing-trait-tests"))
+                    .severity(Severity::Warn)
+                    .message(format!(
+                        "`{name}` has no {} trait test",
+                        join_traits(&missing)
+                    ))
+                    .span(span.clone())
+                    .build(),
+            );
         }
 
         diagnostics

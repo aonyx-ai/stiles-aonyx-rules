@@ -140,15 +140,17 @@ fn check_identifier(identifier: &DecoratedNode<'_>, submodules: &[&str]) -> Opti
         return None;
     }
 
-    Some(Diagnostic::new(
-        RULE_ID,
-        Severity::Warn,
-        format!(
-            "`{name}` names a submodule, so the path reads like a crate; write `self::{name}`",
-            name = identifier.text(),
-        ),
-        identifier.span(),
-    ))
+    Some(
+        Diagnostic::builder()
+            .rule_id(RULE_ID)
+            .severity(Severity::Warn)
+            .message(format!(
+                "`{name}` names a submodule, so the path reads like a crate; write `self::{name}`",
+                name = identifier.text(),
+            ))
+            .span(identifier.span())
+            .build(),
+    )
 }
 
 /// Returns whether the identifier is the first segment of a path

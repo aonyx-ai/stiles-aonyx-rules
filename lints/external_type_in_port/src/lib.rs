@@ -561,16 +561,11 @@ impl<'a> Signature<'_, 'a> {
             return;
         }
 
-        diagnostics.push(Diagnostic::new(
-            RULE_ID,
-            Severity::Warn,
-            format!(
+        diagnostics.push(Diagnostic::builder().rule_id(RULE_ID).severity(Severity::Warn).message(format!(
                 "port method `{}` names `{}` from the external crate `{krate}`; use a type the domain owns",
                 self.method,
                 node.text()
-            ),
-            node.span(),
-        ));
+            )).span(node.span()).build());
     }
 
     /// Returns whether a name is `Self` or a type parameter in scope
@@ -683,7 +678,12 @@ mod tests {
             .set_language(&grammar)
             .expect("the grammar should load");
         let tree = parser.parse(source, None).expect("the source should parse");
-        let tree = DecoratedTree::new(tree, Language::Rust, source.to_owned(), PathBuf::from(path));
+        let tree = DecoratedTree::builder()
+            .tree(tree)
+            .language(Language::Rust)
+            .source(source.to_owned())
+            .file(PathBuf::from(path))
+            .build();
 
         let mut passes: Vec<Box<dyn LintPass>> =
             vec![Box::new(RustLintPassAdapter::new(ExternalTypeInPort))];

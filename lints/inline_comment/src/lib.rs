@@ -286,19 +286,25 @@ fn check_comment(node: &DecoratedNode<'_>, syntax: Syntax) -> Vec<Diagnostic> {
     let span = node.span();
     let file = span.file_path().clone();
     let end = run_end(raw, syntax, parent_text, parent_start);
-    let span = Span::new(file, span.start(), end);
+    let span = Span::builder()
+        .file(file)
+        .start(span.start())
+        .end(end)
+        .build();
 
     let message = match classify(text) {
         CommentKind::Divider => "remove this section divider",
         CommentKind::Prose => "remove this comment or move what it explains into a doc comment",
     };
 
-    vec![Diagnostic::new(
-        RuleId::new("lint.inline-comment"),
-        Severity::Warn,
-        message.into(),
-        span,
-    )]
+    vec![
+        Diagnostic::builder()
+            .rule_id(RuleId::new("lint.inline-comment"))
+            .severity(Severity::Warn)
+            .message(message)
+            .span(span)
+            .build(),
+    ]
 }
 
 impl RustLintPass for InlineComment {

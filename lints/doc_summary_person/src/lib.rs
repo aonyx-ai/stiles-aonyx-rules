@@ -76,14 +76,9 @@ fn report(node: &DecoratedNode<'_>) -> Vec<Diagnostic> {
     };
 
     let start = summary.offset() + summary.text().len() - text.len();
-    vec![Diagnostic::new(
-        RULE_ID,
-        Severity::Warn,
-        format!(
+    vec![Diagnostic::builder().rule_id(RULE_ID).severity(Severity::Warn).message(format!(
             "doc summary opens with \"{token}\"; open it with a third-person verb, such as \"Returns\" or \"Creates\""
-        ),
-        Span::new(span.file_path().clone(), start, start + token.len()),
-    )]
+        )).span(Span::builder().file(span.file_path().clone()).start(start).end(start + token.len()).build()).build()]
 }
 
 /// Returns the token that `summary` opens with if it shows that the summary

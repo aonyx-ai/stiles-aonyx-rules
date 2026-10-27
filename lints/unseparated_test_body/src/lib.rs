@@ -78,15 +78,10 @@ fn report(node: &DecoratedNode<'_>) -> Vec<Diagnostic> {
         return Vec::new();
     }
 
-    vec![Diagnostic::new(
-        RULE_ID,
-        Severity::Warn,
-        format!(
+    vec![Diagnostic::builder().rule_id(RULE_ID).severity(Severity::Warn).message(format!(
             "test body of {} statements has no blank line: separate Arrange, Act, and Assert with blank lines",
             statements.len()
-        ),
-        name.span(),
-    )]
+        )).span(name.span()).build()]
 }
 
 /// Returns whether a named child of a block is a statement

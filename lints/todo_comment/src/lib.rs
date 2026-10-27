@@ -92,12 +92,22 @@ fn check_comment(node: &DecoratedNode<'_>) -> Vec<Diagnostic> {
 
     for FoundMarker { offset, marker } in find_markers(node.text()) {
         let start = span.start() + offset;
-        diagnostics.push(Diagnostic::new(
-            RULE_ID,
-            Severity::Warn,
-            format!("`{marker}` comment: track this work in the issue tracker instead"),
-            Span::new(span.file_path().clone(), start, start + marker.len()),
-        ));
+        diagnostics.push(
+            Diagnostic::builder()
+                .rule_id(RULE_ID)
+                .severity(Severity::Warn)
+                .message(format!(
+                    "`{marker}` comment: track this work in the issue tracker instead"
+                ))
+                .span(
+                    Span::builder()
+                        .file(span.file_path().clone())
+                        .start(start)
+                        .end(start + marker.len())
+                        .build(),
+                )
+                .build(),
+        );
     }
 
     diagnostics

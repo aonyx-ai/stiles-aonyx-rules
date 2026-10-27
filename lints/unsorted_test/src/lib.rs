@@ -74,12 +74,16 @@ fn check_scope(scope: &DecoratedNode<'_>) -> Vec<Diagnostic> {
             .find(|earlier| *earlier > key)
             .unwrap_or(previous);
 
-        diagnostics.push(Diagnostic::new(
-            RULE_ID,
-            Severity::Warn,
-            format!("test `{key}` is out of alphabetical order; move it before `{target}`"),
-            name.span(),
-        ));
+        diagnostics.push(
+            Diagnostic::builder()
+                .rule_id(RULE_ID)
+                .severity(Severity::Warn)
+                .message(format!(
+                    "test `{key}` is out of alphabetical order; move it before `{target}`"
+                ))
+                .span(name.span())
+                .build(),
+        );
     }
 
     diagnostics

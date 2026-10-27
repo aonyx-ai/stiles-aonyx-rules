@@ -108,12 +108,16 @@ impl RustLintPass for DeriveOrder {
         }
 
         let expected_str = expected.join(", ");
-        vec![Diagnostic::new(
-            RuleId::new("lint.derive-order"),
-            Severity::Warn,
-            format!("derive macros are not in canonical order; expected: {expected_str}"),
-            node.span(),
-        )]
+        vec![
+            Diagnostic::builder()
+                .rule_id(RuleId::new("lint.derive-order"))
+                .severity(Severity::Warn)
+                .message(format!(
+                    "derive macros are not in canonical order; expected: {expected_str}"
+                ))
+                .span(node.span())
+                .build(),
+        ]
     }
 }
 

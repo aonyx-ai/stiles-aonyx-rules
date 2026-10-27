@@ -140,16 +140,18 @@ fn check_signature(node: &DecoratedNode<'_>, boundary: &[String]) -> Vec<Diagnos
         if parameter_names.len() < 2 {
             continue;
         }
-        diagnostics.push(Diagnostic::new(
-            RULE_ID,
-            Severity::Warn,
-            format!(
-                "parameters {} share type `{type_name}`; a caller can transpose them, \
+        diagnostics.push(
+            Diagnostic::builder()
+                .rule_id(RULE_ID)
+                .severity(Severity::Warn)
+                .message(format!(
+                    "parameters {} share type `{type_name}`; a caller can transpose them, \
                  so give each one a newtype",
-                join_names(&parameter_names)
-            ),
-            type_node.span(),
-        ));
+                    join_names(&parameter_names)
+                ))
+                .span(type_node.span())
+                .build(),
+        );
     }
     diagnostics
 }
@@ -193,11 +195,13 @@ mod tests {
     /// Runs the rule as whisker runs it, with `boundary-attributes` set
     fn run_with_boundary_attributes(source: &str, boundary: &[&str]) -> Vec<Diagnostic> {
         let tree = parse(source, Language::Rust);
-        let options = RuleOptions::new(vec![RuleOption::new(
-            RULE_ID.as_str().to_owned(),
-            "boundary-attributes".to_owned(),
-            boundary.iter().map(|name| (*name).to_owned()).collect(),
-        )]);
+        let options = RuleOptions::new(vec![
+            RuleOption::builder()
+                .rule(RULE_ID.as_str().to_owned())
+                .name("boundary-attributes")
+                .values(boundary.iter().map(|name| (*name).to_owned()).collect())
+                .build(),
+        ]);
 
         let mut pass = RepeatedPrimitiveParams::into_lint_pass();
         pass.configure(&options);

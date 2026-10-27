@@ -163,7 +163,14 @@ fn diagnose(binding: BindingReads<'_>, loop_name: Option<&str>) -> Option<Diagno
         false => format!("this statement reads {count} fields of `{name}`; destructure `{name}`"),
     };
 
-    Some(Diagnostic::new(RULE_ID, Severity::Warn, message, span))
+    Some(
+        Diagnostic::builder()
+            .rule_id(RULE_ID)
+            .severity(Severity::Warn)
+            .message(message)
+            .span(span)
+            .build(),
+    )
 }
 
 /// Returns the name a `for` loop binds, when `block` is that loop's body

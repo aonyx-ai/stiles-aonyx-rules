@@ -106,16 +106,18 @@ fn check_function(function: &DecoratedNode<'_>) -> Option<Diagnostic> {
     } else {
         "derive a builder with `bon`, or put `#[builder]` on the function"
     };
-    Some(Diagnostic::new(
-        RULE_ID,
-        Severity::Warn,
-        format!(
-            "`{}` builds `{}` from {count} positional parameters; {advice}",
-            name.text(),
-            impl_type.text(),
-        ),
-        name.span(),
-    ))
+    Some(
+        Diagnostic::builder()
+            .rule_id(RULE_ID)
+            .severity(Severity::Warn)
+            .message(format!(
+                "`{}` builds `{}` from {count} positional parameters; {advice}",
+                name.text(),
+                impl_type.text(),
+            ))
+            .span(name.span())
+            .build(),
+    )
 }
 
 /// Returns whether a `#[builder]` attribute names its start function
@@ -272,7 +274,12 @@ mod tests {
             .set_language(&grammar)
             .expect("the grammar should load");
         let tree = parser.parse(source, None).expect("the source should parse");
-        let tree = DecoratedTree::new(tree, Language::Rust, source.to_owned(), PathBuf::from(path));
+        let tree = DecoratedTree::builder()
+            .tree(tree)
+            .language(Language::Rust)
+            .source(source.to_owned())
+            .file(PathBuf::from(path))
+            .build();
 
         let mut passes = vec![MultiParamConstructor::into_lint_pass()];
         execute(&tree, &mut passes)
