@@ -50,7 +50,7 @@ impl RustLintPass for TerminalOutput {
         let Some(path) = node.child_by_field_name("macro") else {
             return Vec::new();
         };
-        let Some(segments) = resolve::resolve(node, path.text(), Namespace::Macro) else {
+        let Some(segments) = self::resolve::resolve(node, path.text(), Namespace::Macro) else {
             return Vec::new();
         };
         let Some(name) = print_macro(&segments) else {
@@ -72,7 +72,7 @@ impl RustLintPass for TerminalOutput {
             "scoped_identifier" => Namespace::Type,
             _ => return Vec::new(),
         };
-        let Some(segments) = resolve::resolve(node, function.text(), namespace) else {
+        let Some(segments) = self::resolve::resolve(node, function.text(), namespace) else {
             return Vec::new();
         };
 
@@ -129,7 +129,7 @@ fn report(node: &DecoratedNode<'_>, message: String) -> Vec<Diagnostic> {
     if is_exempt_file(node.span().file()) {
         return Vec::new();
     }
-    if test_code::is_test_code(node) {
+    if self::test_code::is_test_code(node) {
         return Vec::new();
     }
 
