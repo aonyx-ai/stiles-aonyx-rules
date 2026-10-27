@@ -1,5 +1,5 @@
-use whisker_rust::RustLintPass;
-use whisker_types::{DecoratedNode, Diagnostic, RuleId, Severity};
+use whisker_rust::{RuleId, RustLintPass};
+use whisker_types::{DecoratedNode, Diagnostic, Severity};
 
 /// The advice for a `matches!` whose `bool` is the value the code wants
 const VALUE_MESSAGE: &str = "use a full `match` expression instead of `matches!`";

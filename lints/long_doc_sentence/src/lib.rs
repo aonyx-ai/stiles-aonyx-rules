@@ -1,8 +1,8 @@
 mod doc_line;
 mod sentence;
 
-use whisker_rust::RustLintPass;
-use whisker_types::{DecoratedNode, Diagnostic, RuleId, Severity, Span};
+use whisker_rust::{RuleId, RustLintPass};
+use whisker_types::{DecoratedNode, Diagnostic, Severity, Span};
 use whisker_typescript::TypeScriptLintPass;
 
 use crate::doc_line::DocLine;

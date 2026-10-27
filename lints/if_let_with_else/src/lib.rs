@@ -1,5 +1,5 @@
-use whisker_rust::RustLintPass;
-use whisker_types::{DecoratedNode, Diagnostic, RuleId, Severity};
+use whisker_rust::{RuleId, RustLintPass};
+use whisker_types::{DecoratedNode, Diagnostic, Severity};
 
 /// Flags `if let` expressions that have a non-diverging `else` branch
 ///

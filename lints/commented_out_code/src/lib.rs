@@ -1,6 +1,6 @@
 use tree_sitter::{Node, Parser};
-use whisker_rust::{RustLintPass, language};
-use whisker_types::{DecoratedNode, Diagnostic, RuleId, Severity, Span};
+use whisker_rust::{RuleId, RustLintPass, language};
+use whisker_types::{DecoratedNode, Diagnostic, Severity, Span};
 
 /// Node kinds that a prose comment does not produce by accident
 ///

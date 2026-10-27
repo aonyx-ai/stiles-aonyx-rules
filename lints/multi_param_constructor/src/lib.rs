@@ -1,7 +1,7 @@
 mod test_code;
 
-use whisker_rust::{RustLintPass, RustLintPassAdapter};
-use whisker_types::{DecoratedNode, Diagnostic, LintPass, RuleId, Severity};
+use whisker_rust::{RuleId, RustLintPass, RustLintPassAdapter};
+use whisker_types::{DecoratedNode, Diagnostic, LintPass, Severity};
 
 use crate::test_code::{attribute_name, is_test_code, outer_attributes};
 
