@@ -304,6 +304,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "external_type_in_port"
+version = "0.1.0"
+dependencies = [
+ "tree-sitter",
+ "whisker-plugin",
+ "whisker-rust",
+ "whisker-testing",
+ "whisker-types",
+]
+
+[[package]]
 name = "fastrand"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
