@@ -257,13 +257,13 @@ fn is_field_base(node: &DecoratedNode<'_>) -> bool {
 }
 
 #[cfg(feature = "plugin")]
-impl whisker_rust::DeclaresRules for RepeatedFieldAccess {
+impl whisker_plugin::DeclaresRules for RepeatedFieldAccess {
     fn rules(&self) -> Vec<RuleId> {
         vec![RuleId::new("lint.repeated-field-access")]
     }
 }
 
-whisker_rust::export_lints![RepeatedFieldAccess];
+whisker_plugin::export_lints![rust: [RepeatedFieldAccess]];
 
 #[cfg(test)]
 mod tests {

@@ -1,5 +1,6 @@
 use whisker_rust::RustLintPass;
 use whisker_types::{DecoratedNode, Diagnostic, RuleId, Severity, Span};
+use whisker_typescript::TypeScriptLintPass;
 
 const RULE_ID: RuleId = RuleId::new("lint.todo-comment");
 
@@ -16,6 +17,8 @@ const MARKERS: &[&str] = &["TODO", "FIXME", "HACK", "XXX"];
 ///
 /// The rule matches an uppercase marker at the start of a comment line and
 /// nowhere else. A sentence or a URL that contains the word does not match.
+/// It reads Rust and TypeScript comments alike, because a marker means the
+/// same thing in either.
 pub struct TodoComment;
 
 /// A marker that a comment contains
@@ -110,14 +113,20 @@ impl RustLintPass for TodoComment {
     }
 }
 
+impl TypeScriptLintPass for TodoComment {
+    fn check_comment(&mut self, node: &DecoratedNode<'_>) -> Vec<Diagnostic> {
+        check_comment(node)
+    }
+}
+
 #[cfg(feature = "plugin")]
-impl whisker_rust::DeclaresRules for TodoComment {
+impl whisker_plugin::DeclaresRules for TodoComment {
     fn rules(&self) -> Vec<RuleId> {
         vec![RuleId::new("lint.todo-comment")]
     }
 }
 
-whisker_rust::export_lints![TodoComment];
+whisker_plugin::export_lints![rust: [TodoComment], typescript: [TodoComment]];
 
 #[cfg(test)]
 mod tests {
@@ -444,5 +453,67 @@ mod tests {
 
         assert_eq!(diagnostics.len(), 1);
         assert_diagnostic(&diagnostics[0]).message_contains("`XXX`");
+    }
+
+    mod typescript {
+        use whisker_typescript::TypeScriptLintPassAdapter;
+
+        use super::*;
+
+        fn passes() -> Vec<Box<dyn LintPass>> {
+            vec![Box::new(TypeScriptLintPassAdapter::new(TodoComment))]
+        }
+
+        #[test]
+        fn block_comment_with_marker_on_inner_line_is_flagged() {
+            let source = "/*\n * FIXME: this breaks on empty input\n */\nlet a = 1;";
+
+            let diagnostics = execute(&parse(source, Language::TypeScript), &mut passes());
+
+            assert_eq!(diagnostics.len(), 1);
+            assert_diagnostic(&diagnostics[0]).message_contains("`FIXME`");
+        }
+
+        #[test]
+        fn doc_comment_with_marker_is_flagged_at_the_marker() {
+            let source = "/**\n * TODO: describe the return value\n */\nfunction f() {}";
+
+            let diagnostics = execute(&parse(source, Language::TypeScript), &mut passes());
+
+            assert_eq!(diagnostics.len(), 1);
+            let start = source.find("TODO").unwrap();
+            assert_diagnostic(&diagnostics[0]).has_span("<test>", start, start + 4);
+        }
+
+        #[test]
+        fn line_comment_with_marker_is_flagged() {
+            let source = "// HACK: work around the parser\nconst a = 1;";
+
+            let diagnostics = execute(&parse(source, Language::TypeScript), &mut passes());
+
+            assert_eq!(diagnostics.len(), 1);
+            assert_diagnostic(&diagnostics[0])
+                .has_rule_id("lint.todo-comment")
+                .has_severity(Severity::Warn)
+                .message_contains("`HACK`");
+        }
+
+        #[test]
+        fn line_comment_with_mid_line_marker_is_not_flagged() {
+            let source = "// the TODO list lives in the tracker\nconst a = 1;";
+
+            let diagnostics = execute(&parse(source, Language::TypeScript), &mut passes());
+
+            assert_no_diagnostics(&diagnostics);
+        }
+
+        #[test]
+        fn string_with_marker_is_not_flagged() {
+            let source = "const label = \"TODO: not a comment\";";
+
+            let diagnostics = execute(&parse(source, Language::TypeScript), &mut passes());
+
+            assert_no_diagnostics(&diagnostics);
+        }
     }
 }

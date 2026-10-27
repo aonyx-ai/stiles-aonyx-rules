@@ -2,9 +2,10 @@
 # builds at check time and loads into its own process. Rust has no stable ABI
 # of its own, so whisker lays every type that crosses that boundary out with
 # stabby, whose layouts hold under any compiler. A plugin is coherent with the
-# whisker that loads it when both were built against the same whisker source.
-# That is why the pin below is a commit, and why a mismatch refuses the plugin
-# with an error. The toolchain this repository pins is its own choice.
+# whisker that loads it when both lay those types out the same way, which
+# whisker checks with a protocol version and two fingerprints. The pin below is
+# a commit so that the rules build against a known boundary, and a mismatch
+# refuses the plugin with an error. The toolchain this repository pins is its own choice.
 [workspace]
 # `lints/*` are the rules themselves, each a cdylib whisker loads.
 # `crates/*` hold what more than one rule needs, as ordinary rlibs that
@@ -28,6 +29,7 @@ missing_panics_doc = "warn"
 
 [workspace.dependencies]
 boundary = { path = "crates/boundary" }
+doc_comment = { path = "crates/doc_comment" }
 proptest = "1"
 # `DecoratedNode::raw()` returns a `tree_sitter::Node`, which some rules name
 # directly. The version matches whisker's own so that the plugin and the host
@@ -38,6 +40,8 @@ tree-sitter = "0.27"
 # and a tag can be moved, so the pin is a commit and the release beside it
 # says which one. Renovate reads the pair through a custom manager and
 # moves both, the way it moves a pinned action.
-whisker-rust = { git = "https://github.com/aonyx-ai/whisker.git", rev = "c49a9259a8548e2397acae766af499f1fbf6dccb", default-features = false }
-whisker-testing = { git = "https://github.com/aonyx-ai/whisker.git", rev = "c49a9259a8548e2397acae766af499f1fbf6dccb" }
-whisker-types = { git = "https://github.com/aonyx-ai/whisker.git", rev = "c49a9259a8548e2397acae766af499f1fbf6dccb" }
+whisker-plugin = { git = "https://github.com/aonyx-ai/whisker.git", rev = "84dbe8d5d476fe48f188dbdf5c2f0418efc317b9" }
+whisker-rust = { git = "https://github.com/aonyx-ai/whisker.git", rev = "84dbe8d5d476fe48f188dbdf5c2f0418efc317b9", default-features = false }
+whisker-testing = { git = "https://github.com/aonyx-ai/whisker.git", rev = "84dbe8d5d476fe48f188dbdf5c2f0418efc317b9" }
+whisker-types = { git = "https://github.com/aonyx-ai/whisker.git", rev = "84dbe8d5d476fe48f188dbdf5c2f0418efc317b9" }
+whisker-typescript = { git = "https://github.com/aonyx-ai/whisker.git", rev = "84dbe8d5d476fe48f188dbdf5c2f0418efc317b9", default-features = false }

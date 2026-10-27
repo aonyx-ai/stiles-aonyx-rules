@@ -111,13 +111,13 @@ fn is_diverging_macro(node: &DecoratedNode<'_>) -> bool {
 }
 
 #[cfg(feature = "plugin")]
-impl whisker_rust::DeclaresRules for IfLetWithElse {
+impl whisker_plugin::DeclaresRules for IfLetWithElse {
     fn rules(&self) -> Vec<RuleId> {
         vec![RuleId::new("lint.if-let-with-else")]
     }
 }
 
-whisker_rust::export_lints![IfLetWithElse];
+whisker_plugin::export_lints![rust: [IfLetWithElse]];
 
 #[cfg(test)]
 mod tests {

@@ -75,10 +75,11 @@ type all carry the same name in their own spelling: `todo_comment`,
 
 ### The pin is load-bearing
 
-`[workspace.dependencies]` names one whisker revision and `rust-toolchain.toml`
-names one toolchain. Whisker refuses to load a plugin built by a different
-rustc or against different whisker source, so the two move together and never
-separately. `README.md` describes the bump. Do not change one to make a build
-pass.
+`[workspace.dependencies]` names one whisker revision. Whisker loads a plugin
+only when its protocol version and layout fingerprints match whisker's own, so
+the rules must build against a whisker whose plugin boundary matches the
+whisker that loads them. The compiler plays no part, so `rust-toolchain.toml`
+is this repository's own choice. `README.md` describes the bump. Do not change
+the pin to make a build pass.
 
 [whisker-claude]: https://github.com/aonyx-ai/whisker/blob/main/CLAUDE.md

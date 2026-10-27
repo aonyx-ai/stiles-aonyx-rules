@@ -1,12 +1,38 @@
 use tree_sitter::Node;
 use whisker_rust::RustLintPass;
 use whisker_types::{DecoratedNode, Diagnostic, RuleId, Severity, Span};
+use whisker_typescript::TypeScriptLintPass;
 
 /// The characters that authors use to draw a horizontal rule
 const DIVIDER_CHARS: &[char] = &['-', '=', '*', '~', '#', '_', '+', '/'];
 
 /// The marker that clippy's `undocumented_unsafe_blocks` looks for
 const SAFETY_MARKER: &str = "SAFETY:";
+
+/// The openings of a TypeScript comment that a tool reads
+///
+/// Each one is an instruction rather than an explanation: the TypeScript
+/// compiler reads `@ts-expect-error`, a linter or formatter reads its
+/// suppressions, a coverage tool reads its ignores, a bundler reads its
+/// hints and purity annotations, and a JSX compiler reads its pragmas.
+/// Removing one changes what a tool does, so the rule leaves them alone.
+const TOOL_DIRECTIVES: &[&str] = &[
+    "@ts-",
+    "eslint",
+    "prettier-ignore",
+    "biome-ignore",
+    "oxlint-",
+    "istanbul ignore",
+    "c8 ignore",
+    "v8 ignore",
+    "webpack",
+    "@vite-ignore",
+    "#__PURE__",
+    "@__PURE__",
+    "#__NO_SIDE_EFFECTS__",
+    "@__NO_SIDE_EFFECTS__",
+    "@jsx",
+];
 
 /// Flags comments that are not documentation
 ///
@@ -17,7 +43,71 @@ const SAFETY_MARKER: &str = "SAFETY:";
 /// because clippy demands it. So does the comment that opens a file, which
 /// is usually a license header. A run of comment lines produces one
 /// diagnostic that spans the whole run.
+///
+/// In TypeScript a `/** */` comment is the documentation, and `//` and
+/// `/* */` comments are plain. The exception there is a comment a tool
+/// reads, such as `// @ts-expect-error`, a linter's suppression, or a
+/// `/// <reference />` directive, which [`TOOL_DIRECTIVES`] lists. A
+/// directive is one line, so the prose comment under it is still reported.
 pub struct InlineComment;
+
+/// The grammar a comment was parsed with, which decides how it is read
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+enum Syntax {
+    Rust,
+    TypeScript,
+}
+
+impl Syntax {
+    /// Returns the kind of the node that holds a whole file
+    fn root(self) -> &'static str {
+        match self {
+            Syntax::Rust => "source_file",
+            Syntax::TypeScript => "program",
+        }
+    }
+
+    /// Returns whether the node is a comment of any kind
+    fn is_comment(self, node: Node<'_>) -> bool {
+        match self {
+            Syntax::Rust => node.kind() == "line_comment" || node.kind() == "block_comment",
+            Syntax::TypeScript => node.kind() == "comment",
+        }
+    }
+
+    /// Returns whether the comment is documentation
+    fn is_doc_comment(self, node: Node<'_>, text: &str) -> bool {
+        match self {
+            Syntax::Rust => is_doc_comment(node),
+            Syntax::TypeScript => text.starts_with("/**") && text != "/**/",
+        }
+    }
+
+    /// Returns whether the node is a comment that is not documentation
+    fn is_plain_comment(self, node: Node<'_>, text: &str) -> bool {
+        self.is_comment(node) && !self.is_doc_comment(node, text)
+    }
+
+    /// Returns whether the comment is one the rule leaves alone
+    fn is_exempt(self, text: &str) -> bool {
+        match self {
+            Syntax::Rust => is_safety_comment(text),
+            Syntax::TypeScript => is_tool_directive(text),
+        }
+    }
+
+    /// Returns whether the lines under an exempt comment belong to it
+    ///
+    /// A `SAFETY:` comment often runs over several lines, and every one of
+    /// them justifies the block. A tool directive is one line, and a comment
+    /// under it explains something else.
+    fn exemption_spans_lines(self) -> bool {
+        match self {
+            Syntax::Rust => true,
+            Syntax::TypeScript => false,
+        }
+    }
+}
 
 /// The shape of a flagged comment, which decides the advice the rule gives
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
@@ -37,24 +127,25 @@ fn is_doc_comment(node: Node<'_>) -> bool {
     node.child_by_field_name("outer").is_some() || node.child_by_field_name("inner").is_some()
 }
 
-/// Returns whether the node is a comment without a documentation marker
-fn is_plain_comment(node: Node<'_>) -> bool {
-    let is_comment = node.kind() == "line_comment" || node.kind() == "block_comment";
-    is_comment && !is_doc_comment(node)
-}
-
 /// Returns whether the comment opens the file
 ///
 /// A copyright or license header sits above everything else, and the tree
-/// puts it first under `source_file`. The check is structural, so it exempts
-/// whatever opens the file, header or not. The rule still reports every
-/// later run.
-fn is_file_header(node: Node<'_>) -> bool {
+/// puts it first under the file's root. The check is structural, so it
+/// exempts whatever opens the file, header or not. The rule still reports
+/// every later run. A TypeScript file may open with a `#!` line, which a
+/// header follows.
+fn is_file_header(node: Node<'_>, syntax: Syntax) -> bool {
     let Some(parent) = node.parent() else {
         return false;
     };
+    if parent.kind() != syntax.root() {
+        return false;
+    }
 
-    parent.kind() == "source_file" && node.prev_sibling().is_none()
+    let Some(previous) = node.prev_sibling() else {
+        return true;
+    };
+    previous.kind() == "hash_bang_line" && previous.prev_sibling().is_none()
 }
 
 /// Returns what a comment holds, without its delimiters
@@ -76,6 +167,23 @@ fn is_safety_comment(text: &str) -> bool {
         .trim_start()
         .get(..SAFETY_MARKER.len())
         .is_some_and(|marker| marker.eq_ignore_ascii_case(SAFETY_MARKER))
+}
+
+/// Returns whether a TypeScript comment is an instruction to a tool
+///
+/// A triple-slash directive such as `/// <reference types="node" />` is one
+/// too: TypeScript reads it, and it is not documentation.
+fn is_tool_directive(text: &str) -> bool {
+    if let Some(rest) = text.trim_start().strip_prefix("///")
+        && rest.trim_start().starts_with('<')
+    {
+        return true;
+    }
+
+    let content = comment_content(text).trim_start();
+    TOOL_DIRECTIVES
+        .iter()
+        .any(|directive| content.starts_with(directive))
 }
 
 /// Returns the shape of a comment, read from its own text
@@ -124,24 +232,31 @@ fn text_of<'a>(node: Node<'_>, parent_text: &'a str, parent_start: usize) -> &'a
 ///
 /// Comments in a run are siblings with one line break between them. The rule
 /// reports a run at most once, at its first comment, so the ones below it
-/// produce no diagnostic.
-fn continues_run(node: Node<'_>) -> bool {
+/// produce no diagnostic. An exempt comment above starts no run unless its
+/// exemption spans the lines under it.
+fn continues_run(node: Node<'_>, syntax: Syntax, parent_text: &str, parent_start: usize) -> bool {
     let Some(previous) = node.prev_sibling() else {
         return false;
     };
+    let previous_text = text_of(previous, parent_text, parent_start);
+    if syntax.is_exempt(previous_text) && !syntax.exemption_spans_lines() {
+        return false;
+    }
 
-    is_plain_comment(previous) && previous.end_position().row + 1 == node.start_position().row
+    syntax.is_plain_comment(previous, previous_text)
+        && previous.end_position().row + 1 == node.start_position().row
 }
 
 /// Returns the end byte of the comment run that starts at this node
 ///
-/// The run stops short of a safety comment, so no diagnostic spans one.
-fn run_end(node: Node<'_>, parent_text: &str, parent_start: usize) -> usize {
+/// The run stops short of an exempt comment, so no diagnostic spans one.
+fn run_end(node: Node<'_>, syntax: Syntax, parent_text: &str, parent_start: usize) -> usize {
     let mut last = node;
     while let Some(next) = last.next_sibling() {
-        let joins = is_plain_comment(next)
+        let next_text = text_of(next, parent_text, parent_start);
+        let joins = syntax.is_plain_comment(next, next_text)
             && last.end_position().row + 1 == next.start_position().row
-            && !is_safety_comment(text_of(next, parent_text, parent_start));
+            && !syntax.is_exempt(next_text);
         if !joins {
             break;
         }
@@ -152,20 +267,25 @@ fn run_end(node: Node<'_>, parent_text: &str, parent_start: usize) -> usize {
 }
 
 /// Returns the diagnostic for a comment node, if the rule reports one
-fn check_comment(node: &DecoratedNode<'_>) -> Vec<Diagnostic> {
+fn check_comment(node: &DecoratedNode<'_>, syntax: Syntax) -> Vec<Diagnostic> {
     let raw = node.raw();
     let text = node.text();
-    if is_doc_comment(raw) || is_safety_comment(text) || is_file_header(raw) || continues_run(raw) {
+    if syntax.is_doc_comment(raw, text) || syntax.is_exempt(text) || is_file_header(raw, syntax) {
         return Vec::new();
     }
 
     let Some(parent) = node.parent() else {
         return Vec::new();
     };
+    let parent_text = parent.text();
+    let parent_start = parent.raw().start_byte();
+    if continues_run(raw, syntax, parent_text, parent_start) {
+        return Vec::new();
+    }
 
     let span = node.span();
     let file = span.file_path().clone();
-    let end = run_end(raw, parent.text(), parent.raw().start_byte());
+    let end = run_end(raw, syntax, parent_text, parent_start);
     let span = Span::new(file, span.start(), end);
 
     let message = match classify(text) {
@@ -183,22 +303,28 @@ fn check_comment(node: &DecoratedNode<'_>) -> Vec<Diagnostic> {
 
 impl RustLintPass for InlineComment {
     fn check_block_comment(&mut self, node: &DecoratedNode<'_>) -> Vec<Diagnostic> {
-        check_comment(node)
+        check_comment(node, Syntax::Rust)
     }
 
     fn check_line_comment(&mut self, node: &DecoratedNode<'_>) -> Vec<Diagnostic> {
-        check_comment(node)
+        check_comment(node, Syntax::Rust)
+    }
+}
+
+impl TypeScriptLintPass for InlineComment {
+    fn check_comment(&mut self, node: &DecoratedNode<'_>) -> Vec<Diagnostic> {
+        check_comment(node, Syntax::TypeScript)
     }
 }
 
 #[cfg(feature = "plugin")]
-impl whisker_rust::DeclaresRules for InlineComment {
+impl whisker_plugin::DeclaresRules for InlineComment {
     fn rules(&self) -> Vec<RuleId> {
         vec![RuleId::new("lint.inline-comment")]
     }
 }
 
-whisker_rust::export_lints![InlineComment];
+whisker_plugin::export_lints![rust: [InlineComment], typescript: [InlineComment]];
 
 #[cfg(test)]
 mod tests {
@@ -610,5 +736,135 @@ mod tests {
         fn assert_unpin<T: Unpin>() {}
         assert_unpin::<InlineComment>();
         assert_unpin::<CommentKind>();
+    }
+
+    mod typescript {
+        use whisker_typescript::TypeScriptLintPassAdapter;
+
+        use super::*;
+
+        fn run(source: &str) -> Vec<Diagnostic> {
+            let tree = parse(source, Language::TypeScript);
+            let mut passes: Vec<Box<dyn LintPass>> =
+                vec![Box::new(TypeScriptLintPassAdapter::new(InlineComment))];
+            execute(&tree, &mut passes)
+        }
+
+        #[test]
+        fn block_comment_is_flagged() {
+            let diagnostics = run("const a = 1;\n/* explains a */\nconst b = a;");
+
+            assert_eq!(diagnostics.len(), 1);
+            assert_diagnostic(&diagnostics[0]).has_rule_id("lint.inline-comment");
+        }
+
+        #[test]
+        fn comment_run_reports_its_whole_span() {
+            let source = "const a = 1;\n// first\n// second\nconst b = a;";
+
+            let diagnostics = run(source);
+
+            assert_eq!(diagnostics.len(), 1);
+            let start = source.find("// first").unwrap();
+            let end = source.find("second").unwrap() + "second".len();
+            assert_diagnostic(&diagnostics[0]).has_span("<test>", start, end);
+        }
+
+        #[test]
+        fn comment_under_a_directive_is_flagged() {
+            let source = "const a = 1;\n// eslint-disable-next-line no-console\n// log while debugging\nconsole.log(a);";
+
+            let diagnostics = run(source);
+
+            assert_eq!(diagnostics.len(), 1);
+            let start = source.find("// log").unwrap();
+            assert_diagnostic(&diagnostics[0]).has_span(
+                "<test>",
+                start,
+                start + "// log while debugging".len(),
+            );
+        }
+
+        #[test]
+        fn divider_is_reported_as_a_section_divider() {
+            let diagnostics = run("const a = 1;\n// ---- helpers ----\nconst b = a;");
+
+            assert_eq!(diagnostics.len(), 1);
+            assert_diagnostic(&diagnostics[0]).message_contains("section divider");
+        }
+
+        #[test]
+        fn doc_comment_is_not_flagged() {
+            let diagnostics = run("const a = 1;\n/** Returns the sum */\nfunction add() {}");
+
+            assert_no_diagnostics(&diagnostics);
+        }
+
+        #[test]
+        fn file_header_after_a_hash_bang_is_not_flagged() {
+            let diagnostics = run("#!/usr/bin/env node\n// Copyright Aonyx\nconst a = 1;");
+
+            assert_no_diagnostics(&diagnostics);
+        }
+
+        #[test]
+        fn file_header_is_not_flagged() {
+            let diagnostics =
+                run("// Copyright Aonyx\n// SPDX-License-Identifier: MIT\nconst a = 1;");
+
+            assert_no_diagnostics(&diagnostics);
+        }
+
+        #[test]
+        fn is_tool_directive_with_prose_returns_false() {
+            let directive = is_tool_directive("// we disable eslint here");
+
+            assert!(!directive);
+        }
+
+        #[test]
+        fn plain_comment_in_a_function_body_is_flagged() {
+            let diagnostics = run("const a = 1;\nfunction f() {\n  // compute\n  return 1;\n}");
+
+            assert_eq!(diagnostics.len(), 1);
+        }
+
+        #[test]
+        fn pure_annotation_is_not_flagged() {
+            let diagnostics = run("const a = 1;\nconst b = /* @__PURE__ */ create();");
+
+            assert_no_diagnostics(&diagnostics);
+        }
+
+        #[test]
+        fn suppressions_are_not_flagged() {
+            let source = "const a = 1;\n\
+                // @ts-expect-error the types lag the runtime\n\
+                f(a);\n\
+                /* eslint-disable no-console */\n\
+                // prettier-ignore\n\
+                const m = [1,0,0,1];\n\
+                /* istanbul ignore next */\n\
+                // biome-ignore lint: generated\n\
+                const g = 1;";
+
+            let diagnostics = run(source);
+
+            assert_no_diagnostics(&diagnostics);
+        }
+
+        #[test]
+        fn triple_slash_directive_is_not_flagged() {
+            let diagnostics = run("const a = 1;\n/// <reference types=\"node\" />\nconst b = a;");
+
+            assert_no_diagnostics(&diagnostics);
+        }
+
+        #[test]
+        fn triple_slash_prose_is_flagged() {
+            let diagnostics = run("const a = 1;\n/// explains b\nconst b = a;");
+
+            assert_eq!(diagnostics.len(), 1);
+        }
     }
 }

@@ -24,6 +24,7 @@ default = ["plugin"]
 plugin = []
 
 [dependencies]
+whisker-plugin = { workspace = true }
 # `DecoratedNode::raw()` returns a `tree_sitter::Node`, which the rule names
 # directly. The version matches the workspace so the plugin and the host agree
 # on the type that crosses the boundary.

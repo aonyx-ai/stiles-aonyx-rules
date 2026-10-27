@@ -1,5 +1,6 @@
 use whisker_rust::RustLintPass;
 use whisker_types::{DecoratedNode, Diagnostic, RuleId, Severity, Span};
+use whisker_typescript::TypeScriptLintPass;
 
 const RULE_ID: RuleId = RuleId::new("lint.em-dash-aside");
 
@@ -19,33 +20,27 @@ const EN_DASH: &[u8] = "–".as_bytes();
 /// carries the same meaning without the splice. The lint reads prose
 /// only. Code spans, code blocks, quotations, headings, tables, link
 /// definitions, and list markers are exempt.
+///
+/// In TypeScript the lint reads a `/** */` doc comment. The hyphen a block
+/// tag writes between a name and its description, as in `@param a - the
+/// first`, is syntax rather than an aside, and an `@example` section is
+/// code, so neither is read.
 pub struct EmDashAside;
 
 impl RustLintPass for EmDashAside {
     fn check_block_comment(&mut self, node: &DecoratedNode<'_>) -> Vec<Diagnostic> {
-        let Some(lines) = block_comment_lines(node) else {
-            return Vec::new();
-        };
-
-        diagnose(lines, node)
+        diagnose(doc_comment::rust(node), node)
     }
 
     fn check_line_comment(&mut self, node: &DecoratedNode<'_>) -> Vec<Diagnostic> {
-        let Some(lines) = line_comment_lines(node) else {
-            return Vec::new();
-        };
-
-        diagnose(lines, node)
+        diagnose(doc_comment::rust(node), node)
     }
 }
 
-/// Which pair of markers introduces a doc comment
-#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
-enum DocMarker {
-    /// `//!` or `/*!`, which documents the enclosing item
-    Inner,
-    /// `///` or `/**`, which documents the item that follows
-    Outer,
+impl TypeScriptLintPass for EmDashAside {
+    fn check_comment(&mut self, node: &DecoratedNode<'_>) -> Vec<Diagnostic> {
+        diagnose(doc_comment::typescript(node), node)
+    }
 }
 
 /// The dash a writer used to interrupt a sentence
@@ -86,7 +81,20 @@ struct Aside {
 }
 
 /// Turns the asides found in one doc comment into diagnostics
-fn diagnose(lines: Vec<DocLine<'_>>, node: &DecoratedNode<'_>) -> Vec<Diagnostic> {
+fn diagnose(
+    lines: Option<Vec<doc_comment::DocLine<'_>>>,
+    node: &DecoratedNode<'_>,
+) -> Vec<Diagnostic> {
+    let Some(lines) = lines else {
+        return Vec::new();
+    };
+    let lines: Vec<DocLine<'_>> = lines
+        .into_iter()
+        .map(|line| DocLine {
+            text: line.text(),
+            offset: line.offset(),
+        })
+        .collect();
     let span = node.span();
     let file = span.file_path().clone();
 
@@ -110,242 +118,6 @@ fn diagnose(lines: Vec<DocLine<'_>>, node: &DecoratedNode<'_>) -> Vec<Diagnostic
             )
         })
         .collect()
-}
-
-/// Returns the Markdown lines of a block doc comment
-///
-/// Returns [`None`] for `/* */`, which carries no documentation.
-fn block_comment_lines<'a>(node: &DecoratedNode<'a>) -> Option<Vec<DocLine<'a>>> {
-    if node.kind() != "block_comment" {
-        return None;
-    }
-    doc_marker(node)?;
-
-    let doc = node.child_by_field_name("doc")?;
-    let text = doc.text();
-    let base = doc.span().start();
-
-    let mut lines = Vec::new();
-    let mut consumed = 0;
-    for line in text.split('\n') {
-        let start = consumed;
-        consumed += line.len() + 1;
-        let line = line.strip_suffix('\r').unwrap_or(line);
-        lines.push(strip_star(DocLine {
-            text: line,
-            offset: base + start,
-        }));
-    }
-
-    unindent(&mut lines);
-    Some(lines)
-}
-
-/// Returns the Markdown lines of the doc comment run starting at `node`
-///
-/// The grammar gives every `///` line its own node, so one code fence
-/// spans several of them. The lint reads the whole run at once, and
-/// only the first line of a run does the work. Returns [`None`] when
-/// `node` is not a `///` or `//!` line, or when an earlier line of the
-/// same run already covers it.
-fn line_comment_lines<'a>(node: &DecoratedNode<'a>) -> Option<Vec<DocLine<'a>>> {
-    let marker = line_doc_marker(node)?;
-    let parent = node.parent()?;
-    let index = sibling_index(&parent, node)?;
-    let (source, base) = file_text(node);
-
-    let previous = index
-        .checked_sub(1)
-        .and_then(|index| named_child(&parent, index));
-    let covered = previous.is_some_and(|previous| {
-        line_doc_marker(&previous) == Some(marker) && adjacent(&previous, node, source, base)
-    });
-    if covered {
-        return None;
-    }
-
-    let mut lines = Vec::new();
-    let mut current = *node;
-    let mut position = index;
-    while let Some(line) = doc_line(&current) {
-        lines.push(line);
-
-        let Some(next) = named_child(&parent, position + 1) else {
-            break;
-        };
-        if line_doc_marker(&next) != Some(marker) {
-            break;
-        }
-        if !adjacent(&current, &next, source, base) {
-            break;
-        }
-        current = next;
-        position += 1;
-    }
-
-    unindent(&mut lines);
-    Some(lines)
-}
-
-/// Returns the position of `node` among the named children of `parent`
-///
-/// The walk visits every `///` line, so collecting the whole sibling
-/// list at each one would cost a module with many documented items a
-/// scan per line. Named children are ordered by start byte, which makes
-/// the position a binary search instead. Nodes may share a start byte
-/// only when one of them is empty, so the search settles on the first
-/// child at that byte and steps forward to the one with `node`'s id.
-fn sibling_index(parent: &DecoratedNode<'_>, node: &DecoratedNode<'_>) -> Option<usize> {
-    let start = node.span().start();
-
-    let mut low = 0;
-    let mut high = parent.named_child_count();
-    while low < high {
-        let middle = low + (high - low) / 2;
-        let child = named_child(parent, middle)?;
-        if child.span().start() < start {
-            low = middle + 1;
-        } else {
-            high = middle;
-        }
-    }
-
-    let mut index = low;
-    while let Some(child) = named_child(parent, index) {
-        if child.span().start() != start {
-            return None;
-        }
-        if child.id() == node.id() {
-            return Some(index);
-        }
-        index += 1;
-    }
-
-    None
-}
-
-/// Returns the named child of `parent` at `index`
-fn named_child<'a>(parent: &DecoratedNode<'a>, index: usize) -> Option<DecoratedNode<'a>> {
-    let index = u32::try_from(index).ok()?;
-
-    parent.named_child(index)
-}
-
-/// Returns the marker of a `///` or `//!` comment
-fn line_doc_marker(node: &DecoratedNode<'_>) -> Option<DocMarker> {
-    if node.kind() != "line_comment" {
-        return None;
-    }
-
-    doc_marker(node)
-}
-
-/// Returns the marker of a doc comment of either shape
-fn doc_marker(node: &DecoratedNode<'_>) -> Option<DocMarker> {
-    node.child_by_field_name("doc")?;
-
-    let outer = node.child_by_field_name("outer").map(|_| DocMarker::Outer);
-    let inner = node.child_by_field_name("inner").map(|_| DocMarker::Inner);
-
-    outer.or(inner)
-}
-
-/// Returns the documented text of one `///` line, without its newline
-fn doc_line<'a>(node: &DecoratedNode<'a>) -> Option<DocLine<'a>> {
-    let doc = node.child_by_field_name("doc")?;
-    let text = doc.text();
-    let text = text.strip_suffix('\n').unwrap_or(text);
-    let text = text.strip_suffix('\r').unwrap_or(text);
-
-    Some(DocLine {
-        text,
-        offset: doc.span().start(),
-    })
-}
-
-/// Returns whether two comments sit on consecutive lines
-///
-/// The grammar keeps the trailing newline inside a doc comment node and
-/// outside a plain one. A node that already swallowed its newline leaves
-/// a shorter gap, so the count adds that newline back. A run ends at a
-/// blank line, because a blank line also ends the Markdown block.
-fn adjacent(
-    earlier: &DecoratedNode<'_>,
-    later: &DecoratedNode<'_>,
-    source: &str,
-    base: usize,
-) -> bool {
-    let Some(start) = earlier.span().end().checked_sub(base) else {
-        return false;
-    };
-    let Some(end) = later.span().start().checked_sub(base) else {
-        return false;
-    };
-    if start > end || end > source.len() {
-        return false;
-    }
-
-    let gap = &source[start..end];
-    if !gap.chars().all(char::is_whitespace) {
-        return false;
-    }
-
-    let swallowed = usize::from(earlier.text().ends_with('\n'));
-    gap.matches('\n').count() + swallowed == 1
-}
-
-/// Returns the text of the whole file, and the offset it starts at
-fn file_text<'a>(node: &DecoratedNode<'a>) -> (&'a str, usize) {
-    let mut root = *node;
-    while let Some(parent) = root.parent() {
-        root = parent;
-    }
-
-    (root.text(), root.span().start())
-}
-
-/// Removes the `*` that decorates the left edge of a block comment
-fn strip_star(line: DocLine<'_>) -> DocLine<'_> {
-    let trimmed = line.text.trim_start();
-    let Some(rest) = trimmed.strip_prefix('*') else {
-        return line;
-    };
-    if !rest.is_empty() && !rest.starts_with(' ') && !rest.starts_with('\t') {
-        return line;
-    }
-
-    let rest = rest.strip_prefix(' ').unwrap_or(rest);
-    let consumed = line.text.len() - rest.len();
-
-    DocLine {
-        text: rest,
-        offset: line.offset + consumed,
-    }
-}
-
-/// Removes the indentation that rustdoc drops before it reads Markdown
-///
-/// Rustdoc drops the smallest indentation the block shares, which is
-/// normally the single space after the marker. What remains is real
-/// Markdown indentation, so four columns mean an indented code block.
-fn unindent(lines: &mut [DocLine<'_>]) {
-    let common = lines
-        .iter()
-        .filter(|line| !line.text.trim().is_empty())
-        .map(|line| spaces(line.text))
-        .min()
-        .unwrap_or(0);
-
-    for line in lines.iter_mut() {
-        let strip = common.min(spaces(line.text));
-        line.text = &line.text[strip..];
-        line.offset += strip;
-    }
-}
-
-/// Returns how many spaces a line starts with
-fn spaces(text: &str) -> usize {
-    text.len() - text.trim_start_matches(' ').len()
 }
 
 /// Returns the prose lines of a doc block, with list markers removed
@@ -780,13 +552,13 @@ fn is_content(byte: &u8) -> bool {
 }
 
 #[cfg(feature = "plugin")]
-impl whisker_rust::DeclaresRules for EmDashAside {
+impl whisker_plugin::DeclaresRules for EmDashAside {
     fn rules(&self) -> Vec<RuleId> {
         vec![RuleId::new("lint.em-dash-aside")]
     }
 }
 
-whisker_rust::export_lints![EmDashAside];
+whisker_plugin::export_lints![rust: [EmDashAside], typescript: [EmDashAside]];
 
 #[cfg(test)]
 mod tests {
@@ -1147,12 +919,6 @@ mod tests {
     }
 
     #[test]
-    fn trait_send_doc_marker() {
-        fn assert_send<T: Send>() {}
-        assert_send::<DocMarker>();
-    }
-
-    #[test]
     fn trait_send_pass() {
         fn assert_send<T: Send>() {}
         assert_send::<EmDashAside>();
@@ -1174,12 +940,6 @@ mod tests {
     fn trait_sync_doc_line() {
         fn assert_sync<T: Sync>() {}
         assert_sync::<DocLine<'_>>();
-    }
-
-    #[test]
-    fn trait_sync_doc_marker() {
-        fn assert_sync<T: Sync>() {}
-        assert_sync::<DocMarker>();
     }
 
     #[test]
@@ -1207,14 +967,92 @@ mod tests {
     }
 
     #[test]
-    fn trait_unpin_doc_marker() {
-        fn assert_unpin<T: Unpin>() {}
-        assert_unpin::<DocMarker>();
-    }
-
-    #[test]
     fn trait_unpin_pass() {
         fn assert_unpin<T: Unpin>() {}
         assert_unpin::<EmDashAside>();
+    }
+
+    mod typescript {
+        use whisker_typescript::TypeScriptLintPassAdapter;
+
+        use super::*;
+
+        fn check(source: &str) -> Vec<Diagnostic> {
+            let tree = parse(source, Language::TypeScript);
+            let mut passes: Vec<Box<dyn LintPass>> =
+                vec![Box::new(TypeScriptLintPassAdapter::new(EmDashAside))];
+
+            execute(&tree, &mut passes)
+        }
+
+        #[test]
+        fn doc_comment_with_em_dash_is_flagged_at_the_dash() {
+            let source = "/**\n * Adds two numbers \u{2014} quickly \u{2014} and returns them\n */\nfunction f() {}";
+
+            let diagnostics = check(source);
+
+            assert_eq!(diagnostics.len(), 2);
+            let start = source.find('\u{2014}').unwrap();
+            assert_diagnostic(&diagnostics[0])
+                .has_rule_id("lint.em-dash-aside")
+                .has_severity(Severity::Warn)
+                .has_span("<test>", start, start + '\u{2014}'.len_utf8());
+        }
+
+        #[test]
+        fn doc_comment_with_spaced_hyphen_in_prose_is_flagged() {
+            let source = "/**\n * Reads the file - all of it - into memory\n */\nfunction f() {}";
+
+            let diagnostics = check(source);
+
+            assert_eq!(diagnostics.len(), 2);
+            assert_diagnostic(&diagnostics[0]).message_contains("spaced hyphen");
+        }
+
+        #[test]
+        fn example_section_is_not_read() {
+            let source = "/**\n * Subtracts\n * @example\n * sub(3 - 2)\n */\nfunction sub() {}";
+
+            let diagnostics = check(source);
+
+            assert_no_diagnostics(&diagnostics);
+        }
+
+        #[test]
+        fn line_and_block_comments_are_not_read() {
+            let source =
+                "// a note \u{2014} not documentation\n/* another - aside */\nconst a = 1;";
+
+            let diagnostics = check(source);
+
+            assert_no_diagnostics(&diagnostics);
+        }
+
+        #[test]
+        fn one_line_doc_comment_is_read() {
+            let source = "/** Counts the rows \u{2014} slowly. */\nconst rows = 0;";
+
+            let diagnostics = check(source);
+
+            assert_eq!(diagnostics.len(), 1);
+        }
+
+        #[test]
+        fn param_hyphen_is_not_flagged() {
+            let source = "/**\n * Adds two numbers\n * @param a - the first\n * @param {number} b - the second\n */\nfunction add(a: number, b: number) {}";
+
+            let diagnostics = check(source);
+
+            assert_no_diagnostics(&diagnostics);
+        }
+
+        #[test]
+        fn param_description_with_an_aside_is_flagged() {
+            let source = "/**\n * @param a - the first \u{2014} never negative \u{2014} value\n */\nfunction f(a: number) {}";
+
+            let diagnostics = check(source);
+
+            assert_eq!(diagnostics.len(), 2);
+        }
     }
 }

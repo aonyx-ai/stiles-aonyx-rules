@@ -295,13 +295,13 @@ fn shared_head<'a>(first: &'a str, second: &str) -> Option<&'a str> {
 }
 
 #[cfg(feature = "plugin")]
-impl whisker_rust::DeclaresRules for SplitBinding {
+impl whisker_plugin::DeclaresRules for SplitBinding {
     fn rules(&self) -> Vec<RuleId> {
         vec![RuleId::new("lint.split-binding")]
     }
 }
 
-whisker_rust::export_lints![SplitBinding];
+whisker_plugin::export_lints![rust: [SplitBinding]];
 
 #[cfg(test)]
 mod tests {
