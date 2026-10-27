@@ -562,6 +562,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "pub_anyhow_result"
+version = "0.1.0"
+dependencies = [
+ "tree-sitter",
+ "whisker-plugin",
+ "whisker-rust",
+ "whisker-testing",
+ "whisker-types",
+]
+
+[[package]]
 name = "pub_field"
 version = "0.1.0"
 dependencies = [
