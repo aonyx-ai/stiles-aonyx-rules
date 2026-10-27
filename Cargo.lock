@@ -282,6 +282,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "imperative_doc_summary"
+version = "0.1.0"
+dependencies = [
+ "doc_comment",
+ "whisker-plugin",
+ "whisker-rust",
+ "whisker-testing",
+ "whisker-types",
+]
+
+[[package]]
 name = "indexmap"
 version = "2.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
