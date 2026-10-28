@@ -1,0 +1,17 @@
+# Otto releases this workspace as one lockstep unit, and such a unit takes
+# the name of its repository. It must hold a crate with that name, and this
+# is that crate. The version comes from the workspace, so the facade moves
+# with every rule in one release.
+#
+# This crate is an rlib and exports no plugin declaration, so the build
+# produces no dynamic library for stiles to load.
+[package]
+name = "stiles-aonyx-rules"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lints]
+workspace = true
