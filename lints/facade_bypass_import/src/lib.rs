@@ -1,9 +1,9 @@
 use std::collections::BTreeSet;
 use std::fmt;
 
-use whisker_rust::decorations::{PublicPath, Reexports};
-use whisker_rust::{RuleId, RustLintPass};
-use whisker_types::{DecoratedNode, Diagnostic, Severity};
+use stiles_rust::decorations::{PublicPath, Reexports};
+use stiles_rust::{RuleId, RustLintPass};
+use stiles_types::{DecoratedNode, Diagnostic, Severity};
 
 const RULE_ID: RuleId = RuleId::new("lint.facade-bypass-import");
 
@@ -383,19 +383,19 @@ fn unraw(name: &str) -> &str {
 }
 
 #[cfg(feature = "plugin")]
-impl whisker_plugin::DeclaresRules for FacadeBypassImport {
+impl stiles_plugin::DeclaresRules for FacadeBypassImport {
     fn rules(&self) -> Vec<RuleId> {
         vec![RuleId::new("lint.facade-bypass-import")]
     }
 }
 
-whisker_plugin::export_lints![rust: [FacadeBypassImport]];
+stiles_plugin::export_lints![rust: [FacadeBypassImport]];
 
 #[cfg(test)]
 mod tests {
-    use whisker_rust::RustLintPassAdapter;
-    use whisker_testing::{assert_diagnostic, assert_no_diagnostics, decorate, execute, parse};
-    use whisker_types::{DecorationMap, Language, LintPass};
+    use stiles_rust::RustLintPassAdapter;
+    use stiles_testing::{assert_diagnostic, assert_no_diagnostics, decorate, execute, parse};
+    use stiles_types::{DecorationMap, Language, LintPass};
 
     use super::*;
 
@@ -974,7 +974,7 @@ mod tests {
         assert_no_diagnostics(&run(source, &[]));
     }
 
-    /// Pins the shape whisker's own `use anyhow::Context as _` takes
+    /// Pins the shape stiles's own `use anyhow::Context as _` takes
     #[test]
     fn underscore_rename_is_flagged() {
         let source = "use facade::x;\nuse facade_core::Context as _;";

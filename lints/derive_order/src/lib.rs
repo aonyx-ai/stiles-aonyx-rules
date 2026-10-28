@@ -1,5 +1,5 @@
-use whisker_rust::{RuleId, RustLintPass, RustLintPassAdapter};
-use whisker_types::{DecoratedNode, Diagnostic, LintPass, Severity};
+use stiles_rust::{RuleId, RustLintPass, RustLintPassAdapter};
+use stiles_types::{DecoratedNode, Diagnostic, LintPass, Severity};
 
 const STD_DERIVES: &[&str] = &[
     "Copy",
@@ -21,7 +21,7 @@ const STD_DERIVES: &[&str] = &[
 pub struct DeriveOrder;
 
 impl DeriveOrder {
-    /// Creates a boxed [`LintPass`] suitable for the whisker pipeline
+    /// Creates a boxed [`LintPass`] suitable for the stiles pipeline
     ///
     /// # Examples
     ///
@@ -122,18 +122,18 @@ impl RustLintPass for DeriveOrder {
 }
 
 #[cfg(feature = "plugin")]
-impl whisker_plugin::DeclaresRules for DeriveOrder {
+impl stiles_plugin::DeclaresRules for DeriveOrder {
     fn rules(&self) -> Vec<RuleId> {
         vec![RuleId::new("lint.derive-order")]
     }
 }
 
-whisker_plugin::export_lints![rust: [DeriveOrder]];
+stiles_plugin::export_lints![rust: [DeriveOrder]];
 
 #[cfg(test)]
 mod tests {
-    use whisker_testing::{assert_diagnostic, assert_no_diagnostics, execute, parse};
-    use whisker_types::{Language, LintPass, Severity};
+    use stiles_testing::{assert_diagnostic, assert_no_diagnostics, execute, parse};
+    use stiles_types::{Language, LintPass, Severity};
 
     use super::*;
 

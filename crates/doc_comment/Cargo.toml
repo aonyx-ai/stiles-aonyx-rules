@@ -4,7 +4,7 @@
 # that another skips, or join lines another keeps apart.
 #
 # This crate is an rlib and exports no plugin declaration, so the build
-# produces no dynamic library for whisker to load.
+# produces no dynamic library for stiles to load.
 [package]
 name = "doc_comment"
 version.workspace = true
@@ -14,11 +14,11 @@ repository.workspace = true
 publish = false
 
 [dependencies]
-whisker-types = { workspace = true }
+stiles-types = { workspace = true }
 
 [dev-dependencies]
 proptest = { workspace = true }
-whisker-testing = { workspace = true }
+stiles-testing = { workspace = true }
 
 [lints]
 workspace = true

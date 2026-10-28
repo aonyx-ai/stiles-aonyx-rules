@@ -1,4 +1,4 @@
-use whisker_types::DecoratedNode;
+use stiles_types::DecoratedNode;
 
 /// Returns the full path a reference in a function body names
 ///

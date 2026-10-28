@@ -1,7 +1,7 @@
-# A lint is its own cargo package, built as a cdylib and loaded by whisker at
-# check time. Every rule here is built against one pinned whisker revision,
+# A lint is its own cargo package, built as a cdylib and loaded by stiles at
+# check time. Every rule here is built against one pinned stiles revision,
 # named once in the workspace manifest, because the handshake compares the
-# whisker a plugin was compiled against with the whisker loading it.
+# stiles a plugin was compiled against with the stiles loading it.
 [package]
 name = "split_binding"
 version.workspace = true
@@ -16,20 +16,20 @@ crate-type = ["cdylib", "rlib"]
 # The provider feature stays off: a lint needs the generated trait and the
 # decoration types, not the rust-analyzer stack that produces decorations.
 # The exported declaration is a `no_mangle` static, so two rules linked into
-# one binary would collide. The cdylib whisker loads keeps it; a rule used as
-# an ordinary rlib dependency, as whisker-rust's provider tests do, turns it
+# one binary would collide. The cdylib stiles loads keeps it; a rule used as
+# an ordinary rlib dependency, as stiles-rust's provider tests do, turns it
 # off.
 [features]
 default = ["plugin"]
 plugin = []
 
 [dependencies]
-whisker-plugin = { workspace = true }
-whisker-rust = { workspace = true }
-whisker-types = { workspace = true }
+stiles-plugin = { workspace = true }
+stiles-rust = { workspace = true }
+stiles-types = { workspace = true }
 
 [dev-dependencies]
-whisker-testing = { workspace = true }
+stiles-testing = { workspace = true }
 
 [lints]
 workspace = true

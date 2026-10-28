@@ -1,5 +1,5 @@
-use whisker_rust::{RuleId, RustLintPass};
-use whisker_types::{DecoratedNode, Diagnostic, Severity};
+use stiles_rust::{RuleId, RustLintPass};
+use stiles_types::{DecoratedNode, Diagnostic, Severity};
 
 const RULE_ID: RuleId = RuleId::new("lint.unseparated-test-body");
 
@@ -11,7 +11,7 @@ const MIN_STATEMENTS: usize = 3;
 
 /// Flags a test body of three or more statements without a blank line
 ///
-/// Whisker's conventions write a test as three phases, Arrange, Act, and
+/// Stiles's conventions write a test as three phases, Arrange, Act, and
 /// Assert, with a blank line between each phase. A body without any blank
 /// line hides where one phase ends and the next starts.
 ///
@@ -177,19 +177,19 @@ fn is_test_attribute(attribute: &DecoratedNode<'_>) -> bool {
 }
 
 #[cfg(feature = "plugin")]
-impl whisker_plugin::DeclaresRules for UnseparatedTestBody {
+impl stiles_plugin::DeclaresRules for UnseparatedTestBody {
     fn rules(&self) -> Vec<RuleId> {
         vec![RULE_ID]
     }
 }
 
-whisker_plugin::export_lints![rust: [UnseparatedTestBody]];
+stiles_plugin::export_lints![rust: [UnseparatedTestBody]];
 
 #[cfg(test)]
 mod tests {
-    use whisker_rust::RustLintPassAdapter;
-    use whisker_testing::{assert_diagnostic, assert_no_diagnostics, execute, parse};
-    use whisker_types::{Language, LintPass, Severity};
+    use stiles_rust::RustLintPassAdapter;
+    use stiles_testing::{assert_diagnostic, assert_no_diagnostics, execute, parse};
+    use stiles_types::{Language, LintPass, Severity};
 
     use super::*;
 

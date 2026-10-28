@@ -1,5 +1,5 @@
-use whisker_rust::{RuleId, RustLintPass, RustLintPassAdapter};
-use whisker_types::{DecoratedNode, Diagnostic, LintPass, RuleOptions, Severity};
+use stiles_rust::{RuleId, RustLintPass, RustLintPassAdapter};
+use stiles_types::{DecoratedNode, Diagnostic, LintPass, RuleOptions, Severity};
 
 const RULE_ID: RuleId = RuleId::new("lint.bool-param");
 
@@ -27,10 +27,10 @@ pub struct BoolParam {
 }
 
 impl BoolParam {
-    /// Creates a boxed [`LintPass`] suitable for the whisker pipeline
+    /// Creates a boxed [`LintPass`] suitable for the stiles pipeline
     ///
     /// The pass starts with no boundary attributes, so it reports every
-    /// signature that `extern` does not already excuse. Whisker calls
+    /// signature that `extern` does not already excuse. Stiles calls
     /// `configure` on each pass it constructs; a caller that builds one
     /// directly and wants the `boundary-attributes` exemption has to call
     /// it too.
@@ -135,18 +135,18 @@ impl RustLintPass for BoolParam {
 }
 
 #[cfg(feature = "plugin")]
-impl whisker_plugin::DeclaresRules for BoolParam {
+impl stiles_plugin::DeclaresRules for BoolParam {
     fn rules(&self) -> Vec<RuleId> {
         vec![RuleId::new("lint.bool-param")]
     }
 }
 
-whisker_plugin::export_lints![rust: [BoolParam::default()]];
+stiles_plugin::export_lints![rust: [BoolParam::default()]];
 
 #[cfg(test)]
 mod tests {
-    use whisker_testing::{assert_diagnostic, assert_no_diagnostics, execute, parse};
-    use whisker_types::{Language, LintPass, RuleOption, Severity};
+    use stiles_testing::{assert_diagnostic, assert_no_diagnostics, execute, parse};
+    use stiles_types::{Language, LintPass, RuleOption, Severity};
 
     use super::*;
 
@@ -160,7 +160,7 @@ mod tests {
         execute(&tree, &mut passes)
     }
 
-    /// Runs the rule as whisker runs it, with `boundary-attributes` set
+    /// Runs the rule as stiles runs it, with `boundary-attributes` set
     fn run_with_boundary_attributes(source: &str, boundary: &[&str]) -> Vec<Diagnostic> {
         let tree = parse(source, Language::Rust);
         let options = RuleOptions::new(vec![

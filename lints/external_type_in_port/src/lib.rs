@@ -3,8 +3,8 @@ mod test_code;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
-use whisker_rust::{RuleId, RustLintPass};
-use whisker_types::{DecoratedNode, Diagnostic, Severity};
+use stiles_rust::{RuleId, RustLintPass};
+use stiles_types::{DecoratedNode, Diagnostic, Severity};
 
 use crate::test_code::is_test_code;
 
@@ -40,7 +40,7 @@ const MAX_IMPORT_HOPS: usize = 16;
 /// `std`, `core`, `alloc`, `crate`, `self`, and `super` are not external.
 /// Nor is a workspace sibling, whose name shares its prefix before the
 /// first `-` or `_` with the directory above the file's `src`. In
-/// `crates/whisker-rust/src`, `whisker_types` is therefore not external. That
+/// `crates/stiles-rust/src`, `stiles_types` is therefore not external. That
 /// is a naming convention, and a workspace that does not follow it gets false
 /// positives.
 ///
@@ -620,7 +620,7 @@ fn last_segment<'a>(node: &DecoratedNode<'a>) -> Option<&'a str> {
 
 /// Returns the crate prefix of the directory that holds a file's `src`
 ///
-/// `crates/whisker-rust/src/lib.rs` yields `whisker`. A path with no `src`
+/// `crates/stiles-rust/src/lib.rs` yields `stiles`. A path with no `src`
 /// directory yields [`None`], and then no crate counts as a sibling.
 fn workspace_prefix(path: &Path) -> Option<&str> {
     let names: Vec<&str> = path
@@ -641,21 +641,21 @@ fn crate_prefix(name: &str) -> &str {
 }
 
 #[cfg(feature = "plugin")]
-impl whisker_plugin::DeclaresRules for ExternalTypeInPort {
+impl stiles_plugin::DeclaresRules for ExternalTypeInPort {
     fn rules(&self) -> Vec<RuleId> {
         vec![RULE_ID]
     }
 }
 
-whisker_plugin::export_lints![rust: [ExternalTypeInPort]];
+stiles_plugin::export_lints![rust: [ExternalTypeInPort]];
 
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
 
-    use whisker_rust::RustLintPassAdapter;
-    use whisker_testing::{assert_diagnostic, assert_no_diagnostics, execute, parse};
-    use whisker_types::{DecoratedTree, Language, LintPass};
+    use stiles_rust::RustLintPassAdapter;
+    use stiles_testing::{assert_diagnostic, assert_no_diagnostics, execute, parse};
+    use stiles_types::{DecoratedTree, Language, LintPass};
 
     use super::*;
 
@@ -907,7 +907,7 @@ pub trait Port {
 
     #[test]
     fn crate_prefix_with_hyphen_returns_first_word() {
-        assert_eq!(crate_prefix("whisker-rust"), "whisker");
+        assert_eq!(crate_prefix("stiles-rust"), "stiles");
     }
 
     #[test]
@@ -917,7 +917,7 @@ pub trait Port {
 
     #[test]
     fn crate_prefix_without_separator_returns_whole_name() {
-        assert_eq!(crate_prefix("whisker"), "whisker");
+        assert_eq!(crate_prefix("stiles"), "stiles");
     }
 
     #[test]
@@ -1054,10 +1054,10 @@ pub trait Port {
     #[test]
     fn extern_crate_self_alias_is_not_flagged() {
         let source = r#"
-extern crate self as whisker;
+extern crate self as stiles;
 
 pub trait Port {
-    fn read(&self) -> whisker::Coverage;
+    fn read(&self) -> stiles::Coverage;
 }
 "#;
 
@@ -1071,7 +1071,7 @@ pub trait Port {
         let source = "pub trait Port { fn read(&self) -> anyhow::Result<()>; }";
 
         let diagnostics = run_at(
-            Path::new("crates/whisker/tests/fixtures/src/lib.rs"),
+            Path::new("crates/stiles/tests/fixtures/src/lib.rs"),
             source,
         );
 
@@ -1517,7 +1517,7 @@ pub trait Port {
 }
 "#;
 
-        let diagnostics = run_at(Path::new("crates/whisker-types/src/lib.rs"), source);
+        let diagnostics = run_at(Path::new("crates/stiles-types/src/lib.rs"), source);
 
         assert_eq!(diagnostics.len(), 1);
     }
@@ -1532,7 +1532,7 @@ pub trait Port {
 }
 "#;
 
-        let diagnostics = run_at(Path::new("crates/whisker-types/src/lib.rs"), source);
+        let diagnostics = run_at(Path::new("crates/stiles-types/src/lib.rs"), source);
 
         assert_diagnostic(&diagnostics[0]).message_contains("external crate `stabby`");
     }
@@ -1597,16 +1597,16 @@ pub trait Decoration {
     #[test]
     fn sibling_crate_is_not_flagged() {
         let source = r#"
-use whisker_types::RuleId;
+use stiles_types::RuleId;
 
 pub trait DeclaresRules {
     fn rules(&self) -> Vec<RuleId>;
-    fn language(&self) -> whisker_rust::Language;
+    fn language(&self) -> stiles_rust::Language;
 }
 "#;
 
         let diagnostics = run_at(
-            Path::new("crates/whisker-plugin/src/declares_rules.rs"),
+            Path::new("crates/stiles-plugin/src/declares_rules.rs"),
             source,
         );
 
@@ -1615,9 +1615,9 @@ pub trait DeclaresRules {
 
     #[test]
     fn sibling_of_unprefixed_crate_directory_is_not_flagged() {
-        let source = "pub trait Port { fn read(&self) -> whisker_types::RuleId; }";
+        let source = "pub trait Port { fn read(&self) -> stiles_types::RuleId; }";
 
-        let diagnostics = run_at(Path::new("whisker/src/lib.rs"), source);
+        let diagnostics = run_at(Path::new("stiles/src/lib.rs"), source);
 
         assert_no_diagnostics(&diagnostics);
     }
@@ -1889,7 +1889,7 @@ pub trait Port {
 
     #[test]
     fn unrelated_crate_without_workspace_is_flagged() {
-        let source = "pub trait Port { fn read(&self) -> whisker_types::RuleId; }";
+        let source = "pub trait Port { fn read(&self) -> stiles_types::RuleId; }";
 
         let diagnostics = run_at(Path::new("src/lib.rs"), source);
 
@@ -1963,9 +1963,9 @@ pub trait Port {
 
     #[test]
     fn workspace_prefix_with_crate_directory_returns_prefix() {
-        let prefix = workspace_prefix(Path::new("./crates/whisker-rust/src/lint/pass.rs"));
+        let prefix = workspace_prefix(Path::new("./crates/stiles-rust/src/lint/pass.rs"));
 
-        assert_eq!(prefix, Some("whisker"));
+        assert_eq!(prefix, Some("stiles"));
     }
 
     #[test]

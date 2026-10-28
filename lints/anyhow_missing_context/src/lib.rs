@@ -1,6 +1,6 @@
-use whisker_rust::decorations::{FnSignature, ResolvedType, TypePathRef};
-use whisker_rust::{RuleId, RustLintPass};
-use whisker_types::{DecoratedNode, Diagnostic, LintPass, Severity};
+use stiles_rust::decorations::{FnSignature, ResolvedType, TypePathRef};
+use stiles_rust::{RuleId, RustLintPass};
+use stiles_types::{DecoratedNode, Diagnostic, LintPass, Severity};
 
 const RULE_ID: RuleId = RuleId::new("lint.anyhow-missing-context");
 
@@ -31,7 +31,7 @@ const ANYHOW_ERROR: TypePathRef<'static> = TypePathRef::builder()
 pub struct AnyhowMissingContext;
 
 impl AnyhowMissingContext {
-    /// Creates a boxed [`LintPass`] suitable for the whisker pipeline
+    /// Creates a boxed [`LintPass`] suitable for the stiles pipeline
     ///
     /// # Examples
     ///
@@ -39,7 +39,7 @@ impl AnyhowMissingContext {
     /// let pass = AnyhowMissingContext::into_lint_pass();
     /// ```
     pub fn into_lint_pass() -> Box<dyn LintPass> {
-        Box::new(whisker_rust::RustLintPassAdapter::new(Self))
+        Box::new(stiles_rust::RustLintPassAdapter::new(Self))
     }
 }
 
@@ -139,19 +139,19 @@ fn is_context_call(operand: &DecoratedNode<'_>) -> bool {
 }
 
 #[cfg(feature = "plugin")]
-impl whisker_plugin::DeclaresRules for AnyhowMissingContext {
+impl stiles_plugin::DeclaresRules for AnyhowMissingContext {
     fn rules(&self) -> Vec<RuleId> {
         vec![RuleId::new("lint.anyhow-missing-context")]
     }
 }
 
-whisker_plugin::export_lints![rust: [AnyhowMissingContext]];
+stiles_plugin::export_lints![rust: [AnyhowMissingContext]];
 
 #[cfg(test)]
 mod tests {
-    use whisker_rust::decorations::{ErrorType, FnSignature, ResolvedType, ReturnMode, TypePath};
-    use whisker_testing::{assert_diagnostic, assert_no_diagnostics, decorate, execute, parse};
-    use whisker_types::{DecorationMap, Language, LintPass, Severity};
+    use stiles_rust::decorations::{ErrorType, FnSignature, ResolvedType, ReturnMode, TypePath};
+    use stiles_testing::{assert_diagnostic, assert_no_diagnostics, decorate, execute, parse};
+    use stiles_types::{DecorationMap, Language, LintPass, Severity};
 
     use super::*;
 
@@ -206,7 +206,7 @@ mod tests {
     }
 
     /// Walks the tree to find the first node with the given kind
-    fn find_node_by_kind<'a>(node: &whisker_types::DecoratedNode<'a>, kind: &str) -> Option<usize> {
+    fn find_node_by_kind<'a>(node: &stiles_types::DecoratedNode<'a>, kind: &str) -> Option<usize> {
         if node.kind() == kind {
             return Some(node.id());
         }
@@ -220,8 +220,8 @@ mod tests {
 
     /// Walks the tree to find the first `try_expression` and returns the
     /// node ID of its operand (first named child)
-    fn find_try_operand_id(tree: &whisker_types::DecoratedTree) -> usize {
-        fn walk(node: &whisker_types::DecoratedNode<'_>) -> Option<usize> {
+    fn find_try_operand_id(tree: &stiles_types::DecoratedTree) -> usize {
+        fn walk(node: &stiles_types::DecoratedNode<'_>) -> Option<usize> {
             if node.kind() == "try_expression" {
                 return node.named_child(0).map(|c| c.id());
             }

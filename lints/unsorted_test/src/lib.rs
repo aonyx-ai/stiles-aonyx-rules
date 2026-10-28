@@ -1,5 +1,5 @@
-use whisker_rust::{RuleId, RustLintPass};
-use whisker_types::{DecoratedNode, Diagnostic, Severity};
+use stiles_rust::{RuleId, RustLintPass};
+use stiles_types::{DecoratedNode, Diagnostic, Severity};
 
 const RULE_ID: RuleId = RuleId::new("lint.unsorted-test");
 
@@ -141,19 +141,19 @@ fn sort_key(name: &str) -> &str {
 }
 
 #[cfg(feature = "plugin")]
-impl whisker_plugin::DeclaresRules for UnsortedTest {
+impl stiles_plugin::DeclaresRules for UnsortedTest {
     fn rules(&self) -> Vec<RuleId> {
         vec![RULE_ID]
     }
 }
 
-whisker_plugin::export_lints![rust: [UnsortedTest]];
+stiles_plugin::export_lints![rust: [UnsortedTest]];
 
 #[cfg(test)]
 mod tests {
-    use whisker_rust::RustLintPassAdapter;
-    use whisker_testing::{assert_diagnostic, assert_no_diagnostics, execute, parse};
-    use whisker_types::{Language, LintPass, Severity};
+    use stiles_rust::RustLintPassAdapter;
+    use stiles_testing::{assert_diagnostic, assert_no_diagnostics, execute, parse};
+    use stiles_types::{Language, LintPass, Severity};
 
     use super::*;
 

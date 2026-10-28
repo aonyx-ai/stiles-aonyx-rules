@@ -1,7 +1,7 @@
 use tree_sitter::Node;
-use whisker_rust::{RuleId, RustLintPass};
-use whisker_types::{DecoratedNode, Diagnostic, Severity, Span};
-use whisker_typescript::TypeScriptLintPass;
+use stiles_rust::{RuleId, RustLintPass};
+use stiles_types::{DecoratedNode, Diagnostic, Severity, Span};
+use stiles_typescript::TypeScriptLintPass;
 
 /// The characters that authors use to draw a horizontal rule
 const DIVIDER_CHARS: &[char] = &['-', '=', '*', '~', '#', '_', '+', '/'];
@@ -324,19 +324,19 @@ impl TypeScriptLintPass for InlineComment {
 }
 
 #[cfg(feature = "plugin")]
-impl whisker_plugin::DeclaresRules for InlineComment {
+impl stiles_plugin::DeclaresRules for InlineComment {
     fn rules(&self) -> Vec<RuleId> {
         vec![RuleId::new("lint.inline-comment")]
     }
 }
 
-whisker_plugin::export_lints![rust: [InlineComment], typescript: [InlineComment]];
+stiles_plugin::export_lints![rust: [InlineComment], typescript: [InlineComment]];
 
 #[cfg(test)]
 mod tests {
-    use whisker_rust::RustLintPassAdapter;
-    use whisker_testing::{assert_diagnostic, assert_no_diagnostics, execute, parse};
-    use whisker_types::{Language, LintPass};
+    use stiles_rust::RustLintPassAdapter;
+    use stiles_testing::{assert_diagnostic, assert_no_diagnostics, execute, parse};
+    use stiles_types::{Language, LintPass};
 
     use super::*;
 
@@ -428,7 +428,7 @@ mod tests {
 
     #[test]
     fn comment_after_the_file_header_is_flagged_once() {
-        let source = "// Copyright 2026 The Whisker Authors\n\n// an ordinary comment\nfn f() {}";
+        let source = "// Copyright 2026 The Stiles Authors\n\n// an ordinary comment\nfn f() {}";
 
         let diagnostics = run(source);
 
@@ -437,7 +437,7 @@ mod tests {
 
     #[test]
     fn comment_after_the_file_header_is_flagged_with_a_doc_comment_hint() {
-        let source = "// Copyright 2026 The Whisker Authors\n\n// an ordinary comment\nfn f() {}";
+        let source = "// Copyright 2026 The Stiles Authors\n\n// an ordinary comment\nfn f() {}";
 
         let diagnostics = run(source);
 
@@ -569,14 +569,14 @@ mod tests {
 
     #[test]
     fn file_header_block_comment_is_not_flagged() {
-        let diagnostics = run("/* Copyright 2026 The Whisker Authors */\n\nfn f() {}");
+        let diagnostics = run("/* Copyright 2026 The Stiles Authors */\n\nfn f() {}");
 
         assert_no_diagnostics(&diagnostics);
     }
 
     #[test]
     fn file_header_comment_is_not_flagged() {
-        let source = "// Copyright 2026 The Whisker Authors\n// SPDX-License-Identifier: Apache-2.0\n\nuse std::fmt;\n\nfn f() {}";
+        let source = "// Copyright 2026 The Stiles Authors\n// SPDX-License-Identifier: Apache-2.0\n\nuse std::fmt;\n\nfn f() {}";
 
         let diagnostics = run(source);
 
@@ -802,7 +802,7 @@ mod tests {
     }
 
     mod typescript {
-        use whisker_typescript::TypeScriptLintPassAdapter;
+        use stiles_typescript::TypeScriptLintPassAdapter;
 
         use super::*;
 

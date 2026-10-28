@@ -1,6 +1,6 @@
-use whisker_rust::decorations::{AdtFlags, ResolvedType};
-use whisker_rust::{RuleId, RustLintPass};
-use whisker_types::{DecoratedNode, Diagnostic, Severity};
+use stiles_rust::decorations::{AdtFlags, ResolvedType};
+use stiles_rust::{RuleId, RustLintPass};
+use stiles_types::{DecoratedNode, Diagnostic, Severity};
 
 /// Flags wildcard (`_`) patterns in match arms when the scrutinee is an enum
 ///
@@ -76,19 +76,19 @@ fn is_wildcard_pattern(match_pattern: &DecoratedNode<'_>) -> bool {
 }
 
 #[cfg(feature = "plugin")]
-impl whisker_plugin::DeclaresRules for WildcardMatchArm {
+impl stiles_plugin::DeclaresRules for WildcardMatchArm {
     fn rules(&self) -> Vec<RuleId> {
         vec![RuleId::new("lint.wildcard-match-arm")]
     }
 }
 
-whisker_plugin::export_lints![rust: [WildcardMatchArm]];
+stiles_plugin::export_lints![rust: [WildcardMatchArm]];
 
 #[cfg(test)]
 mod tests {
-    use whisker_rust::RustLintPassAdapter;
-    use whisker_testing::{assert_diagnostic, assert_no_diagnostics, decorate, execute, parse};
-    use whisker_types::{DecorationMap, Language, LintPass, Severity};
+    use stiles_rust::RustLintPassAdapter;
+    use stiles_testing::{assert_diagnostic, assert_no_diagnostics, decorate, execute, parse};
+    use stiles_types::{DecorationMap, Language, LintPass, Severity};
 
     use super::*;
 
@@ -96,7 +96,7 @@ mod tests {
         vec![Box::new(RustLintPassAdapter::new(WildcardMatchArm))]
     }
 
-    fn find_scrutinee_id(tree: &whisker_types::DecoratedTree) -> usize {
+    fn find_scrutinee_id(tree: &stiles_types::DecoratedTree) -> usize {
         fn walk(node: &DecoratedNode<'_>) -> Option<usize> {
             if node.kind() == "match_expression" {
                 return node.child_by_field_name("value").map(|n| n.id());

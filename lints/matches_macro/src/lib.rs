@@ -1,5 +1,5 @@
-use whisker_rust::{RuleId, RustLintPass};
-use whisker_types::{DecoratedNode, Diagnostic, Severity};
+use stiles_rust::{RuleId, RustLintPass};
+use stiles_types::{DecoratedNode, Diagnostic, Severity};
 
 /// The advice for a `matches!` whose `bool` is the value the code wants
 const VALUE_MESSAGE: &str = "use a full `match` expression instead of `matches!`";
@@ -66,13 +66,13 @@ impl RustLintPass for MatchesMacro {
 }
 
 #[cfg(feature = "plugin")]
-impl whisker_plugin::DeclaresRules for MatchesMacro {
+impl stiles_plugin::DeclaresRules for MatchesMacro {
     fn rules(&self) -> Vec<RuleId> {
         vec![RuleId::new("lint.matches-macro")]
     }
 }
 
-whisker_plugin::export_lints![rust: [MatchesMacro]];
+stiles_plugin::export_lints![rust: [MatchesMacro]];
 
 /// Where a `matches!` call sits, which decides the rewrite its finding asks for
 enum Position {
@@ -135,9 +135,9 @@ fn is_logical(node: &DecoratedNode<'_>) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use whisker_rust::RustLintPassAdapter;
-    use whisker_testing::{assert_diagnostic, assert_no_diagnostics, execute, parse};
-    use whisker_types::{Language, LintPass, Severity};
+    use stiles_rust::RustLintPassAdapter;
+    use stiles_testing::{assert_diagnostic, assert_no_diagnostics, execute, parse};
+    use stiles_types::{Language, LintPass, Severity};
 
     use super::*;
 

@@ -1,5 +1,5 @@
-use whisker_rust::{RuleId, RustLintPass, RustLintPassAdapter};
-use whisker_types::{DecoratedNode, Diagnostic, LintPass, Severity};
+use stiles_rust::{RuleId, RustLintPass, RustLintPassAdapter};
+use stiles_types::{DecoratedNode, Diagnostic, LintPass, Severity};
 
 const RULE_ID: RuleId = RuleId::new("lint.unprefixed-submodule-path");
 
@@ -56,7 +56,7 @@ const TYPE_NAMESPACE_ITEMS: [&str; 6] = [
 pub struct UnprefixedSubmodulePath;
 
 impl UnprefixedSubmodulePath {
-    /// Creates a boxed [`LintPass`] suitable for the whisker pipeline
+    /// Creates a boxed [`LintPass`] suitable for the stiles pipeline
     ///
     /// # Examples
     ///
@@ -78,13 +78,13 @@ impl RustLintPass for UnprefixedSubmodulePath {
 }
 
 #[cfg(feature = "plugin")]
-impl whisker_plugin::DeclaresRules for UnprefixedSubmodulePath {
+impl stiles_plugin::DeclaresRules for UnprefixedSubmodulePath {
     fn rules(&self) -> Vec<RuleId> {
         vec![RULE_ID]
     }
 }
 
-whisker_plugin::export_lints![rust: [UnprefixedSubmodulePath]];
+stiles_plugin::export_lints![rust: [UnprefixedSubmodulePath]];
 
 /// Reports the unprefixed submodule paths under one node
 ///
@@ -333,8 +333,8 @@ fn unraw(identifier: &str) -> &str {
 
 #[cfg(test)]
 mod tests {
-    use whisker_testing::{assert_diagnostic, assert_no_diagnostics, execute, parse};
-    use whisker_types::Language;
+    use stiles_testing::{assert_diagnostic, assert_no_diagnostics, execute, parse};
+    use stiles_types::Language;
 
     use super::*;
 

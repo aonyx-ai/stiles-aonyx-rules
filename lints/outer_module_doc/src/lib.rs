@@ -1,5 +1,5 @@
-use whisker_rust::{RuleId, RustLintPass};
-use whisker_types::{DecoratedNode, Diagnostic, Severity, Span};
+use stiles_rust::{RuleId, RustLintPass};
+use stiles_types::{DecoratedNode, Diagnostic, Severity, Span};
 
 const RULE_ID: RuleId = RuleId::new("lint.outer-module-doc");
 
@@ -21,7 +21,7 @@ const RULE_ID: RuleId = RuleId::new("lint.outer-module-doc");
 /// An inline module, `mod foo { ... }`, has no file to carry a header. A
 /// `///` on it is the ordinary way to document it, so the rule leaves it
 /// alone. The rule reads syntax alone. It cannot compare the two texts,
-/// because whisker never sees the child's file from the parent.
+/// because stiles never sees the child's file from the parent.
 pub struct OuterModuleDoc;
 
 /// What a node above a declaration means for the declaration's
@@ -171,19 +171,19 @@ fn covering_span(first: &DecoratedNode<'_>, last: &DecoratedNode<'_>) -> Span {
 }
 
 #[cfg(feature = "plugin")]
-impl whisker_plugin::DeclaresRules for OuterModuleDoc {
+impl stiles_plugin::DeclaresRules for OuterModuleDoc {
     fn rules(&self) -> Vec<RuleId> {
         vec![RULE_ID]
     }
 }
 
-whisker_plugin::export_lints![rust: [OuterModuleDoc]];
+stiles_plugin::export_lints![rust: [OuterModuleDoc]];
 
 #[cfg(test)]
 mod tests {
-    use whisker_rust::RustLintPassAdapter;
-    use whisker_testing::{assert_diagnostic, assert_no_diagnostics, execute, parse};
-    use whisker_types::{Language, LintPass, Severity};
+    use stiles_rust::RustLintPassAdapter;
+    use stiles_testing::{assert_diagnostic, assert_no_diagnostics, execute, parse};
+    use stiles_types::{Language, LintPass, Severity};
 
     use super::*;
 

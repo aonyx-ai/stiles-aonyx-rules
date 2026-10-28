@@ -1,6 +1,6 @@
-use whisker_rust::{RuleId, RustLintPass};
-use whisker_types::{DecoratedNode, Diagnostic, Severity, Span};
-use whisker_typescript::TypeScriptLintPass;
+use stiles_rust::{RuleId, RustLintPass};
+use stiles_types::{DecoratedNode, Diagnostic, Severity, Span};
+use stiles_typescript::TypeScriptLintPass;
 
 const RULE_ID: RuleId = RuleId::new("lint.todo-comment");
 
@@ -130,19 +130,19 @@ impl TypeScriptLintPass for TodoComment {
 }
 
 #[cfg(feature = "plugin")]
-impl whisker_plugin::DeclaresRules for TodoComment {
+impl stiles_plugin::DeclaresRules for TodoComment {
     fn rules(&self) -> Vec<RuleId> {
         vec![RuleId::new("lint.todo-comment")]
     }
 }
 
-whisker_plugin::export_lints![rust: [TodoComment], typescript: [TodoComment]];
+stiles_plugin::export_lints![rust: [TodoComment], typescript: [TodoComment]];
 
 #[cfg(test)]
 mod tests {
-    use whisker_rust::RustLintPassAdapter;
-    use whisker_testing::{assert_diagnostic, assert_no_diagnostics, execute, parse};
-    use whisker_types::{Language, LintPass, Severity};
+    use stiles_rust::RustLintPassAdapter;
+    use stiles_testing::{assert_diagnostic, assert_no_diagnostics, execute, parse};
+    use stiles_types::{Language, LintPass, Severity};
 
     use super::*;
 
@@ -570,7 +570,7 @@ mod tests {
     }
 
     mod typescript {
-        use whisker_typescript::TypeScriptLintPassAdapter;
+        use stiles_typescript::TypeScriptLintPassAdapter;
 
         use super::*;
 

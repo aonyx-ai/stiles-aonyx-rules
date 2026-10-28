@@ -1,6 +1,6 @@
 use doc_comment::DocLine;
-use whisker_rust::{RuleId, RustLintPass};
-use whisker_types::{DecoratedNode, Diagnostic, Severity, Span};
+use stiles_rust::{RuleId, RustLintPass};
+use stiles_types::{DecoratedNode, Diagnostic, Severity, Span};
 
 const RULE_ID: RuleId = RuleId::new("lint.doc-summary-period");
 
@@ -282,19 +282,19 @@ fn is_setext_underline(text: &str) -> bool {
 }
 
 #[cfg(feature = "plugin")]
-impl whisker_plugin::DeclaresRules for DocSummaryPeriod {
+impl stiles_plugin::DeclaresRules for DocSummaryPeriod {
     fn rules(&self) -> Vec<RuleId> {
         vec![RULE_ID]
     }
 }
 
-whisker_plugin::export_lints![rust: [DocSummaryPeriod]];
+stiles_plugin::export_lints![rust: [DocSummaryPeriod]];
 
 #[cfg(test)]
 mod tests {
-    use whisker_rust::RustLintPassAdapter;
-    use whisker_testing::{assert_diagnostic, assert_no_diagnostics, execute, parse};
-    use whisker_types::{Language, LintPass};
+    use stiles_rust::RustLintPassAdapter;
+    use stiles_testing::{assert_diagnostic, assert_no_diagnostics, execute, parse};
+    use stiles_types::{Language, LintPass};
 
     use super::*;
 

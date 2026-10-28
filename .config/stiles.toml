@@ -1,4 +1,4 @@
-# Whisker reads this file when `whisker check` runs against this repository,
+# Stiles reads this file when `stiles check` runs against this repository,
 # and the rules it names are the ones in this repository. Every rule is a
 # workspace member, so a single entry pointing at the root builds all of them
 # and checks this repository with itself. A rule that would fire on its own

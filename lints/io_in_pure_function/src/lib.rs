@@ -1,8 +1,8 @@
 mod imports;
 mod test_code;
 
-use whisker_rust::{RuleId, RustLintPass, RustLintPassAdapter};
-use whisker_types::{DecoratedNode, Diagnostic, LintPass, Severity};
+use stiles_rust::{RuleId, RustLintPass, RustLintPassAdapter};
+use stiles_types::{DecoratedNode, Diagnostic, LintPass, Severity};
 
 use crate::imports::{resolve, strip_raw};
 use crate::test_code::is_test_code;
@@ -79,7 +79,7 @@ const IO_FUNCTIONS: [&[&str]; 8] = [
 pub struct IoInPureFunction;
 
 impl IoInPureFunction {
-    /// Creates a boxed [`LintPass`] suitable for the whisker pipeline
+    /// Creates a boxed [`LintPass`] suitable for the stiles pipeline
     ///
     /// # Examples
     ///
@@ -250,18 +250,18 @@ impl RustLintPass for IoInPureFunction {
 }
 
 #[cfg(feature = "plugin")]
-impl whisker_plugin::DeclaresRules for IoInPureFunction {
+impl stiles_plugin::DeclaresRules for IoInPureFunction {
     fn rules(&self) -> Vec<RuleId> {
         vec![RuleId::new("lint.io-in-pure-function")]
     }
 }
 
-whisker_plugin::export_lints![rust: [IoInPureFunction]];
+stiles_plugin::export_lints![rust: [IoInPureFunction]];
 
 #[cfg(test)]
 mod tests {
-    use whisker_testing::{assert_diagnostic, assert_no_diagnostics, execute, parse};
-    use whisker_types::Language;
+    use stiles_testing::{assert_diagnostic, assert_no_diagnostics, execute, parse};
+    use stiles_types::Language;
 
     use super::*;
 
@@ -671,7 +671,7 @@ mod tests {
     #[test]
     fn new_is_flagged_naming_the_call() {
         let diagnostics = run(
-            "impl CheckPlan {\n    pub fn new(path: &Path) -> anyhow::Result<Self> {\n        let config = std::fs::read_to_string(path.join(\"whisker.toml\"))?;\n        todo!()\n    }\n}",
+            "impl CheckPlan {\n    pub fn new(path: &Path) -> anyhow::Result<Self> {\n        let config = std::fs::read_to_string(path.join(\"stiles.toml\"))?;\n        todo!()\n    }\n}",
         );
 
         assert_diagnostic(&diagnostics[0])
@@ -681,7 +681,7 @@ mod tests {
     #[test]
     fn new_is_flagged_once() {
         let diagnostics = run(
-            "impl CheckPlan {\n    pub fn new(path: &Path) -> anyhow::Result<Self> {\n        let config = std::fs::read_to_string(path.join(\"whisker.toml\"))?;\n        todo!()\n    }\n}",
+            "impl CheckPlan {\n    pub fn new(path: &Path) -> anyhow::Result<Self> {\n        let config = std::fs::read_to_string(path.join(\"stiles.toml\"))?;\n        todo!()\n    }\n}",
         );
 
         assert_eq!(diagnostics.len(), 1);

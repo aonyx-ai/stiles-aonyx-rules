@@ -1,4 +1,4 @@
-use whisker_types::DecoratedNode;
+use stiles_types::DecoratedNode;
 
 use crate::{DocLine, strip_star, unindent};
 
@@ -30,8 +30,8 @@ enum Marker {
 /// # Examples
 ///
 /// ```
-/// use whisker_testing::parse;
-/// use whisker_types::Language;
+/// use stiles_testing::parse;
+/// use stiles_types::Language;
 ///
 /// let tree = parse("/// Adds two\n/// numbers\nfn add() {}", Language::Rust);
 /// let first = tree.root_node().named_child(0).unwrap();
@@ -148,8 +148,8 @@ fn line_of<'a>(node: &DecoratedNode<'a>) -> Option<DocLine<'a>> {
 
 #[cfg(test)]
 mod tests {
-    use whisker_testing::parse;
-    use whisker_types::{DecoratedTree, Language};
+    use stiles_testing::parse;
+    use stiles_types::{DecoratedTree, Language};
 
     use super::*;
 

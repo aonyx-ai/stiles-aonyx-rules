@@ -22,7 +22,7 @@ const TERMINATORS: [u8; 3] = *b".!?";
 /// the sentence continues onto. A [`Span`] is one contiguous range, so the
 /// markers cannot be cut out.
 ///
-/// [`Span`]: whisker_types::Span
+/// [`Span`]: stiles_types::Span
 #[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
 pub(crate) struct Sentence {
     words: usize,
@@ -375,7 +375,7 @@ fn is_abbreviation(word: &str) -> bool {
 /// Counts the words of one sentence
 ///
 /// An inline code span counts as one word, because a reader takes
-/// `Option<T>` or `crates/whisker-rust` as a single name. Punctuation on its
+/// `Option<T>` or `crates/stiles-rust` as a single name. Punctuation on its
 /// own is not a word.
 fn count_words(text: &str) -> usize {
     text.split_whitespace()
@@ -554,7 +554,7 @@ mod tests {
     #[test]
     fn sentences_ignores_a_link_definition() {
         assert_eq!(
-            words("Uses [`Span`] here.\n\n[`Span`]: whisker_types::Span"),
+            words("Uses [`Span`] here.\n\n[`Span`]: stiles_types::Span"),
             vec![3]
         );
     }

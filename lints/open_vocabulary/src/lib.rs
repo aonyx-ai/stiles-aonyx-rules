@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
-use whisker_rust::{RuleId, RustLintPass, RustLintPassAdapter};
-use whisker_types::{DecoratedNode, Diagnostic, LintPass, Severity};
+use stiles_rust::{RuleId, RustLintPass, RustLintPassAdapter};
+use stiles_types::{DecoratedNode, Diagnostic, LintPass, Severity};
 
 const RULE_ID: RuleId = RuleId::new("lint.open-vocabulary");
 
@@ -50,7 +50,7 @@ const CATCH_ALL_NAMES: &[&str] = &["Other", "Custom", "Unknown", "Extension", "U
 pub struct OpenVocabulary;
 
 impl OpenVocabulary {
-    /// Creates a boxed [`LintPass`] suitable for the whisker pipeline
+    /// Creates a boxed [`LintPass`] suitable for the stiles pipeline
     ///
     /// # Examples
     ///
@@ -581,18 +581,18 @@ impl RustLintPass for OpenVocabulary {
 }
 
 #[cfg(feature = "plugin")]
-impl whisker_plugin::DeclaresRules for OpenVocabulary {
+impl stiles_plugin::DeclaresRules for OpenVocabulary {
     fn rules(&self) -> Vec<RuleId> {
         vec![RULE_ID]
     }
 }
 
-whisker_plugin::export_lints![rust: [OpenVocabulary]];
+stiles_plugin::export_lints![rust: [OpenVocabulary]];
 
 #[cfg(test)]
 mod tests {
-    use whisker_testing::{assert_diagnostic, assert_no_diagnostics, execute, parse};
-    use whisker_types::{Language, LintPass, Severity};
+    use stiles_testing::{assert_diagnostic, assert_no_diagnostics, execute, parse};
+    use stiles_types::{Language, LintPass, Severity};
 
     use super::*;
 

@@ -43,38 +43,38 @@ jobs:
           tool: just
 
       # The pin lives in the workspace manifest, so this reads it rather
-      # than repeating it. Whisker refuses a plugin built against any other
-      # revision, and the tag it asks for comes from that same whisker.
-      - name: Read the pinned whisker revision
+      # than repeating it. Stiles refuses a plugin built against any other
+      # revision, and the tag it asks for comes from that same stiles.
+      - name: Read the pinned stiles revision
         id: pin
         run: echo "rev=$(just --justfile rules/justfile --working-directory rules pin)" >> "$GITHUB_OUTPUT"
 
-      - name: Checkout whisker at the pinned revision
+      - name: Checkout stiles at the pinned revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          repository: aonyx-ai/whisker
+          repository: aonyx-ai/stiles
           ref: ${{ steps.pin.outputs.rev }}
-          path: whisker
+          path: stiles
           persist-credentials: false
 
-      # The rules build with the toolchain this repository pins. Whisker
+      # The rules build with the toolchain this repository pins. Stiles
       # loads them regardless of which rustc built them.
       - name: Install the pinned toolchain
         working-directory: rules
         run: rustup toolchain install
 
       # This job deliberately keeps no Cargo cache. A pull request can write
-      # to one, and these archives are loaded into whisker's own process on
+      # to one, and these archives are loaded into stiles's own process on
       # someone else's machine.
-      - name: Build whisker at the pin
-        working-directory: whisker
-        run: cargo build --release --locked -p whisker
+      - name: Build stiles at the pin
+        working-directory: stiles
+        run: cargo build --release --locked -p stiles
 
       - name: Assemble the archive
         working-directory: rules
         env:
           REV: ${{ github.sha }}
-        run: just package-lints "${REV}" ../whisker/target/release/whisker
+        run: just package-lints "${REV}" ../stiles/target/release/stiles
 
       - name: Attach the archive to the release
         working-directory: rules

@@ -73,19 +73,19 @@ jobs:
           tool: just
 
       # The pin lives in one place, the workspace manifest, so this job reads
-      # it rather than repeating it. A whisker built from any other revision
+      # it rather than repeating it. A stiles built from any other revision
       # would be refused by the handshake, which is the point of the job: it
       # is what tells us the pair still fits before a project finds out.
-      - name: Read the pinned whisker revision
+      - name: Read the pinned stiles revision
         id: pin
         run: echo "rev=$(just --justfile rules/justfile --working-directory rules pin)" >> "$GITHUB_OUTPUT"
 
-      - name: Checkout whisker at the pinned revision
+      - name: Checkout stiles at the pinned revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          repository: aonyx-ai/whisker
+          repository: aonyx-ai/stiles
           ref: ${{ steps.pin.outputs.rev }}
-          path: whisker
+          path: stiles
           persist-credentials: false
 
       - name: Cache Cargo downloads and build output
@@ -95,19 +95,19 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-            whisker/target
+            stiles/target
             rules/target
           key: dogfood-${{ runner.os }}-${{ steps.pin.outputs.rev }}-${{ hashFiles('rules/Cargo.lock') }}
           restore-keys: dogfood-${{ runner.os }}-${{ steps.pin.outputs.rev }}-
 
-      - name: Build whisker
-        working-directory: whisker
-        run: cargo build --release -p whisker
+      - name: Build stiles
+        working-directory: stiles
+        run: cargo build --release -p stiles
 
       # Through the recipe, so that this job runs what a developer runs.
       - name: Check the rules with themselves
         working-directory: rules
-        run: just check-self ../whisker/target/release/whisker
+        run: just check-self ../stiles/target/release/stiles
 
   success:
     name: All checks succeeded

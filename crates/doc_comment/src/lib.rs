@@ -11,7 +11,7 @@
 mod jsdoc;
 mod rust;
 
-use whisker_types::DecoratedNode;
+use stiles_types::DecoratedNode;
 
 pub use self::rust::rust;
 
@@ -23,8 +23,8 @@ pub use self::rust::rust;
 /// # Examples
 ///
 /// ```
-/// use whisker_testing::parse;
-/// use whisker_types::Language;
+/// use stiles_testing::parse;
+/// use stiles_types::Language;
 ///
 /// let tree = parse("/// Adds two\nfn add() {}", Language::Rust);
 /// let comment = tree.root_node().named_child(0).unwrap();
@@ -45,8 +45,8 @@ impl<'a> DocLine<'a> {
     /// # Examples
     ///
     /// ```
-    /// use whisker_testing::parse;
-    /// use whisker_types::Language;
+    /// use stiles_testing::parse;
+    /// use stiles_types::Language;
     ///
     /// let tree = parse("/** Adds two numbers */\nfunction add() {}", Language::TypeScript);
     /// let comment = tree.root_node().named_child(0).unwrap();
@@ -64,8 +64,8 @@ impl<'a> DocLine<'a> {
     /// # Examples
     ///
     /// ```
-    /// use whisker_testing::parse;
-    /// use whisker_types::Language;
+    /// use stiles_testing::parse;
+    /// use stiles_types::Language;
     ///
     /// let source = "/** Adds two numbers */\nfunction add() {}";
     /// let tree = parse(source, Language::TypeScript);
@@ -111,8 +111,8 @@ impl<'a> DocLine<'a> {
 /// # Examples
 ///
 /// ```
-/// use whisker_testing::parse;
-/// use whisker_types::Language;
+/// use stiles_testing::parse;
+/// use stiles_types::Language;
 ///
 /// let source = "/**\n * Adds two numbers\n * @param a - the first\n */\nfunction add(a) {}";
 /// let tree = parse(source, Language::TypeScript);

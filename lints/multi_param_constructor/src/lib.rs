@@ -1,7 +1,7 @@
 mod test_code;
 
-use whisker_rust::{RuleId, RustLintPass, RustLintPassAdapter};
-use whisker_types::{DecoratedNode, Diagnostic, LintPass, Severity};
+use stiles_rust::{RuleId, RustLintPass, RustLintPassAdapter};
+use stiles_types::{DecoratedNode, Diagnostic, LintPass, Severity};
 
 use crate::test_code::{attribute_name, is_test_code, outer_attributes};
 
@@ -54,7 +54,7 @@ const WRAPPERS: [&str; 2] = ["Result", "Option"];
 pub struct MultiParamConstructor;
 
 impl MultiParamConstructor {
-    /// Creates a boxed [`LintPass`] suitable for the whisker pipeline
+    /// Creates a boxed [`LintPass`] suitable for the stiles pipeline
     ///
     /// # Examples
     ///
@@ -239,20 +239,20 @@ fn base_path<'a>(ty: &DecoratedNode<'a>) -> Option<&'a str> {
 }
 
 #[cfg(feature = "plugin")]
-impl whisker_plugin::DeclaresRules for MultiParamConstructor {
+impl stiles_plugin::DeclaresRules for MultiParamConstructor {
     fn rules(&self) -> Vec<RuleId> {
         vec![RULE_ID]
     }
 }
 
-whisker_plugin::export_lints![rust: [MultiParamConstructor]];
+stiles_plugin::export_lints![rust: [MultiParamConstructor]];
 
 #[cfg(test)]
 mod tests {
     use std::path::{Path, PathBuf};
 
-    use whisker_testing::{assert_diagnostic, assert_no_diagnostics, execute, parse};
-    use whisker_types::{DecoratedTree, Language};
+    use stiles_testing::{assert_diagnostic, assert_no_diagnostics, execute, parse};
+    use stiles_types::{DecoratedTree, Language};
 
     use super::*;
 

@@ -1,9 +1,9 @@
 mod doc_line;
 mod sentence;
 
-use whisker_rust::{RuleId, RustLintPass};
-use whisker_types::{DecoratedNode, Diagnostic, Severity, Span};
-use whisker_typescript::TypeScriptLintPass;
+use stiles_rust::{RuleId, RustLintPass};
+use stiles_types::{DecoratedNode, Diagnostic, Severity, Span};
+use stiles_typescript::TypeScriptLintPass;
 
 use crate::doc_line::DocLine;
 use crate::sentence::sentences;
@@ -90,19 +90,19 @@ fn report(lines: &[DocLine<'_>], node: &DecoratedNode<'_>) -> Vec<Diagnostic> {
 }
 
 #[cfg(feature = "plugin")]
-impl whisker_plugin::DeclaresRules for LongDocSentence {
+impl stiles_plugin::DeclaresRules for LongDocSentence {
     fn rules(&self) -> Vec<RuleId> {
         vec![RuleId::new("lint.long-doc-sentence")]
     }
 }
 
-whisker_plugin::export_lints![rust: [LongDocSentence], typescript: [LongDocSentence]];
+stiles_plugin::export_lints![rust: [LongDocSentence], typescript: [LongDocSentence]];
 
 #[cfg(test)]
 mod tests {
-    use whisker_rust::RustLintPassAdapter;
-    use whisker_testing::{assert_diagnostic, assert_no_diagnostics, execute, parse};
-    use whisker_types::{Language, LintPass, Severity};
+    use stiles_rust::RustLintPassAdapter;
+    use stiles_testing::{assert_diagnostic, assert_no_diagnostics, execute, parse};
+    use stiles_types::{Language, LintPass, Severity};
 
     use super::*;
 
@@ -373,7 +373,7 @@ mod tests {
     }
 
     mod typescript {
-        use whisker_typescript::TypeScriptLintPassAdapter;
+        use stiles_typescript::TypeScriptLintPassAdapter;
 
         use super::*;
 

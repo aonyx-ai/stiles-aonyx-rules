@@ -2,9 +2,9 @@ mod doc_block;
 mod inline_link;
 
 use doc_comment::DocLine;
-use whisker_rust::{RuleId, RustLintPass};
-use whisker_types::{DecoratedNode, Diagnostic, Severity};
-use whisker_typescript::TypeScriptLintPass;
+use stiles_rust::{RuleId, RustLintPass};
+use stiles_types::{DecoratedNode, Diagnostic, Severity};
+use stiles_typescript::TypeScriptLintPass;
 
 use self::doc_block::DocBlock;
 use self::inline_link::InlineLink;
@@ -79,19 +79,19 @@ fn report(block: &DocBlock) -> Vec<Diagnostic> {
 }
 
 #[cfg(feature = "plugin")]
-impl whisker_plugin::DeclaresRules for InlineDocLink {
+impl stiles_plugin::DeclaresRules for InlineDocLink {
     fn rules(&self) -> Vec<RuleId> {
         vec![RuleId::new("lint.inline-doc-link")]
     }
 }
 
-whisker_plugin::export_lints![rust: [InlineDocLink], typescript: [InlineDocLink]];
+stiles_plugin::export_lints![rust: [InlineDocLink], typescript: [InlineDocLink]];
 
 #[cfg(test)]
 mod tests {
-    use whisker_rust::RustLintPassAdapter;
-    use whisker_testing::{assert_diagnostic, assert_no_diagnostics, execute, parse};
-    use whisker_types::{Language, LintPass};
+    use stiles_rust::RustLintPassAdapter;
+    use stiles_testing::{assert_diagnostic, assert_no_diagnostics, execute, parse};
+    use stiles_types::{Language, LintPass};
 
     use super::*;
 
@@ -344,7 +344,7 @@ mod tests {
     }
 
     mod typescript {
-        use whisker_typescript::TypeScriptLintPassAdapter;
+        use stiles_typescript::TypeScriptLintPassAdapter;
 
         use super::*;
 
