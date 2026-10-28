@@ -65,20 +65,21 @@ stable ABI of its own, so stiles lays every type that crosses that boundary
 out with stabby and loads a plugin regardless of which rustc built it. It
 still refuses a plugin whose protocol version or layout fingerprints differ
 from its own, which happens when stiles's plugin boundary changed between the
-two revisions. Two things therefore move together:
+two releases. Two things therefore move together:
 
-- The `rev` that the stiles dependencies in this repository's `Cargo.toml`
-  share, which every rule builds against. `just pin` prints it.
+- The stiles release that the stiles dependencies in this repository's
+  `Cargo.toml` share, which every rule builds against. Each names it as an
+  exact version, and `just pin` prints it.
 - The `rev` that a project names in its own `.config/stiles.toml`, which
   should be a commit of this repository built against the stiles that
   project runs.
 
 `rust-toolchain.toml` is this repository's own choice.
 
-To bump: move every stiles `rev` in `[workspace.dependencies]` to the new
-stiles commit, run `cargo update -w`, and let CI's dogfood job confirm
-the pair still loads. A mismatch is a refusal with an error naming what to
-rebuild, never a silent wrong answer.
+To bump: move every stiles version in `[workspace.dependencies]` to the new
+release, run `cargo update -w`, add a changeset, and let CI's dogfood job
+confirm the pair still loads. A mismatch is a refusal with an error naming
+what to rebuild, never a silent wrong answer.
 
 ## Adding a rule
 

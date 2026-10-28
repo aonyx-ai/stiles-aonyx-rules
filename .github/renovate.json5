@@ -1,26 +1,6 @@
 {
   $schema: "https://docs.renovatebot.com/renovate-schema.json",
   extends: ["github>aonyx-ai/renovate-config"],
-  customManagers: [
-    {
-      // The stiles crates are one decision, never several. Cargo's own
-      // manager reads them as separate git dependencies and opens a pull
-      // request for each, each leaving the crates on different revisions,
-      // and a rule compiled against one revision of stiles-rust does not
-      // build against another revision of stiles-types.
-      //
-      // This reads them all as one dependency, and moves the digest with
-      // the release comment beside it, the way renovate moves a pinned
-      // GitHub action.
-      customType: "regex",
-      fileMatch: ["^Cargo\\.toml$"],
-      matchStrings: [
-        "stiles-\\w+ = \\{ git = \"https://github\\.com/aonyx-ai/stiles\\.git\", rev = \"(?<currentDigest>[0-9a-f]{40})\"[^\\n]*\\} # (?<currentValue>v\\S+)",
-      ],
-      depNameTemplate: "aonyx-ai/stiles",
-      datasourceTemplate: "github-tags",
-    },
-  ],
   packageRules: [
     {
       matchPackageNames: ["rust"],
@@ -28,39 +8,15 @@
       schedule: ["on the first day of the month"],
     },
     {
-      // Cargo's own manager sees the same three lines the custom manager
-      // above reads, as three git dependencies, and opens the three pull
-      // requests that manager exists to prevent. It did: #10, #11 and #23,
-      // one per crate, each able to land on its own and leave the crates on
-      // different revisions of stiles.
+      // The stiles crates are one decision, never several. A rule compiled
+      // against one release of stiles-rust does not build against another
+      // release of stiles-types, so one pull request moves them all.
       //
-      // It also reads only the revision, never the release comment beside
-      // it, so it proposed a commit on stiles's main while the comment
-      // still named a release. A pin here names a release, because the
-      // release is what has prebuilt lint archives published for it.
-      //
-      // Turning it off for the stiles crates leaves the custom manager as
-      // the one voice on them, which is the whole point of having written
-      // it.
+      // A move of the pin changes what a project sees and needs a
+      // changeset, which renovate does not write. A person merges this one.
       matchManagers: ["cargo"],
-      matchDepNames: [
-        "stiles-plugin",
-        "stiles-rust",
-        "stiles-testing",
-        "stiles-types",
-        "stiles-typescript",
-      ],
-      enabled: false,
-    },
-    {
-      // Stiles ships a prerelease today, and renovate passes over those
-      // unless it is told not to.
-      //
-      // The pin also decides which rustc built the plugins, and it has to
-      // move with `rust-toolchain.toml`, which renovate cannot know. A
-      // person merges this one.
-      matchDepNames: ["aonyx-ai/stiles"],
-      ignoreUnstable: false,
+      matchPackageNames: ["/^stiles-/"],
+      groupName: "stiles",
       automerge: false,
     },
   ],
