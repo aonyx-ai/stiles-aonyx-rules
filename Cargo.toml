@@ -47,8 +47,8 @@ tree-sitter = "0.27"
 # and a tag can be moved, so the pin is a commit and the release beside it
 # says which one. Renovate reads the pair through a custom manager and
 # moves both, the way it moves a pinned action.
-whisker-plugin = { git = "https://github.com/aonyx-ai/whisker.git", rev = "61bdca5788cd2f975cda1152b7832ce6c5d26f5d" }
-whisker-rust = { git = "https://github.com/aonyx-ai/whisker.git", rev = "61bdca5788cd2f975cda1152b7832ce6c5d26f5d", default-features = false }
-whisker-testing = { git = "https://github.com/aonyx-ai/whisker.git", rev = "61bdca5788cd2f975cda1152b7832ce6c5d26f5d" }
-whisker-types = { git = "https://github.com/aonyx-ai/whisker.git", rev = "61bdca5788cd2f975cda1152b7832ce6c5d26f5d" }
-whisker-typescript = { git = "https://github.com/aonyx-ai/whisker.git", rev = "61bdca5788cd2f975cda1152b7832ce6c5d26f5d", default-features = false }
+whisker-plugin = { git = "https://github.com/aonyx-ai/whisker.git", rev = "289ee8cbf9ef071cddc48259415e6f6d69870a11" }
+whisker-rust = { git = "https://github.com/aonyx-ai/whisker.git", rev = "289ee8cbf9ef071cddc48259415e6f6d69870a11", default-features = false }
+whisker-testing = { git = "https://github.com/aonyx-ai/whisker.git", rev = "289ee8cbf9ef071cddc48259415e6f6d69870a11" }
+whisker-types = { git = "https://github.com/aonyx-ai/whisker.git", rev = "289ee8cbf9ef071cddc48259415e6f6d69870a11" }
+whisker-typescript = { git = "https://github.com/aonyx-ai/whisker.git", rev = "289ee8cbf9ef071cddc48259415e6f6d69870a11", default-features = false }

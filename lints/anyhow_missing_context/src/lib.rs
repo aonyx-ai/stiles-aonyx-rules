@@ -9,7 +9,11 @@ const RULE_ID: RuleId = RuleId::new("lint.anyhow-missing-context");
 /// `anyhow` declares `Error` at its crate root, so the module segment list
 /// is empty. The comparison uses the definition path, so another crate's
 /// `Error` never matches, whatever its rendered name.
-const ANYHOW_ERROR: TypePathRef<'static> = TypePathRef::new("anyhow", &[], "Error");
+const ANYHOW_ERROR: TypePathRef<'static> = TypePathRef::builder()
+    .krate("anyhow")
+    .modules(&[])
+    .name("Error")
+    .build();
 
 /// Flags uses of `?` on [`Result`] types without a preceding `.context()`
 /// or `.with_context()` call, but only when the enclosing function returns
