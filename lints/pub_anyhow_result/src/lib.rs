@@ -12,7 +12,11 @@ const RULE_ID: RuleId = RuleId::new("lint.pub-anyhow-result");
 /// is empty. The comparison uses the definition path, so a local type named
 /// `Error` never matches. `anyhow::Result<T>` matches through any alias or
 /// import, because it resolves to `Result<T, anyhow::Error>`.
-const ANYHOW_ERROR: TypePathRef<'static> = TypePathRef::new("anyhow", &[], "Error");
+const ANYHOW_ERROR: TypePathRef<'static> = TypePathRef::builder()
+    .krate("anyhow")
+    .modules(&[])
+    .name("Error")
+    .build();
 
 /// Flags a public function whose error type is `anyhow::Error`
 ///
