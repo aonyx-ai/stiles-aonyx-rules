@@ -10,8 +10,8 @@ use stiles_types::{DecoratedNode, Diagnostic, Severity, Span};
 /// the field that caused it. The tests pin the traits, so the loss surfaces at
 /// the definition instead.
 ///
-/// A call proves a trait when it sits in a test, names the type in a
-/// turbofish, and resolves to a callee whose generics carry that bound.
+/// A call proves a trait when it sits in a test and names the type in a
+/// turbofish. Its callee must also carry that bound on its generics.
 /// `assert_send::<Foo>()` inside a `#[test]` is the usual form. Shipped code
 /// that happens to require the bound does not count, because the lint asks for
 /// a test rather than for the constraint. A `#[test]` whose name starts with
@@ -23,6 +23,23 @@ use stiles_types::{DecoratedNode, Diagnostic, Severity, Span};
 /// declared inside a function, because a sibling test module cannot name them.
 /// It also skips type aliases and unions. Stiles reads one file at a time, so
 /// the proof must sit in the same file as the type.
+///
+/// # Examples
+///
+/// ```
+/// use missing_trait_tests::MissingTraitTests;
+/// use stiles_rust::RustLintPassAdapter;
+/// use stiles_testing::{execute, parse};
+/// use stiles_types::{Language, LintPass};
+///
+/// let tree = parse("pub struct Point;", Language::Rust);
+/// let pass: Box<dyn LintPass> = Box::new(RustLintPassAdapter::new(MissingTraitTests));
+/// let mut passes = vec![pass];
+///
+/// let diagnostics = execute(&tree, &mut passes);
+///
+/// assert_eq!(diagnostics.len(), 1);
+/// ```
 pub struct MissingTraitTests;
 
 impl RustLintPass for MissingTraitTests {
@@ -374,7 +391,7 @@ impl<'a> FileScan<'a> {
             diagnostics.push(
                 Diagnostic::builder()
                     .rule_id(RuleId::new("lint.missing-trait-tests"))
-                    .severity(Severity::Warn)
+                    .severity(Severity::Error)
                     .message(format!(
                         "`{name}` has no {} trait test",
                         join_traits(&missing)
@@ -723,12 +740,12 @@ mod tests {
     }
 
     #[test]
-    fn enum_without_tests_is_flagged_as_a_warning_naming_all_three_traits() {
+    fn enum_without_tests_is_flagged_as_an_error_naming_all_three_traits() {
         let diagnostics = run("pub enum Foo { A, B }");
 
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.missing-trait-tests")
-            .has_severity(Severity::Warn)
+            .has_severity(Severity::Error)
             .message_contains("`Foo` has no `Send`, `Sync`, or `Unpin` trait test");
     }
 
@@ -1135,12 +1152,12 @@ mod tests {
     }
 
     #[test]
-    fn struct_without_tests_is_flagged_as_a_warning_naming_all_three_traits() {
+    fn struct_without_tests_is_flagged_as_an_error_naming_all_three_traits() {
         let diagnostics = run("pub struct Foo;");
 
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.missing-trait-tests")
-            .has_severity(Severity::Warn)
+            .has_severity(Severity::Error)
             .message_contains("`Foo` has no `Send`, `Sync`, or `Unpin` trait test");
     }
 

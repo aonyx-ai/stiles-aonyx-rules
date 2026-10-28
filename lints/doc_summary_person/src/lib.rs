@@ -40,6 +40,23 @@ const LY_VERBS: &[&str] = &[
 /// The summary is the first line of text in the item's first outer doc
 /// comment. When a `#[doc = ...]` attribute comes before that comment, the
 /// summary is text the rule cannot read, so it stays silent.
+///
+/// # Examples
+///
+/// ```
+/// use doc_summary_person::DocSummaryPerson;
+/// use stiles_rust::RustLintPassAdapter;
+/// use stiles_testing::{execute, parse};
+/// use stiles_types::{Language, LintPass};
+///
+/// let tree = parse("/// Return the length\nfn len() {}", Language::Rust);
+/// let pass: Box<dyn LintPass> = Box::new(RustLintPassAdapter::new(DocSummaryPerson));
+/// let mut passes = vec![pass];
+///
+/// let diagnostics = execute(&tree, &mut passes);
+///
+/// assert_eq!(diagnostics.len(), 1);
+/// ```
 pub struct DocSummaryPerson;
 
 impl RustLintPass for DocSummaryPerson {
@@ -76,7 +93,7 @@ fn report(node: &DecoratedNode<'_>) -> Vec<Diagnostic> {
     };
 
     let start = summary.offset() + summary.text().len() - text.len();
-    vec![Diagnostic::builder().rule_id(RULE_ID).severity(Severity::Warn).message(format!(
+    vec![Diagnostic::builder().rule_id(RULE_ID).severity(Severity::Error).message(format!(
             "doc summary opens with \"{token}\"; open it with a third-person verb, such as \"Returns\" or \"Creates\""
         )).span(Span::builder().file(span.file_path().clone()).start(start).end(start + token.len()).build()).build()]
 }
@@ -913,7 +930,7 @@ mod tests {
 
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.doc-summary-person")
-            .has_severity(Severity::Warn)
+            .has_severity(Severity::Error)
             .message_contains(
                 "doc summary opens with \"Return\"; open it with a third-person verb, such as \"Returns\" or \"Creates\"",
             )

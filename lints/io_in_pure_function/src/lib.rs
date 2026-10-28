@@ -76,6 +76,21 @@ const IO_FUNCTIONS: [&[&str]; 8] = [
 /// another local function is invisible to the rule. So is a method call on a
 /// value and anything inside a macro invocation. Test code is exempt. The
 /// rule reads no options: the names are the convention, not a setting.
+///
+/// # Examples
+///
+/// ```
+/// use io_in_pure_function::IoInPureFunction;
+/// use stiles_testing::{execute, parse};
+/// use stiles_types::Language;
+///
+/// let tree = parse("fn new() { std::fs::read(path); }", Language::Rust);
+/// let mut passes = vec![IoInPureFunction::into_lint_pass()];
+///
+/// let diagnostics = execute(&tree, &mut passes);
+///
+/// assert_eq!(diagnostics.len(), 1);
+/// ```
 pub struct IoInPureFunction;
 
 impl IoInPureFunction {
@@ -234,7 +249,7 @@ impl RustLintPass for IoInPureFunction {
             diagnostics.push(
                 Diagnostic::builder()
                     .rule_id(RULE_ID)
-                    .severity(Severity::Warn)
+                    .severity(Severity::Error)
                     .message(format!(
                         "`{name}` reaches `{}`, which is I/O; a function with this name builds a \
                      value from its inputs alone, so move the I/O into a `load`, `fetch`, \
@@ -410,14 +425,14 @@ mod tests {
     }
 
     #[test]
-    fn command_new_is_flagged_as_a_warning_naming_the_call() {
+    fn command_new_is_flagged_as_an_error_naming_the_call() {
         let diagnostics = run(
             "use std::process::Command;\nfn plan_build() { Command::new(\"cargo\").arg(\"build\"); }",
         );
 
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.io-in-pure-function")
-            .has_severity(Severity::Warn)
+            .has_severity(Severity::Error)
             .message_contains("`plan_build` reaches `std::process::Command::new`");
     }
 

@@ -22,6 +22,21 @@ const UNCHECKED_SCOPES: &[&str] = &["block", "trait_item"];
 ///
 /// A `pub` method on a private type is a false positive. Tree-sitter alone
 /// cannot tell whether the type an `impl` block names leaves the crate.
+///
+/// # Examples
+///
+/// ```
+/// use missing_examples_doc::MissingExamplesDoc;
+/// use stiles_testing::{execute, parse};
+/// use stiles_types::Language;
+///
+/// let tree = parse("/// A point on a plane\npub struct Point;", Language::Rust);
+/// let mut passes = vec![MissingExamplesDoc::into_lint_pass()];
+///
+/// let diagnostics = execute(&tree, &mut passes);
+///
+/// assert_eq!(diagnostics.len(), 1);
+/// ```
 pub struct MissingExamplesDoc;
 
 impl MissingExamplesDoc {
@@ -131,7 +146,7 @@ fn check_item(node: &DecoratedNode<'_>, kind: ItemKind) -> Vec<Diagnostic> {
     vec![
         Diagnostic::builder()
             .rule_id(RULE_ID)
-            .severity(Severity::Warn)
+            .severity(Severity::Error)
             .message(format!(
                 "public {} `{}` has no `# Examples` section",
                 kind.as_str(),
@@ -246,7 +261,7 @@ fn has_examples_heading(lines: &[&str]) -> bool {
 
 /// The character a fenced code block repeats to delimit itself
 ///
-/// A fence closes only on the character it opened with, so a `~~~` line
+/// A fence closes only on the character it opened with. A `~~~` line
 /// inside a backtick block is part of the example rather than its end.
 #[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
 enum FenceMarker {
@@ -660,7 +675,7 @@ mod tests {
 
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.missing-examples-doc")
-            .has_severity(Severity::Warn)
+            .has_severity(Severity::Error)
             .message_contains("public struct `Foo` has no `# Examples` section")
             .has_span("<test>", source.len() - 4, source.len() - 1);
     }

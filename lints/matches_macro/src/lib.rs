@@ -35,6 +35,23 @@ const CONDITION_MESSAGE: &str =
 /// pattern that needs a wildcard, such as `Some(5)`, passes only when the
 /// workspace sets `match_like_matches_macro = "allow"` in
 /// `[workspace.lints.clippy]`.
+///
+/// # Examples
+///
+/// ```
+/// use matches_macro::MatchesMacro;
+/// use stiles_rust::RustLintPassAdapter;
+/// use stiles_testing::{execute, parse};
+/// use stiles_types::{Language, LintPass};
+///
+/// let tree = parse("fn f() { let _ = matches!(x, Foo | Bar); }", Language::Rust);
+/// let pass: Box<dyn LintPass> = Box::new(RustLintPassAdapter::new(MatchesMacro));
+/// let mut passes = vec![pass];
+///
+/// let diagnostics = execute(&tree, &mut passes);
+///
+/// assert_eq!(diagnostics.len(), 1);
+/// ```
 pub struct MatchesMacro;
 
 impl RustLintPass for MatchesMacro {
@@ -57,7 +74,7 @@ impl RustLintPass for MatchesMacro {
         vec![
             Diagnostic::builder()
                 .rule_id(RuleId::new("lint.matches-macro"))
-                .severity(Severity::Warn)
+                .severity(Severity::Error)
                 .message(message)
                 .span(node.span())
                 .build(),
@@ -188,7 +205,7 @@ mod tests {
 
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.matches-macro")
-            .has_severity(Severity::Warn)
+            .has_severity(Severity::Error)
             .message_contains("branch");
     }
 
@@ -301,7 +318,7 @@ mod tests {
 
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.matches-macro")
-            .has_severity(Severity::Warn)
+            .has_severity(Severity::Error)
             .message_contains("match");
     }
 

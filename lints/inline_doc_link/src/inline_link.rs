@@ -30,8 +30,7 @@ impl InlineLink {
         let mut links = Vec::new();
 
         for prose in prose_ranges(content) {
-            let ProseRange { start, end } = prose;
-            scan(bytes, start, end, &mut links);
+            scan(bytes, prose, &mut links);
         }
 
         links
@@ -59,6 +58,20 @@ struct ProseRange {
     /// Offset of the run's first byte
     start: usize,
     /// Offset one past the run's last byte
+    end: usize,
+}
+
+/// The bytes of a document that one scan may read
+///
+/// A scan stops at `end`, the end of one run of prose. Neither a link nor a
+/// code span crosses a paragraph break or a code block. The helpers take a
+/// window rather than the bytes and the end apart, so a caller cannot pass
+/// an offset where the end belongs.
+#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
+struct Window<'a> {
+    /// The whole document
+    bytes: &'a [u8],
+    /// Offset one past the last byte the scan may read
     end: usize,
 }
 
@@ -159,14 +172,15 @@ fn prose_ranges(content: &str) -> Vec<ProseRange> {
 
 /// Advances the block scanner across one line
 fn advance(state: BlockState, line: Line<'_>, previous: Fill) -> (BlockState, LineRole) {
+    let Line { indent, rest, fill } = line;
     match state {
         BlockState::Fenced { marker, length } => {
-            match line.indent <= 3 && closes_fence(line.rest, marker, length) {
+            match indent <= 3 && closes_fence(rest, marker, length) {
                 true => (BlockState::Prose, LineRole::Skip),
                 false => (BlockState::Fenced { marker, length }, LineRole::Skip),
             }
         }
-        BlockState::IndentedCode => match line.fill == Fill::Blank || line.indent >= 4 {
+        BlockState::IndentedCode => match fill == Fill::Blank || indent >= 4 {
             true => (BlockState::IndentedCode, LineRole::Skip),
             false => classify(line, previous),
         },
@@ -176,13 +190,14 @@ fn advance(state: BlockState, line: Line<'_>, previous: Fill) -> (BlockState, Li
 
 /// Classifies a line that starts outside any code block
 fn classify(line: Line<'_>, previous: Fill) -> (BlockState, LineRole) {
-    if let Some(fence) = opens_fence(line.rest, line.indent) {
+    let Line { indent, rest, fill } = line;
+    if let Some(fence) = opens_fence(rest, indent) {
         return (fence, LineRole::Skip);
     }
 
-    match line.fill {
+    match fill {
         Fill::Blank => (BlockState::Prose, LineRole::Skip),
-        Fill::Text => match previous == Fill::Blank && line.indent >= 4 {
+        Fill::Text => match previous == Fill::Blank && indent >= 4 {
             true => (BlockState::IndentedCode, LineRole::Skip),
             false => (BlockState::Prose, LineRole::Prose),
         },
@@ -216,7 +231,9 @@ fn closes_fence(rest: &str, marker: u8, length: usize) -> bool {
 }
 
 /// Collects the inline links in one run of prose
-fn scan(bytes: &[u8], start: usize, end: usize, links: &mut Vec<InlineLink>) {
+fn scan(bytes: &[u8], prose: ProseRange, links: &mut Vec<InlineLink>) {
+    let ProseRange { start, end } = prose;
+    let window = Window { bytes, end };
     let mut index = start;
 
     while index < end {
@@ -225,9 +242,9 @@ fn scan(bytes: &[u8], start: usize, end: usize, links: &mut Vec<InlineLink>) {
         if byte == b'\\' {
             index += 2;
         } else if byte == b'`' {
-            index = skip_code_span(bytes, index, end);
+            index = skip_code_span(window, index);
         } else if byte == b'!' && bytes.get(index + 1) == Some(&b'[') && index + 1 < end {
-            index = match link_end(bytes, index + 1, end) {
+            index = match link_end(window, index + 1) {
                 Some(link) => {
                     links.push(InlineLink {
                         kind: LinkKind::Image,
@@ -239,7 +256,7 @@ fn scan(bytes: &[u8], start: usize, end: usize, links: &mut Vec<InlineLink>) {
                 None => index + 1,
             };
         } else if byte == b'[' {
-            index = match link_end(bytes, index, end) {
+            index = match link_end(window, index) {
                 Some(link) => {
                     links.push(InlineLink {
                         kind: LinkKind::Text,
@@ -263,7 +280,8 @@ fn scan(bytes: &[u8], start: usize, end: usize, links: &mut Vec<InlineLink>) {
 /// group that is not a well-formed destination.
 ///
 /// [`None`]: std::option::Option::None
-fn link_end(bytes: &[u8], open: usize, end: usize) -> Option<usize> {
+fn link_end(window: Window<'_>, open: usize) -> Option<usize> {
+    let Window { bytes, end } = window;
     let mut index = open + 1;
     let mut depth = 0usize;
 
@@ -275,7 +293,7 @@ fn link_end(bytes: &[u8], open: usize, end: usize) -> Option<usize> {
         if byte == b'\\' {
             index += 2;
         } else if byte == b'`' {
-            index = skip_code_span(bytes, index, end);
+            index = skip_code_span(window, index);
         } else if byte == b'[' {
             depth += 1;
             index += 1;
@@ -295,13 +313,14 @@ fn link_end(bytes: &[u8], open: usize, end: usize) -> Option<usize> {
         return None;
     }
 
-    destination_end(bytes, paren + 1, end)
+    destination_end(window, paren + 1)
 }
 
 /// Returns the offset just past the `)` that closes the destination and its
 /// optional title
-fn destination_end(bytes: &[u8], open: usize, end: usize) -> Option<usize> {
-    let mut index = skip_whitespace(bytes, open, end);
+fn destination_end(window: Window<'_>, open: usize) -> Option<usize> {
+    let Window { bytes, end } = window;
+    let mut index = skip_whitespace(window, open);
     if index >= end {
         return None;
     }
@@ -347,16 +366,17 @@ fn destination_end(bytes: &[u8], open: usize, end: usize) -> Option<usize> {
         }
     }
 
-    let index = skip_whitespace(bytes, index, end);
+    let index = skip_whitespace(window, index);
     if index < end && bytes[index] == b')' {
         return Some(index + 1);
     }
 
-    title_end(bytes, index, end)
+    title_end(window, index)
 }
 
 /// Returns the offset just past the `)` that follows a link title
-fn title_end(bytes: &[u8], open: usize, end: usize) -> Option<usize> {
+fn title_end(window: Window<'_>, open: usize) -> Option<usize> {
+    let Window { bytes, end } = window;
     if open >= end {
         return None;
     }
@@ -384,7 +404,7 @@ fn title_end(bytes: &[u8], open: usize, end: usize) -> Option<usize> {
         }
     }
 
-    let index = skip_whitespace(bytes, index, end);
+    let index = skip_whitespace(window, index);
     match index < end && bytes[index] == b')' {
         true => Some(index + 1),
         false => None,
@@ -397,8 +417,9 @@ fn title_end(bytes: &[u8], open: usize, end: usize) -> Option<usize> {
 /// CommonMark, not the opening of a span. The result is then the offset just
 /// past those backticks, so one stray backtick cannot hide every link after
 /// it.
-fn skip_code_span(bytes: &[u8], open: usize, end: usize) -> usize {
-    let length = backtick_run(bytes, open, end);
+fn skip_code_span(window: Window<'_>, open: usize) -> usize {
+    let Window { bytes, end } = window;
+    let length = backtick_run(window, open);
     let mut index = open + length;
 
     while index < end {
@@ -406,7 +427,7 @@ fn skip_code_span(bytes: &[u8], open: usize, end: usize) -> usize {
             index += 1;
             continue;
         }
-        let run = backtick_run(bytes, index, end);
+        let run = backtick_run(window, index);
         if run == length {
             return index + run;
         }
@@ -417,7 +438,8 @@ fn skip_code_span(bytes: &[u8], open: usize, end: usize) -> usize {
 }
 
 /// Counts the backticks that start at `open`
-fn backtick_run(bytes: &[u8], open: usize, end: usize) -> usize {
+fn backtick_run(window: Window<'_>, open: usize) -> usize {
+    let Window { bytes, end } = window;
     let mut index = open;
     while index < end && bytes[index] == b'`' {
         index += 1;
@@ -426,7 +448,8 @@ fn backtick_run(bytes: &[u8], open: usize, end: usize) -> usize {
 }
 
 /// Returns the offset of the first byte that is not ASCII whitespace
-fn skip_whitespace(bytes: &[u8], open: usize, end: usize) -> usize {
+fn skip_whitespace(window: Window<'_>, open: usize) -> usize {
+    let Window { bytes, end } = window;
     let mut index = open;
     while index < end && bytes[index].is_ascii_whitespace() {
         index += 1;
@@ -762,6 +785,12 @@ mod tests {
     }
 
     #[test]
+    fn trait_send_window() {
+        fn assert_send<T: Send>() {}
+        assert_send::<Window<'_>>();
+    }
+
+    #[test]
     fn trait_sync_block_state() {
         fn assert_sync<T: Sync>() {}
         assert_sync::<BlockState>();
@@ -798,6 +827,12 @@ mod tests {
     }
 
     #[test]
+    fn trait_sync_window() {
+        fn assert_sync<T: Sync>() {}
+        assert_sync::<Window<'_>>();
+    }
+
+    #[test]
     fn trait_unpin_block_state() {
         fn assert_unpin<T: Unpin>() {}
         assert_unpin::<BlockState>();
@@ -831,5 +866,11 @@ mod tests {
     fn trait_unpin_prose_range() {
         fn assert_unpin<T: Unpin>() {}
         assert_unpin::<ProseRange>();
+    }
+
+    #[test]
+    fn trait_unpin_window() {
+        fn assert_unpin<T: Unpin>() {}
+        assert_unpin::<Window<'_>>();
     }
 }

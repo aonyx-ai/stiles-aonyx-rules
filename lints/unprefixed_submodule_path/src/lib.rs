@@ -143,7 +143,7 @@ fn check_identifier(identifier: &DecoratedNode<'_>, submodules: &[&str]) -> Opti
     Some(
         Diagnostic::builder()
             .rule_id(RULE_ID)
-            .severity(Severity::Warn)
+            .severity(Severity::Error)
             .message(format!(
                 "`{name}` names a submodule, so the path reads like a crate; write `self::{name}`",
                 name = identifier.text(),
@@ -537,7 +537,7 @@ mod tests {
 
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.unprefixed-submodule-path")
-            .has_severity(Severity::Warn)
+            .has_severity(Severity::Error)
             .message_contains("`error` names a submodule")
             .message_contains("write `self::error`");
     }

@@ -1,0 +1,13 @@
+# Every rule reports an error, and this crate holds the test that keeps it
+# so. The test reads the sources of the rules, so the crate needs no
+# dependency and builds no library that stiles loads.
+[package]
+name = "rule_severity"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lints]
+workspace = true

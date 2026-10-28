@@ -561,7 +561,7 @@ impl<'a> Signature<'_, 'a> {
             return;
         }
 
-        diagnostics.push(Diagnostic::builder().rule_id(RULE_ID).severity(Severity::Warn).message(format!(
+        diagnostics.push(Diagnostic::builder().rule_id(RULE_ID).severity(Severity::Error).message(format!(
                 "port method `{}` names `{}` from the external crate `{krate}`; use a type the domain owns",
                 self.method,
                 node.text()
@@ -764,7 +764,7 @@ pub trait DecorationProvider {
 
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.external-type-in-port")
-            .has_severity(Severity::Warn)
+            .has_severity(Severity::Error)
             .message_contains(
                 "port method `decorate` names `anyhow::Result` from the external crate `anyhow`; use a type the domain owns",
             );

@@ -24,6 +24,9 @@ runs the same rules today and next month.
 Each directory under `lints/` is one rule, and each documents itself. The
 rule ids they report under are all `lint.<name>`.
 
+Every rule reports an error, so any finding fails `stiles check`. A
+convention that a rule cannot report as an error does not become a rule.
+
 Most rules read Rust syntax or Rust types, so they run on Rust alone. The
 rules that read only comments also run on TypeScript: `todo_comment`,
 `inline_comment`, `em_dash_aside`, `long_doc_sentence`, and
@@ -86,7 +89,7 @@ what to rebuild, never a silent wrong answer.
 Copy the smallest existing rule, `lints/todo_comment`, and change the
 name in its `Cargo.toml`, its rule id, and its logic. A rule implements the
 generated `RustLintPass` trait, `TypeScriptLintPass`, or both, returns
-diagnostics with a stable rule id and a severity, and hands itself to
+diagnostics with a stable rule id and `Severity::Error`, and hands itself to
 `stiles_plugin::export_lints!` under each language it implements. Rules that read
 semantic decorations **fail open**: when the decoration is missing, the rule
 stays silent rather than guessing.

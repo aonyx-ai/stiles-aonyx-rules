@@ -19,6 +19,23 @@ const MARKERS: &[&str] = &["TODO", "FIXME", "HACK", "XXX"];
 /// nowhere else. A sentence or a URL that contains the word does not match.
 /// It reads Rust and TypeScript comments alike, because a marker means the
 /// same thing in either.
+///
+/// # Examples
+///
+/// ```
+/// use stiles_rust::RustLintPassAdapter;
+/// use stiles_testing::{execute, parse};
+/// use stiles_types::{Language, LintPass};
+/// use todo_comment::TodoComment;
+///
+/// let tree = parse("// TODO: handle the empty case\nfn f() {}", Language::Rust);
+/// let pass: Box<dyn LintPass> = Box::new(RustLintPassAdapter::new(TodoComment));
+/// let mut passes = vec![pass];
+///
+/// let diagnostics = execute(&tree, &mut passes);
+///
+/// assert_eq!(diagnostics.len(), 1);
+/// ```
 pub struct TodoComment;
 
 /// A marker that a comment contains
@@ -95,7 +112,7 @@ fn check_comment(node: &DecoratedNode<'_>) -> Vec<Diagnostic> {
         diagnostics.push(
             Diagnostic::builder()
                 .rule_id(RULE_ID)
-                .severity(Severity::Warn)
+                .severity(Severity::Error)
                 .message(format!(
                     "`{marker}` comment: track this work in the issue tracker instead"
                 ))
@@ -456,7 +473,7 @@ mod tests {
 
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.todo-comment")
-            .has_severity(Severity::Warn)
+            .has_severity(Severity::Error)
             .message_contains("issue tracker")
             .has_span("<test>", 3, 7);
     }
@@ -632,7 +649,7 @@ mod tests {
 
             assert_diagnostic(&diagnostics[0])
                 .has_rule_id("lint.todo-comment")
-                .has_severity(Severity::Warn)
+                .has_severity(Severity::Error)
                 .message_contains("`HACK`");
         }
 

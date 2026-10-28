@@ -1,3 +1,5 @@
+use std::ops::Range;
+
 use bon::bon;
 use doc_comment::DocLine;
 use stiles_types::{FilePath, Span};
@@ -5,10 +7,10 @@ use stiles_types::{FilePath, Span};
 /// The Markdown of one doc comment, joined the way rustdoc joins it
 ///
 /// Rustdoc reads the consecutive `///` lines above an item as one document.
-/// A code fence can open on one line and close on a later one, so a rule
-/// that reads each comment line alone never sees the fence close. This type
-/// joins the lines and remembers where each one starts in the file. An
-/// offset in the joined text maps back to a [`Span`].
+/// A code fence can open on one line and close on a later one. A rule that
+/// reads each comment line alone therefore never sees the fence close.
+/// This type joins the lines and remembers where each one starts in the
+/// file. An offset in the joined text maps back to a [`Span`].
 ///
 /// [`Span`]: stiles_types::Span
 pub(crate) struct DocBlock {
@@ -68,12 +70,14 @@ impl DocBlock {
         &self.content
     }
 
-    /// Returns the span of the file text that `start..end` came from
+    /// Returns the span of the file text that `range` of the joined text
+    /// came from
     ///
     /// # Panics
     ///
-    /// Panics if `start` is greater than `end`.
-    pub(crate) fn span(&self, start: usize, end: usize) -> Span {
+    /// Panics if the range starts after it ends.
+    pub(crate) fn span(&self, range: Range<usize>) -> Span {
+        let Range { start, end } = range;
         Span::builder()
             .file(self.file.clone())
             .start(self.to_file_offset(start))
@@ -87,9 +91,12 @@ impl DocBlock {
             .lines
             .partition_point(|line| line.content_start <= offset)
             .saturating_sub(1);
-        let line = self.lines[index];
+        let Line {
+            content_start,
+            file_start,
+        } = self.lines[index];
 
-        line.file_start + (offset - line.content_start)
+        file_start + (offset - content_start)
     }
 }
 
@@ -146,7 +153,7 @@ mod tests {
         let source = "/// first\n/// second\nfn f() {}";
         let block = block_of(source);
 
-        let span = block.span(6, 12);
+        let span = block.span(6..12);
 
         assert_eq!(&source[span.start()..span.end()], "second");
     }
@@ -156,7 +163,7 @@ mod tests {
         let source = "/// first\n/// second\nfn f() {}";
         let block = block_of(source);
 
-        let span = block.span(0, 5);
+        let span = block.span(0..5);
 
         assert_eq!(&source[span.start()..span.end()], "first");
     }

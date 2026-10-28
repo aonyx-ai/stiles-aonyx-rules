@@ -45,6 +45,35 @@ const ANYHOW_ERROR: TypePathRef<'static> = TypePathRef::builder()
 /// `#[test]` or under a `cfg` that holds only in tests, and every file under
 /// a `tests` or `benches` directory.
 ///
+/// # Examples
+///
+/// The rule reads the signature the Rust provider attaches as a decoration.
+/// This example attaches it by hand.
+///
+/// ```
+/// use pub_anyhow_result::PubAnyhowResult;
+/// use stiles_rust::decorations::{ErrorType, FnSignature, ResolvedType, ReturnMode, TypePath};
+/// use stiles_testing::{decorate, execute, parse};
+/// use stiles_types::{DecorationMap, Language};
+///
+/// let mut tree = parse("pub fn load() -> anyhow::Result<()> { Ok(()) }", Language::Rust);
+/// let function = tree.root_node().named_child(0).unwrap();
+/// let error = TypePath::builder().krate("anyhow").modules([] as [&str; 0]).name("Error").build();
+/// let signature = FnSignature::builder()
+///     .return_type(ResolvedType::new("Result<()>".into()).with_result(true))
+///     .error_type(ErrorType::Named(error))
+///     .return_mode(ReturnMode::Direct)
+///     .build();
+/// let mut decorations = DecorationMap::new();
+/// decorations.insert(function.id(), signature);
+/// decorate(&mut tree, decorations);
+/// let mut passes = vec![PubAnyhowResult::into_lint_pass()];
+///
+/// let diagnostics = execute(&tree, &mut passes);
+///
+/// assert_eq!(diagnostics.len(), 1);
+/// ```
+///
 /// [`FnSignature`]: stiles_rust::decorations::FnSignature
 pub struct PubAnyhowResult;
 
@@ -112,7 +141,7 @@ fn check_signature(node: &DecoratedNode<'_>) -> Vec<Diagnostic> {
     vec![
         Diagnostic::builder()
             .rule_id(RULE_ID)
-            .severity(Severity::Warn)
+            .severity(Severity::Error)
             .message(format!(
                 "`{}` is public and its error type is `anyhow::Error`; return an error type the \
              caller can match on",
@@ -893,7 +922,7 @@ mod tests {
 
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.pub-anyhow-result")
-            .has_severity(Severity::Warn)
+            .has_severity(Severity::Error)
             .message_contains("`run` is public and its error type is `anyhow::Error`");
     }
 

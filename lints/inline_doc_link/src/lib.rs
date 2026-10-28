@@ -23,12 +23,29 @@ const RULE_ID: RuleId = RuleId::new("lint.inline-doc-link");
 /// needs no definition at the bottom.
 ///
 /// A backticked identifier in running prose is out of scope. Nothing in the
-/// syntax says whether the name is a type, a field, a crate, or a CLI flag,
-/// so a rule that demanded brackets around it would be guessing.
+/// syntax says whether the name is a type, a field, a crate, or a CLI flag.
+/// A rule that demanded brackets around it would be guessing.
 ///
 /// In TypeScript the rule reads a `/** */` doc comment. A `{@link Target}`
 /// tag is not Markdown, so it is left alone, and an `@example` section is
 /// code, so its brackets are never read as links.
+///
+/// # Examples
+///
+/// ```
+/// use inline_doc_link::InlineDocLink;
+/// use stiles_rust::RustLintPassAdapter;
+/// use stiles_testing::{execute, parse};
+/// use stiles_types::{Language, LintPass};
+///
+/// let tree = parse("/// See [the guide](https://example.com) first\nfn f() {}", Language::Rust);
+/// let pass: Box<dyn LintPass> = Box::new(RustLintPassAdapter::new(InlineDocLink));
+/// let mut passes = vec![pass];
+///
+/// let diagnostics = execute(&tree, &mut passes);
+///
+/// assert_eq!(diagnostics.len(), 1);
+/// ```
 pub struct InlineDocLink;
 
 impl TypeScriptLintPass for InlineDocLink {
@@ -70,9 +87,9 @@ fn report(block: &DocBlock) -> Vec<Diagnostic> {
         .map(|link| {
             Diagnostic::builder()
                 .rule_id(RULE_ID)
-                .severity(Severity::Warn)
+                .severity(Severity::Error)
                 .message(link.kind().message())
-                .span(block.span(link.start(), link.end()))
+                .span(block.span(link.start()..link.end()))
                 .build()
         })
         .collect()
@@ -141,7 +158,7 @@ mod tests {
 
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.inline-doc-link")
-            .has_severity(Severity::Warn)
+            .has_severity(Severity::Error)
             .message_contains("image");
     }
 
@@ -180,7 +197,7 @@ mod tests {
 
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.inline-doc-link")
-            .has_severity(Severity::Warn)
+            .has_severity(Severity::Error)
             .message_contains("reference-style link");
     }
 

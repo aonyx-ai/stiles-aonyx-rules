@@ -22,6 +22,23 @@ const RULE_ID: RuleId = RuleId::new("lint.outer-module-doc");
 /// `///` on it is the ordinary way to document it, so the rule leaves it
 /// alone. The rule reads syntax alone. It cannot compare the two texts,
 /// because stiles never sees the child's file from the parent.
+///
+/// # Examples
+///
+/// ```
+/// use outer_module_doc::OuterModuleDoc;
+/// use stiles_rust::RustLintPassAdapter;
+/// use stiles_testing::{execute, parse};
+/// use stiles_types::{Language, LintPass};
+///
+/// let tree = parse("/// What the manifests declare\nmod manifests;", Language::Rust);
+/// let pass: Box<dyn LintPass> = Box::new(RustLintPassAdapter::new(OuterModuleDoc));
+/// let mut passes = vec![pass];
+///
+/// let diagnostics = execute(&tree, &mut passes);
+///
+/// assert_eq!(diagnostics.len(), 1);
+/// ```
 pub struct OuterModuleDoc;
 
 /// What a node above a declaration means for the declaration's
@@ -144,7 +161,7 @@ impl RustLintPass for OuterModuleDoc {
         vec![
             Diagnostic::builder()
                 .rule_id(RULE_ID)
-                .severity(Severity::Warn)
+                .severity(Severity::Error)
                 .message(format!(
                     "documentation on `mod {};`: document the module with `//!` in its own file",
                     name.text()
@@ -356,7 +373,7 @@ mod tests {
 
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.outer-module-doc")
-            .has_severity(Severity::Warn)
+            .has_severity(Severity::Error)
             .message_contains("`mod manifests;`")
             .message_contains("`//!`")
             .has_span("<test>", 0, 45);

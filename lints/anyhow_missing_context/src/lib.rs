@@ -27,6 +27,38 @@ const ANYHOW_ERROR: TypePathRef<'static> = TypePathRef::builder()
 /// into that body's error type, not the enclosing function's. The rule
 /// leaves those alone, because `.context(..)` would not compile there.
 ///
+/// # Examples
+///
+/// The rule reads the types the Rust provider attaches as decorations. This
+/// example attaches them by hand.
+///
+/// ```
+/// use anyhow_missing_context::AnyhowMissingContext;
+/// use stiles_rust::decorations::{ErrorType, FnSignature, ResolvedType, ReturnMode, TypePath};
+/// use stiles_testing::{decorate, execute, parse};
+/// use stiles_types::{DecorationMap, Language};
+///
+/// let mut tree = parse("fn load() -> Result<()> { read()?; }", Language::Rust);
+/// let function = tree.root_node().named_child(0).unwrap();
+/// let statement = function.child_by_field_name("body").unwrap().named_child(0).unwrap();
+/// let operand = statement.named_child(0).unwrap().named_child(0).unwrap();
+/// let error = TypePath::builder().krate("anyhow").modules([] as [&str; 0]).name("Error").build();
+/// let signature = FnSignature::builder()
+///     .return_type(ResolvedType::new("Result<()>".into()).with_result(true))
+///     .error_type(ErrorType::Named(error))
+///     .return_mode(ReturnMode::Direct)
+///     .build();
+/// let mut decorations = DecorationMap::new();
+/// decorations.insert(operand.id(), ResolvedType::new("Result<()>".into()).with_result(true));
+/// decorations.insert(function.id(), signature);
+/// decorate(&mut tree, decorations);
+/// let mut passes = vec![AnyhowMissingContext::into_lint_pass()];
+///
+/// let diagnostics = execute(&tree, &mut passes);
+///
+/// assert_eq!(diagnostics.len(), 1);
+/// ```
+///
 /// [`Result`]: std::result::Result
 pub struct AnyhowMissingContext;
 
@@ -78,7 +110,7 @@ impl RustLintPass for AnyhowMissingContext {
         vec![
             Diagnostic::builder()
                 .rule_id(RULE_ID)
-                .severity(Severity::Warn)
+                .severity(Severity::Error)
                 .message("use of `?` on Result without error context")
                 .span(node.span())
                 .build(),
@@ -268,7 +300,7 @@ mod tests {
 
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.anyhow-missing-context")
-            .has_severity(Severity::Warn)
+            .has_severity(Severity::Error)
             .message_contains("without error context");
     }
 

@@ -190,7 +190,7 @@ fn misnamed_cause(field: &DecoratedNode<'_>, variant: &str) -> Option<Diagnostic
     Some(
         Diagnostic::builder()
             .rule_id(RULE_ID)
-            .severity(Severity::Warn)
+            .severity(Severity::Error)
             .message(format!(
                 "field `{}` holds the cause of `{variant}`; name it `{SOURCE_FIELD}`",
                 name.text()
@@ -241,7 +241,7 @@ fn body_diagnostics(body: &DecoratedNode<'_>, name: &DecoratedNode<'_>) -> Vec<D
             vec![
                 Diagnostic::builder()
                     .rule_id(RULE_ID)
-                    .severity(Severity::Warn)
+                    .severity(Severity::Error)
                     .message(format!(
                         "error variant `{}` is a tuple variant; {advice}",
                         name.text()
@@ -280,7 +280,7 @@ fn message_diagnostic(variant: &DecoratedNode<'_>, name: &DecoratedNode<'_>) -> 
     Some(
         Diagnostic::builder()
             .rule_id(RULE_ID)
-            .severity(Severity::Warn)
+            .severity(Severity::Error)
             .message(message)
             .span(literal.span())
             .build(),
@@ -310,7 +310,7 @@ impl RustLintPass for ErrorEnumShape {
         if let Some(name) = node.child_by_field_name("name")
             && !name.text().ends_with(ERROR_SUFFIX)
         {
-            diagnostics.push(Diagnostic::builder().rule_id(RULE_ID).severity(Severity::Warn).message(format!(
+            diagnostics.push(Diagnostic::builder().rule_id(RULE_ID).severity(Severity::Error).message(format!(
                     "error enum `{}` does not end in `{ERROR_SUFFIX}`; name it after the action that fails and its object",
                     name.text()
                 )).span(name.span()).build());
@@ -488,7 +488,7 @@ mod tests {
 
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.error-enum-shape")
-            .has_severity(Severity::Warn)
+            .has_severity(Severity::Error)
             .message_contains("error enum `Plugin` does not end in `Error`");
     }
 
@@ -656,7 +656,7 @@ mod tests {
 
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.error-enum-shape")
-            .has_severity(Severity::Warn)
+            .has_severity(Severity::Error)
             .message_contains("field `inner` holds the cause of `Open`; name it `source`");
     }
 
@@ -728,7 +728,7 @@ mod tests {
 
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.error-enum-shape")
-            .has_severity(Severity::Warn)
+            .has_severity(Severity::Error)
             .message_contains("message of `Open` does not start with \"failed to\"");
     }
 
@@ -740,7 +740,7 @@ mod tests {
 
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.error-enum-shape")
-            .has_severity(Severity::Warn)
+            .has_severity(Severity::Error)
             .message_contains(
                 "message of `Mismatch` starts with \"failed to\" but the variant has no cause",
             );
@@ -925,7 +925,7 @@ mod tests {
 
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.error-enum-shape")
-            .has_severity(Severity::Warn)
+            .has_severity(Severity::Error)
             .message_contains("error variant `Mismatch` is a tuple variant; give it named fields");
     }
 

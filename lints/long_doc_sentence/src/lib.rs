@@ -22,7 +22,25 @@ const MAX_WORDS: usize = 25;
 ///
 /// In TypeScript the rule reads a `/** */` doc comment. A block tag's
 /// syntax, such as the name and hyphen of `@param a - the first`, is not
-/// counted, and an `@example` section is code, so it is not read.
+/// counted. An `@example` section is code, so the rule does not read it.
+///
+/// # Examples
+///
+/// ```
+/// use long_doc_sentence::LongDocSentence;
+/// use stiles_rust::RustLintPassAdapter;
+/// use stiles_testing::{execute, parse};
+/// use stiles_types::{Language, LintPass};
+///
+/// let source = format!("/// {}.\nfn f() {{}}", ["word"; 30].join(" "));
+/// let tree = parse(&source, Language::Rust);
+/// let pass: Box<dyn LintPass> = Box::new(RustLintPassAdapter::new(LongDocSentence));
+/// let mut passes = vec![pass];
+///
+/// let diagnostics = execute(&tree, &mut passes);
+///
+/// assert_eq!(diagnostics.len(), 1);
+/// ```
 pub struct LongDocSentence;
 
 impl RustLintPass for LongDocSentence {
@@ -72,7 +90,7 @@ fn report(lines: &[DocLine<'_>], node: &DecoratedNode<'_>) -> Vec<Diagnostic> {
         .map(|sentence| {
             Diagnostic::builder()
                 .rule_id(RuleId::new("lint.long-doc-sentence"))
-                .severity(Severity::Warn)
+                .severity(Severity::Error)
                 .message(format!(
                     "doc sentence is {} words, over the {MAX_WORDS}-word limit",
                     sentence.words()
@@ -207,14 +225,14 @@ mod tests {
     }
 
     #[test]
-    fn long_sentence_across_lines_is_flagged_as_a_warning_with_its_word_count() {
+    fn long_sentence_across_lines_is_flagged_as_an_error_with_its_word_count() {
         let source = "/// Returns the coverage verdict for this file, which is empty when no decoration\n/// providers were configured, since a provider that declines still counts as\n/// having looked and the walk needs to distinguish that from never having run.\npub struct Foo;\n";
 
         let diagnostics = check(source);
 
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.long-doc-sentence")
-            .has_severity(Severity::Warn)
+            .has_severity(Severity::Error)
             .message_contains("37 words");
     }
 
@@ -414,7 +432,7 @@ mod tests {
             let start = source.find("word0").unwrap();
             assert_diagnostic(&diagnostics[0])
                 .has_rule_id("lint.long-doc-sentence")
-                .has_severity(Severity::Warn)
+                .has_severity(Severity::Error)
                 .message_contains("26 words")
                 .has_span("<test>", start, start + sentence.len());
         }

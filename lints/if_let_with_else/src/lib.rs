@@ -10,6 +10,23 @@ use stiles_types::{DecoratedNode, Diagnostic, Severity};
 /// `if let` without an `else` is acceptable for short, single-branch
 /// pattern actions. `if let` with a diverging `else` (return, panic,
 /// etc.) is also acceptable since that pattern maps to `let ... else`.
+///
+/// # Examples
+///
+/// ```
+/// use if_let_with_else::IfLetWithElse;
+/// use stiles_rust::RustLintPassAdapter;
+/// use stiles_testing::{execute, parse};
+/// use stiles_types::{Language, LintPass};
+///
+/// let tree = parse("fn f() { if let Some(x) = y { a(x) } else { b() } }", Language::Rust);
+/// let pass: Box<dyn LintPass> = Box::new(RustLintPassAdapter::new(IfLetWithElse));
+/// let mut passes = vec![pass];
+///
+/// let diagnostics = execute(&tree, &mut passes);
+///
+/// assert_eq!(diagnostics.len(), 1);
+/// ```
 pub struct IfLetWithElse;
 
 /// Diverging macro names that indicate the else branch will never
@@ -37,7 +54,7 @@ impl RustLintPass for IfLetWithElse {
         vec![
             Diagnostic::builder()
                 .rule_id(RuleId::new("lint.if-let-with-else"))
-                .severity(Severity::Warn)
+                .severity(Severity::Error)
                 .message("`if let` with `else` should be written as a `match` expression")
                 .span(node.span())
                 .build(),
@@ -65,8 +82,8 @@ fn has_let_condition(node: &DecoratedNode<'_>) -> bool {
 /// Checks whether an else clause diverges syntactically
 ///
 /// An else clause diverges if its last statement or expression is a
-/// `return`, `break`, `continue`, or a call to a known-diverging macro
-/// like `panic!`, `unreachable!`, `todo!`, or `unimplemented!`.
+/// `return`, `break`, `continue`, or a call to a known-diverging macro.
+/// `panic!`, `unreachable!`, `todo!`, and `unimplemented!` are such macros.
 fn is_diverging(else_clause: &DecoratedNode<'_>) -> bool {
     let Some(body) = else_clause.named_child(0) else {
         return false;
@@ -208,7 +225,7 @@ mod tests {
 
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.if-let-with-else")
-            .has_severity(Severity::Warn)
+            .has_severity(Severity::Error)
             .message_contains("match");
     }
 

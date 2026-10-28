@@ -36,6 +36,34 @@ const SYSROOT: &[&str] = &["std", "core", "alloc"];
 /// binding and not a crate. A leading `::` always names a crate. The rule
 /// reads `use` declarations anywhere in the file, but not in a macro body.
 /// It never treats `std`, `core`, or `alloc` as either side.
+///
+/// # Examples
+///
+/// The rule reads the public paths the Rust provider attaches as a
+/// decoration. This example attaches them by hand.
+///
+/// ```
+/// use facade_bypass_import::FacadeBypassImport;
+/// use stiles_rust::RustLintPassAdapter;
+/// use stiles_rust::decorations::{PublicPath, Reexports};
+/// use stiles_testing::{decorate, execute, parse};
+/// use stiles_types::{DecorationMap, Language, LintPass};
+///
+/// let source = "use facade::Other;\nuse facade_core::thing::Thing;";
+/// let mut tree = parse(source, Language::Rust);
+/// let import = tree.root_node().named_child(1).unwrap();
+/// let path = import.child_by_field_name("argument").unwrap();
+/// let through_facade = PublicPath::builder().krate("facade").segments(["thing", "Thing"]).build();
+/// let mut decorations = DecorationMap::new();
+/// decorations.insert(path.id(), Reexports::new([through_facade]));
+/// decorate(&mut tree, decorations);
+/// let pass: Box<dyn LintPass> = Box::new(RustLintPassAdapter::new(FacadeBypassImport));
+/// let mut passes = vec![pass];
+///
+/// let diagnostics = execute(&tree, &mut passes);
+///
+/// assert_eq!(diagnostics.len(), 1);
+/// ```
 pub struct FacadeBypassImport;
 
 impl RustLintPass for FacadeBypassImport {
@@ -345,7 +373,7 @@ impl<'a> FileImports<'a> {
         Some(
             Diagnostic::builder()
                 .rule_id(RULE_ID)
-                .severity(Severity::Warn)
+                .severity(Severity::Error)
                 .message(format!(
                     "`{path}` is also exported as `{facade}`, and this file already imports from \
                  `{krate}`; import it through `{krate}`"
@@ -500,7 +528,7 @@ mod tests {
 
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.facade-bypass-import")
-            .has_severity(Severity::Warn)
+            .has_severity(Severity::Error)
             .message_contains(
                 "`facade_core::thing::Thing` is also exported as `facade::thing::Thing`, and \
                  this file already imports from `facade`; import it through `facade`",

@@ -78,7 +78,7 @@ fn report(node: &DecoratedNode<'_>) -> Vec<Diagnostic> {
         return Vec::new();
     }
 
-    vec![Diagnostic::builder().rule_id(RULE_ID).severity(Severity::Warn).message(format!(
+    vec![Diagnostic::builder().rule_id(RULE_ID).severity(Severity::Error).message(format!(
             "test body of {} statements has no blank line: separate Arrange, Act, and Assert with blank lines",
             statements.len()
         )).span(name.span()).build()]
@@ -511,7 +511,7 @@ mod tests {
 
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.unseparated-test-body")
-            .has_severity(Severity::Warn)
+            .has_severity(Severity::Error)
             .message_contains("test body of 3 statements has no blank line")
             .has_span("<test>", start, start + "parse_works".len());
     }
