@@ -1,7 +1,7 @@
-use tree_sitter::Node;
 use stiles_rust::{RuleId, RustLintPass};
 use stiles_types::{DecoratedNode, Diagnostic, Severity, Span};
 use stiles_typescript::TypeScriptLintPass;
+use tree_sitter::Node;
 
 /// The characters that authors use to draw a horizontal rule
 const DIVIDER_CHARS: &[char] = &['-', '=', '*', '~', '#', '_', '+', '/'];

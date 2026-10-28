@@ -1070,10 +1070,7 @@ pub trait Port {
     fn file_in_tests_directory_is_not_flagged() {
         let source = "pub trait Port { fn read(&self) -> anyhow::Result<()>; }";
 
-        let diagnostics = run_at(
-            Path::new("crates/stiles/tests/fixtures/src/lib.rs"),
-            source,
-        );
+        let diagnostics = run_at(Path::new("crates/stiles/tests/fixtures/src/lib.rs"), source);
 
         assert_no_diagnostics(&diagnostics);
     }

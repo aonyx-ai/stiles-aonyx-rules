@@ -1,6 +1,6 @@
-use tree_sitter::{Node, Parser};
 use stiles_rust::{RuleId, RustLintPass, language};
 use stiles_types::{DecoratedNode, Diagnostic, Severity, Span};
+use tree_sitter::{Node, Parser};
 
 /// Node kinds that a prose comment does not produce by accident
 ///
