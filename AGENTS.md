@@ -34,7 +34,7 @@ Please review https://github.com/aonyx-ai/stiles-aonyx-rules/blob/main/CLAUDE.md
 
 Every rule here is a stiles plugin. The conventions for Rust, Markdown, Git,
 and everything else are [stiles's `CLAUDE.md`][stiles-claude], which these
-rules exist to enforce; follow it, and read the two additions below.
+rules exist to enforce; follow it, and read the additions below.
 
 ### A rule is a pure function of a decorated tree
 
@@ -82,4 +82,16 @@ stiles that loads them. The compiler plays no part, so `rust-toolchain.toml`
 is this repository's own choice. `README.md` describes the bump. Do not change
 the pin to make a build pass.
 
+### A change that users notice adds a changeset
+
+A pull request that changes what a project sees adds a changeset to
+`.changeset/`, and `.changeset/README.md` describes the format. A new rule, a
+rule that reports more or less, and a move of the pin are such changes.
+[Otto][otto] writes `CHANGELOG.md` from the changesets at each release, so do
+not edit the changelog by hand.
+
+`otto release` runs a release, and `otto status` shows where a release
+stands. `README.md` describes what a release builds.
+
+[otto]: https://github.com/aonyx-ai/otto
 [stiles-claude]: https://github.com/aonyx-ai/stiles/blob/main/CLAUDE.md

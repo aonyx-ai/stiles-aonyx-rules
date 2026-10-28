@@ -93,6 +93,28 @@ stays silent rather than guessing.
 Every rule has tests beside it, and `just test` runs all of them. `just
 check-self <path-to-stiles>` checks this repository with the rules in it.
 
+## Releases
+
+[Otto][otto] releases this repository. Every crate here takes the version of
+the workspace, so one release covers every rule. The crate
+`stiles-aonyx-rules` gives the release its name. No crate goes to crates.io.
+
+A pull request that changes what a project sees adds a changeset to
+`.changeset/`, and `.changeset/README.md` describes the format. A release
+writes `CHANGELOG.md` from the changesets, so do not edit the changelog by
+hand.
+
+`otto release` runs a release from the terminal, and `otto status` shows
+where a release stands. The tag of a release is
+`stiles-aonyx-rules@<version>`. A pre-release such as `0.1.0-rc.5` is an
+override of the version that Otto proposes.
+
+When the GitHub release is published, CI builds the rules for each platform
+and attaches one archive per platform to the release. The name of an archive
+holds the commit of the release and the ABI tag of the pinned stiles. Stiles
+finds an archive by that name, so a project that pins the commit of a release
+loads prebuilt rules.
+
 ## License
 
 Licensed under either of
@@ -110,4 +132,5 @@ Unless you explicitly state otherwise, any contribution intentionally submitted
 for inclusion in the work by you, as defined in the Apache-2.0 license, shall be
 dual licensed as above, without any additional terms or conditions.
 
+[otto]: https://github.com/aonyx-ai/otto
 [stiles]: https://github.com/aonyx-ai/stiles
