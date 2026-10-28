@@ -162,11 +162,11 @@ name = "commented_out_code"
 version = "0.1.0"
 dependencies = [
  "proptest",
- "tree-sitter",
  "stiles-plugin",
  "stiles-rust",
  "stiles-testing",
  "stiles-types",
+ "tree-sitter",
 ]
 
 [[package]]
@@ -301,11 +301,11 @@ dependencies = [
 name = "external_type_in_port"
 version = "0.1.0"
 dependencies = [
- "tree-sitter",
  "stiles-plugin",
  "stiles-rust",
  "stiles-testing",
  "stiles-types",
+ "tree-sitter",
 ]
 
 [[package]]
@@ -394,12 +394,12 @@ dependencies = [
 name = "inline_comment"
 version = "0.1.0"
 dependencies = [
- "tree-sitter",
  "stiles-plugin",
  "stiles-rust",
  "stiles-testing",
  "stiles-types",
  "stiles-typescript",
+ "tree-sitter",
 ]
 
 [[package]]
@@ -506,11 +506,11 @@ dependencies = [
 name = "multi_param_constructor"
 version = "0.1.0"
 dependencies = [
- "tree-sitter",
  "stiles-plugin",
  "stiles-rust",
  "stiles-testing",
  "stiles-types",
+ "tree-sitter",
 ]
 
 [[package]]
@@ -600,11 +600,11 @@ dependencies = [
 name = "pub_anyhow_result"
 version = "0.1.0"
 dependencies = [
- "tree-sitter",
  "stiles-plugin",
  "stiles-rust",
  "stiles-testing",
  "stiles-types",
+ "tree-sitter",
 ]
 
 [[package]]
@@ -860,6 +860,98 @@ dependencies = [
 ]
 
 [[package]]
+name = "stiles-codegen"
+version = "0.1.0"
+source = "git+https://github.com/aonyx-ai/stiles.git?rev=da1bcf8bd32c12803dd9ead45cd24dc018b80125#da1bcf8bd32c12803dd9ead45cd24dc018b80125"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "stiles-core"
+version = "0.1.0"
+source = "git+https://github.com/aonyx-ai/stiles.git?rev=da1bcf8bd32c12803dd9ead45cd24dc018b80125#da1bcf8bd32c12803dd9ead45cd24dc018b80125"
+dependencies = [
+ "bon",
+ "stiles-types",
+ "thiserror",
+ "tree-sitter",
+]
+
+[[package]]
+name = "stiles-macros"
+version = "0.1.0"
+source = "git+https://github.com/aonyx-ai/stiles.git?rev=da1bcf8bd32c12803dd9ead45cd24dc018b80125#da1bcf8bd32c12803dd9ead45cd24dc018b80125"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 3.0.3",
+]
+
+[[package]]
+name = "stiles-plugin"
+version = "0.1.0"
+source = "git+https://github.com/aonyx-ai/stiles.git?rev=da1bcf8bd32c12803dd9ead45cd24dc018b80125#da1bcf8bd32c12803dd9ead45cd24dc018b80125"
+dependencies = [
+ "stabby",
+ "stiles-rust",
+ "stiles-types",
+ "stiles-typescript",
+]
+
+[[package]]
+name = "stiles-rust"
+version = "0.1.0"
+source = "git+https://github.com/aonyx-ai/stiles.git?rev=da1bcf8bd32c12803dd9ead45cd24dc018b80125#da1bcf8bd32c12803dd9ead45cd24dc018b80125"
+dependencies = [
+ "bon",
+ "stabby",
+ "stiles-codegen",
+ "stiles-macros",
+ "stiles-types",
+ "tree-sitter",
+ "tree-sitter-rust",
+]
+
+[[package]]
+name = "stiles-testing"
+version = "0.1.0"
+source = "git+https://github.com/aonyx-ai/stiles.git?rev=da1bcf8bd32c12803dd9ead45cd24dc018b80125#da1bcf8bd32c12803dd9ead45cd24dc018b80125"
+dependencies = [
+ "stiles-core",
+ "stiles-types",
+ "tree-sitter",
+ "tree-sitter-rust",
+ "tree-sitter-typescript",
+]
+
+[[package]]
+name = "stiles-types"
+version = "0.1.0"
+source = "git+https://github.com/aonyx-ai/stiles.git?rev=da1bcf8bd32c12803dd9ead45cd24dc018b80125#da1bcf8bd32c12803dd9ead45cd24dc018b80125"
+dependencies = [
+ "bon",
+ "stabby",
+ "thiserror",
+ "tree-sitter",
+]
+
+[[package]]
+name = "stiles-typescript"
+version = "0.1.0"
+source = "git+https://github.com/aonyx-ai/stiles.git?rev=da1bcf8bd32c12803dd9ead45cd24dc018b80125#da1bcf8bd32c12803dd9ead45cd24dc018b80125"
+dependencies = [
+ "bon",
+ "stabby",
+ "stiles-codegen",
+ "stiles-macros",
+ "stiles-types",
+ "tree-sitter",
+ "tree-sitter-typescript",
+]
+
+[[package]]
 name = "streaming-iterator"
 version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -910,11 +1002,11 @@ dependencies = [
 name = "terminal_output"
 version = "0.1.0"
 dependencies = [
- "tree-sitter",
  "stiles-plugin",
  "stiles-rust",
  "stiles-testing",
  "stiles-types",
+ "tree-sitter",
 ]
 
 [[package]]
@@ -1066,98 +1158,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "09ac3b126d3914f9849036f826e054cbabdc8519970b8998ddaf3b5bd3c65f11"
 dependencies = [
  "libc",
-]
-
-[[package]]
-name = "stiles-codegen"
-version = "0.1.0"
-source = "git+https://github.com/aonyx-ai/stiles.git?rev=289ee8cbf9ef071cddc48259415e6f6d69870a11#289ee8cbf9ef071cddc48259415e6f6d69870a11"
-dependencies = [
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "stiles-core"
-version = "0.1.0"
-source = "git+https://github.com/aonyx-ai/stiles.git?rev=289ee8cbf9ef071cddc48259415e6f6d69870a11#289ee8cbf9ef071cddc48259415e6f6d69870a11"
-dependencies = [
- "bon",
- "thiserror",
- "tree-sitter",
- "stiles-types",
-]
-
-[[package]]
-name = "stiles-macros"
-version = "0.1.0"
-source = "git+https://github.com/aonyx-ai/stiles.git?rev=289ee8cbf9ef071cddc48259415e6f6d69870a11#289ee8cbf9ef071cddc48259415e6f6d69870a11"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 3.0.3",
-]
-
-[[package]]
-name = "stiles-plugin"
-version = "0.1.0"
-source = "git+https://github.com/aonyx-ai/stiles.git?rev=289ee8cbf9ef071cddc48259415e6f6d69870a11#289ee8cbf9ef071cddc48259415e6f6d69870a11"
-dependencies = [
- "stabby",
- "stiles-rust",
- "stiles-types",
- "stiles-typescript",
-]
-
-[[package]]
-name = "stiles-rust"
-version = "0.1.0"
-source = "git+https://github.com/aonyx-ai/stiles.git?rev=289ee8cbf9ef071cddc48259415e6f6d69870a11#289ee8cbf9ef071cddc48259415e6f6d69870a11"
-dependencies = [
- "bon",
- "stabby",
- "tree-sitter",
- "tree-sitter-rust",
- "stiles-codegen",
- "stiles-macros",
- "stiles-types",
-]
-
-[[package]]
-name = "stiles-testing"
-version = "0.1.0"
-source = "git+https://github.com/aonyx-ai/stiles.git?rev=289ee8cbf9ef071cddc48259415e6f6d69870a11#289ee8cbf9ef071cddc48259415e6f6d69870a11"
-dependencies = [
- "tree-sitter",
- "tree-sitter-rust",
- "tree-sitter-typescript",
- "stiles-core",
- "stiles-types",
-]
-
-[[package]]
-name = "stiles-types"
-version = "0.1.0"
-source = "git+https://github.com/aonyx-ai/stiles.git?rev=289ee8cbf9ef071cddc48259415e6f6d69870a11#289ee8cbf9ef071cddc48259415e6f6d69870a11"
-dependencies = [
- "bon",
- "stabby",
- "thiserror",
- "tree-sitter",
-]
-
-[[package]]
-name = "stiles-typescript"
-version = "0.1.0"
-source = "git+https://github.com/aonyx-ai/stiles.git?rev=289ee8cbf9ef071cddc48259415e6f6d69870a11#289ee8cbf9ef071cddc48259415e6f6d69870a11"
-dependencies = [
- "bon",
- "stabby",
- "tree-sitter",
- "tree-sitter-typescript",
- "stiles-codegen",
- "stiles-macros",
- "stiles-types",
 ]
 
 [[package]]
