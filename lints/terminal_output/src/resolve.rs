@@ -1,4 +1,4 @@
-use whisker_types::DecoratedNode;
+use stiles_types::DecoratedNode;
 
 use crate::PRINT_MACROS;
 

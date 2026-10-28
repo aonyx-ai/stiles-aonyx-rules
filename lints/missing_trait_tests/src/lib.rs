@@ -1,8 +1,8 @@
 use std::collections::{BTreeSet, HashMap};
 use std::path::Path;
 
-use whisker_rust::{RuleId, RustLintPass};
-use whisker_types::{DecoratedNode, Diagnostic, Severity, Span};
+use stiles_rust::{RuleId, RustLintPass};
+use stiles_types::{DecoratedNode, Diagnostic, Severity, Span};
 
 /// Flags a `struct` or `enum` that has no `Send`, `Sync`, or `Unpin` test
 ///
@@ -21,7 +21,7 @@ use whisker_types::{DecoratedNode, Diagnostic, Severity, Span};
 /// The lint skips types under a `#[cfg(test)]` module and types in the `tests`
 /// and `benches` directories, because those types are fixtures. It skips types
 /// declared inside a function, because a sibling test module cannot name them.
-/// It also skips type aliases and unions. Whisker reads one file at a time, so
+/// It also skips type aliases and unions. Stiles reads one file at a time, so
 /// the proof must sit in the same file as the type.
 pub struct MissingTraitTests;
 
@@ -568,19 +568,19 @@ fn join_traits(traits: &[AutoTrait]) -> String {
 }
 
 #[cfg(feature = "plugin")]
-impl whisker_plugin::DeclaresRules for MissingTraitTests {
+impl stiles_plugin::DeclaresRules for MissingTraitTests {
     fn rules(&self) -> Vec<RuleId> {
         vec![RuleId::new("lint.missing-trait-tests")]
     }
 }
 
-whisker_plugin::export_lints![rust: [MissingTraitTests]];
+stiles_plugin::export_lints![rust: [MissingTraitTests]];
 
 #[cfg(test)]
 mod tests {
-    use whisker_rust::RustLintPassAdapter;
-    use whisker_testing::{assert_diagnostic, assert_no_diagnostics, execute, parse};
-    use whisker_types::{Language, LintPass};
+    use stiles_rust::RustLintPassAdapter;
+    use stiles_testing::{assert_diagnostic, assert_no_diagnostics, execute, parse};
+    use stiles_types::{Language, LintPass};
 
     use super::*;
 
@@ -843,20 +843,20 @@ mod tests {
 
     #[test]
     fn is_test_target_with_benchmark_path_returns_true() {
-        assert!(is_test_target(Path::new("crates/whisker/benches/walk.rs")));
+        assert!(is_test_target(Path::new("crates/stiles/benches/walk.rs")));
     }
 
     #[test]
     fn is_test_target_with_integration_test_path_returns_true() {
         assert!(is_test_target(Path::new(
-            "crates/whisker/tests/support/unreadable.rs"
+            "crates/stiles/tests/support/unreadable.rs"
         )));
     }
 
     #[test]
     fn is_test_target_with_source_path_returns_false() {
         assert!(!is_test_target(Path::new(
-            "crates/whisker-testing/src/lib.rs"
+            "crates/stiles-testing/src/lib.rs"
         )));
     }
 

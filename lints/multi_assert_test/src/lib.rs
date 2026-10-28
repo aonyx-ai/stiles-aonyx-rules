@@ -1,5 +1,5 @@
-use whisker_rust::{RuleId, RustLintPass};
-use whisker_types::{DecoratedNode, Diagnostic, Severity};
+use stiles_rust::{RuleId, RustLintPass};
+use stiles_types::{DecoratedNode, Diagnostic, Severity};
 
 const RULE_ID: RuleId = RuleId::new("lint.multi-assert-test");
 
@@ -17,7 +17,7 @@ const RULE_ID: RuleId = RuleId::new("lint.multi-assert-test");
 /// name is `assert` or `debug_assert`, or starts with `assert_` or
 /// `debug_assert_`. Only the last segment of the path counts, so
 /// `std::assert_eq!`, `assert_matches!`, and a helper such as
-/// `whisker_testing::assert_diagnostic` count alike. A method call never
+/// `stiles_testing::assert_diagnostic` count alike. A method call never
 /// counts, because the `.assert()` of `assert_cmd` runs the command rather
 /// than checking it.
 ///
@@ -167,19 +167,19 @@ fn is_assertion_name(name: &str) -> bool {
 }
 
 #[cfg(feature = "plugin")]
-impl whisker_plugin::DeclaresRules for MultiAssertTest {
+impl stiles_plugin::DeclaresRules for MultiAssertTest {
     fn rules(&self) -> Vec<RuleId> {
         vec![RULE_ID]
     }
 }
 
-whisker_plugin::export_lints![rust: [MultiAssertTest]];
+stiles_plugin::export_lints![rust: [MultiAssertTest]];
 
 #[cfg(test)]
 mod tests {
-    use whisker_rust::RustLintPassAdapter;
-    use whisker_testing::{assert_diagnostic, assert_no_diagnostics, execute, parse};
-    use whisker_types::{Language, LintPass, Severity};
+    use stiles_rust::RustLintPassAdapter;
+    use stiles_testing::{assert_diagnostic, assert_no_diagnostics, execute, parse};
+    use stiles_types::{Language, LintPass, Severity};
 
     use super::*;
 
@@ -345,9 +345,9 @@ mod tests {
     #[test]
     fn qualified_assertion_helper_counts_as_an_assertion() {
         let source = "#[test]\nfn t() {\n    assert!(a);\n    \
-                      whisker_testing::assert_no_diagnostics(&diagnostics);\n}";
+                      stiles_testing::assert_no_diagnostics(&diagnostics);\n}";
 
-        assert_eq!(flagged(source), ["whisker_testing::assert_no_diagnostics"]);
+        assert_eq!(flagged(source), ["stiles_testing::assert_no_diagnostics"]);
     }
 
     #[test]

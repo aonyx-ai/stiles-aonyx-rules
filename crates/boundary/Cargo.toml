@@ -4,7 +4,7 @@
 # reports, under one option that a project set once.
 #
 # This crate is an rlib and exports no plugin declaration, so the build
-# produces no dynamic library for whisker to load.
+# produces no dynamic library for stiles to load.
 [package]
 name = "boundary"
 version.workspace = true
@@ -14,10 +14,10 @@ repository.workspace = true
 publish = false
 
 [dependencies]
-whisker-types = { workspace = true }
+stiles-types = { workspace = true }
 
 [dev-dependencies]
-whisker-testing = { workspace = true }
+stiles-testing = { workspace = true }
 
 [lints]
 workspace = true

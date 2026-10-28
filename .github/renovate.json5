@@ -3,11 +3,11 @@
   extends: ["github>aonyx-ai/renovate-config"],
   customManagers: [
     {
-      // The whisker crates are one decision, never several. Cargo's own
+      // The stiles crates are one decision, never several. Cargo's own
       // manager reads them as separate git dependencies and opens a pull
       // request for each, each leaving the crates on different revisions,
-      // and a rule compiled against one revision of whisker-rust does not
-      // build against another revision of whisker-types.
+      // and a rule compiled against one revision of stiles-rust does not
+      // build against another revision of stiles-types.
       //
       // This reads them all as one dependency, and moves the digest with
       // the release comment beside it, the way renovate moves a pinned
@@ -15,9 +15,9 @@
       customType: "regex",
       fileMatch: ["^Cargo\\.toml$"],
       matchStrings: [
-        "whisker-\\w+ = \\{ git = \"https://github\\.com/aonyx-ai/whisker\\.git\", rev = \"(?<currentDigest>[0-9a-f]{40})\"[^\\n]*\\} # (?<currentValue>v\\S+)",
+        "stiles-\\w+ = \\{ git = \"https://github\\.com/aonyx-ai/stiles\\.git\", rev = \"(?<currentDigest>[0-9a-f]{40})\"[^\\n]*\\} # (?<currentValue>v\\S+)",
       ],
-      depNameTemplate: "aonyx-ai/whisker",
+      depNameTemplate: "aonyx-ai/stiles",
       datasourceTemplate: "github-tags",
     },
   ],
@@ -32,34 +32,34 @@
       // above reads, as three git dependencies, and opens the three pull
       // requests that manager exists to prevent. It did: #10, #11 and #23,
       // one per crate, each able to land on its own and leave the crates on
-      // different revisions of whisker.
+      // different revisions of stiles.
       //
       // It also reads only the revision, never the release comment beside
-      // it, so it proposed a commit on whisker's main while the comment
+      // it, so it proposed a commit on stiles's main while the comment
       // still named a release. A pin here names a release, because the
       // release is what has prebuilt lint archives published for it.
       //
-      // Turning it off for the whisker crates leaves the custom manager as
+      // Turning it off for the stiles crates leaves the custom manager as
       // the one voice on them, which is the whole point of having written
       // it.
       matchManagers: ["cargo"],
       matchDepNames: [
-        "whisker-plugin",
-        "whisker-rust",
-        "whisker-testing",
-        "whisker-types",
-        "whisker-typescript",
+        "stiles-plugin",
+        "stiles-rust",
+        "stiles-testing",
+        "stiles-types",
+        "stiles-typescript",
       ],
       enabled: false,
     },
     {
-      // Whisker ships a prerelease today, and renovate passes over those
+      // Stiles ships a prerelease today, and renovate passes over those
       // unless it is told not to.
       //
       // The pin also decides which rustc built the plugins, and it has to
       // move with `rust-toolchain.toml`, which renovate cannot know. A
       // person merges this one.
-      matchDepNames: ["aonyx-ai/whisker"],
+      matchDepNames: ["aonyx-ai/stiles"],
       ignoreUnstable: false,
       automerge: false,
     },

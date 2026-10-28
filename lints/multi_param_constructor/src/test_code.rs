@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use whisker_types::DecoratedNode;
+use stiles_types::DecoratedNode;
 
 /// Returns whether `node` sits in code that only a test build compiles
 ///
@@ -201,8 +201,8 @@ fn is_test_target(path: &Path) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use whisker_testing::parse;
-    use whisker_types::{DecoratedTree, Language};
+    use stiles_testing::parse;
+    use stiles_types::{DecoratedTree, Language};
 
     use super::*;
 
@@ -328,22 +328,22 @@ mod tests {
 
     #[test]
     fn is_test_target_with_benches_directory_returns_true() {
-        assert!(is_test_target(Path::new("crates/whisker/benches/walk.rs")));
+        assert!(is_test_target(Path::new("crates/stiles/benches/walk.rs")));
     }
 
     #[test]
     fn is_test_target_with_file_named_tests_returns_false() {
-        assert!(!is_test_target(Path::new("crates/whisker/src/tests.rs")));
+        assert!(!is_test_target(Path::new("crates/stiles/src/tests.rs")));
     }
 
     #[test]
     fn is_test_target_with_source_path_returns_false() {
-        assert!(!is_test_target(Path::new("crates/whisker/src/lib.rs")));
+        assert!(!is_test_target(Path::new("crates/stiles/src/lib.rs")));
     }
 
     #[test]
     fn is_test_target_with_tests_directory_returns_true() {
-        assert!(is_test_target(Path::new("crates/whisker/tests/check.rs")));
+        assert!(is_test_target(Path::new("crates/stiles/tests/check.rs")));
     }
 
     #[test]

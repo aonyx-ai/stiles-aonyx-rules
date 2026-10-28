@@ -1,8 +1,8 @@
 use std::path::Path;
 
-use whisker_rust::decorations::{FnSignature, TypePathRef};
-use whisker_rust::{RuleId, RustLintPass, RustLintPassAdapter};
-use whisker_types::{DecoratedNode, Diagnostic, LintPass, Severity};
+use stiles_rust::decorations::{FnSignature, TypePathRef};
+use stiles_rust::{RuleId, RustLintPass, RustLintPassAdapter};
+use stiles_types::{DecoratedNode, Diagnostic, LintPass, Severity};
 
 const RULE_ID: RuleId = RuleId::new("lint.pub-anyhow-result");
 
@@ -45,11 +45,11 @@ const ANYHOW_ERROR: TypePathRef<'static> = TypePathRef::builder()
 /// `#[test]` or under a `cfg` that holds only in tests, and every file under
 /// a `tests` or `benches` directory.
 ///
-/// [`FnSignature`]: whisker_rust::decorations::FnSignature
+/// [`FnSignature`]: stiles_rust::decorations::FnSignature
 pub struct PubAnyhowResult;
 
 impl PubAnyhowResult {
-    /// Creates a boxed [`LintPass`] suitable for the whisker pipeline
+    /// Creates a boxed [`LintPass`] suitable for the stiles pipeline
     ///
     /// # Examples
     ///
@@ -328,19 +328,19 @@ fn implies_test(predicate: &[DecoratedNode<'_>]) -> bool {
 }
 
 #[cfg(feature = "plugin")]
-impl whisker_plugin::DeclaresRules for PubAnyhowResult {
+impl stiles_plugin::DeclaresRules for PubAnyhowResult {
     fn rules(&self) -> Vec<RuleId> {
         vec![RULE_ID]
     }
 }
 
-whisker_plugin::export_lints![rust: [PubAnyhowResult]];
+stiles_plugin::export_lints![rust: [PubAnyhowResult]];
 
 #[cfg(test)]
 mod tests {
-    use whisker_rust::decorations::{ErrorType, ResolvedType, ReturnMode, TypePath};
-    use whisker_testing::{assert_diagnostic, assert_no_diagnostics, decorate, execute, parse};
-    use whisker_types::{DecoratedTree, DecorationMap, Language};
+    use stiles_rust::decorations::{ErrorType, ResolvedType, ReturnMode, TypePath};
+    use stiles_testing::{assert_diagnostic, assert_no_diagnostics, decorate, execute, parse};
+    use stiles_types::{DecoratedTree, DecorationMap, Language};
 
     use super::*;
 

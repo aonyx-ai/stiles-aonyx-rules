@@ -1,7 +1,7 @@
 use std::path::Path;
 
-use whisker_rust::{RuleId, RustLintPass};
-use whisker_types::{DecoratedNode, Diagnostic, Severity, Span};
+use stiles_rust::{RuleId, RustLintPass};
+use stiles_types::{DecoratedNode, Diagnostic, Severity, Span};
 
 const RULE_ID: RuleId = RuleId::new("lint.doc-summary-person");
 
@@ -484,19 +484,19 @@ fn implies_test(predicate: &[DecoratedNode<'_>]) -> bool {
 }
 
 #[cfg(feature = "plugin")]
-impl whisker_plugin::DeclaresRules for DocSummaryPerson {
+impl stiles_plugin::DeclaresRules for DocSummaryPerson {
     fn rules(&self) -> Vec<RuleId> {
         vec![RULE_ID]
     }
 }
 
-whisker_plugin::export_lints![rust: [DocSummaryPerson]];
+stiles_plugin::export_lints![rust: [DocSummaryPerson]];
 
 #[cfg(test)]
 mod tests {
-    use whisker_rust::RustLintPassAdapter;
-    use whisker_testing::{assert_diagnostic, assert_no_diagnostics, execute, parse};
-    use whisker_types::{Language, LintPass, Severity};
+    use stiles_rust::RustLintPassAdapter;
+    use stiles_testing::{assert_diagnostic, assert_no_diagnostics, execute, parse};
+    use stiles_types::{Language, LintPass, Severity};
 
     use super::*;
 

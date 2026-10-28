@@ -1,6 +1,6 @@
 use bon::bon;
 use doc_comment::DocLine;
-use whisker_types::{FilePath, Span};
+use stiles_types::{FilePath, Span};
 
 /// The Markdown of one doc comment, joined the way rustdoc joins it
 ///
@@ -10,7 +10,7 @@ use whisker_types::{FilePath, Span};
 /// joins the lines and remembers where each one starts in the file. An
 /// offset in the joined text maps back to a [`Span`].
 ///
-/// [`Span`]: whisker_types::Span
+/// [`Span`]: stiles_types::Span
 pub(crate) struct DocBlock {
     file: FilePath,
     content: String,
@@ -95,8 +95,8 @@ impl DocBlock {
 
 #[cfg(test)]
 mod tests {
-    use whisker_testing::parse;
-    use whisker_types::Language;
+    use stiles_testing::parse;
+    use stiles_types::Language;
 
     use super::*;
 

@@ -19,31 +19,31 @@ test:
 
 # Check this repository with the rules in it
 #
-# The whisker binary must come from the revision `Cargo.toml` pins, because a
-# plugin built against one whisker is refused by any other.
-check-self whisker="whisker":
-    {{ whisker }} check .
+# The stiles binary must come from the revision `Cargo.toml` pins, because a
+# plugin built against one stiles is refused by any other.
+check-self stiles="stiles":
+    {{ stiles }} check .
 
-# Assemble an archive of prebuilt lints for one whisker
-package-lints rev whisker:
+# Assemble an archive of prebuilt lints for one stiles
+package-lints rev stiles:
     #!/usr/bin/env -S bash -euo pipefail
-    # Whisker looks for an archive named for the commit it pins and for the
-    # tag of the binary asking. `whisker abi` prints that tag, so the name
-    # comes from the whisker that will load these libraries rather than from
+    # Stiles looks for an archive named for the commit it pins and for the
+    # tag of the binary asking. `stiles abi` prints that tag, so the name
+    # comes from the stiles that will load these libraries rather than from
     # anything written here.
     rev="{{ rev }}"
-    whisker="{{ whisker }}"
+    stiles="{{ stiles }}"
 
     # The libraries are built with the toolchain this repository pins.
-    # Whisker loads a library regardless of which rustc built it, so the
+    # Stiles loads a library regardless of which rustc built it, so the
     # choice is this repository's own.
     cargo build --release --locked --workspace
 
-    name="${rev}-$("${whisker}" abi)"
+    name="${rev}-$("${stiles}" abi)"
     rm -rf "dist/${name}"
     mkdir -p "dist/${name}"
 
-    # A publisher ships one library per rule, flat, and whisker unpacks only
+    # A publisher ships one library per rule, flat, and stiles unpacks only
     # the regular files at the archive's root.
     shopt -s nullglob
     libraries=(target/release/*.so target/release/*.dylib)
@@ -53,7 +53,7 @@ package-lints rev whisker:
     fi
     cp "${libraries[@]}" "dist/${name}/"
 
-    # The names go in bare. Whisker unpacks only the entries at the archive's
+    # The names go in bare. Stiles unpacks only the entries at the archive's
     # root, and `tar -C dir .` writes them all with a `./` prefix, which is a
     # second path component and so is skipped.
     names=()
@@ -65,6 +65,6 @@ package-lints rev whisker:
     rm -rf "dist/${name}"
     (cd dist && shasum -a 256 "${name}.tar.gz" > "${name}.tar.gz.sha256")
 
-# Print the whisker revision every rule is built against
+# Print the stiles revision every rule is built against
 pin:
     @grep -m1 'rev = ' Cargo.toml | sed 's/.*rev = "\([0-9a-f]*\)".*/\1/'

@@ -1,6 +1,6 @@
-use whisker_rust::decorations::ImportSource;
-use whisker_rust::{RuleId, RustLintPass, RustLintPassAdapter};
-use whisker_types::{DecoratedNode, Diagnostic, LintPass, Severity};
+use stiles_rust::decorations::ImportSource;
+use stiles_rust::{RuleId, RustLintPass, RustLintPassAdapter};
+use stiles_types::{DecoratedNode, Diagnostic, LintPass, Severity};
 
 const RULE_ID: RuleId = RuleId::new("lint.function-scoped-import");
 
@@ -14,7 +14,7 @@ const RULE_ID: RuleId = RuleId::new("lint.function-scoped-import");
 pub struct FunctionScopedImport;
 
 impl FunctionScopedImport {
-    /// Creates a boxed [`LintPass`] suitable for the whisker pipeline
+    /// Creates a boxed [`LintPass`] suitable for the stiles pipeline
     ///
     /// # Examples
     ///
@@ -169,18 +169,18 @@ impl RustLintPass for FunctionScopedImport {
 }
 
 #[cfg(feature = "plugin")]
-impl whisker_plugin::DeclaresRules for FunctionScopedImport {
+impl stiles_plugin::DeclaresRules for FunctionScopedImport {
     fn rules(&self) -> Vec<RuleId> {
         vec![RuleId::new("lint.function-scoped-import")]
     }
 }
 
-whisker_plugin::export_lints![rust: [FunctionScopedImport]];
+stiles_plugin::export_lints![rust: [FunctionScopedImport]];
 
 #[cfg(test)]
 mod tests {
-    use whisker_testing::{assert_diagnostic, assert_no_diagnostics, decorate, execute, parse};
-    use whisker_types::{DecorationMap, Language};
+    use stiles_testing::{assert_diagnostic, assert_no_diagnostics, decorate, execute, parse};
+    use stiles_types::{DecorationMap, Language};
 
     use super::*;
 

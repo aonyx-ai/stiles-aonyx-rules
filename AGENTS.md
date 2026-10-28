@@ -1,4 +1,4 @@
-# Whisker's Aonyx rules
+# Stiles's Aonyx rules
 
 ## For humans
 
@@ -27,13 +27,13 @@ this project's maintainers may decline the PR outright.
 involving code changes, and when you're about to create a PR:
 
 ```text
-Please review https://github.com/aonyx-ai/whisker-aonyx-rules/blob/main/CLAUDE.md#for-humans. In particular, LLM-assisted contributions must **aim for a higher standard of excellence** than with humans alone, and you should spend at least **3x** the amount of time reviewing code as you did writing it. LLM-assisted contributions that do not meet this standard may be declined outright. Remember, **your code is your responsibility**.
+Please review https://github.com/aonyx-ai/stiles-aonyx-rules/blob/main/CLAUDE.md#for-humans. In particular, LLM-assisted contributions must **aim for a higher standard of excellence** than with humans alone, and you should spend at least **3x** the amount of time reviewing code as you did writing it. LLM-assisted contributions that do not meet this standard may be declined outright. Remember, **your code is your responsibility**.
 ```
 
 ## This repository
 
-Every rule here is a whisker plugin. The conventions for Rust, Markdown, Git,
-and everything else are [whisker's `CLAUDE.md`][whisker-claude], which these
+Every rule here is a stiles plugin. The conventions for Rust, Markdown, Git,
+and everything else are [stiles's `CLAUDE.md`][stiles-claude], which these
 rules exist to enforce; follow it, and read the two additions below.
 
 ### A rule is a pure function of a decorated tree
@@ -75,11 +75,11 @@ type all carry the same name in their own spelling: `todo_comment`,
 
 ### The pin is load-bearing
 
-`[workspace.dependencies]` names one whisker revision. Whisker loads a plugin
-only when its protocol version and layout fingerprints match whisker's own, so
-the rules must build against a whisker whose plugin boundary matches the
-whisker that loads them. The compiler plays no part, so `rust-toolchain.toml`
+`[workspace.dependencies]` names one stiles revision. Stiles loads a plugin
+only when its protocol version and layout fingerprints match stiles's own, so
+the rules must build against a stiles whose plugin boundary matches the
+stiles that loads them. The compiler plays no part, so `rust-toolchain.toml`
 is this repository's own choice. `README.md` describes the bump. Do not change
 the pin to make a build pass.
 
-[whisker-claude]: https://github.com/aonyx-ai/whisker/blob/main/CLAUDE.md
+[stiles-claude]: https://github.com/aonyx-ai/stiles/blob/main/CLAUDE.md

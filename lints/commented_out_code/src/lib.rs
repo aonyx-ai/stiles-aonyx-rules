@@ -1,6 +1,6 @@
+use stiles_rust::{RuleId, RustLintPass, language};
+use stiles_types::{DecoratedNode, Diagnostic, Severity, Span};
 use tree_sitter::{Node, Parser};
-use whisker_rust::{RuleId, RustLintPass, language};
-use whisker_types::{DecoratedNode, Diagnostic, Severity, Span};
 
 /// Node kinds that a prose comment does not produce by accident
 ///
@@ -76,7 +76,7 @@ enum Fragment {
 ///
 /// ```
 /// use commented_out_code::CommentedOutCode;
-/// use whisker_rust::RustLintPassAdapter;
+/// use stiles_rust::RustLintPassAdapter;
 ///
 /// let pass = RustLintPassAdapter::new(CommentedOutCode::new());
 /// ```
@@ -306,7 +306,7 @@ fn classify(parser: &mut Parser, body: &str) -> Fragment {
         return Fragment::Prose;
     }
 
-    let source = format!("fn __whisker_probe() {{\n{body}\n}}\n");
+    let source = format!("fn __stiles_probe() {{\n{body}\n}}\n");
     let Some(tree) = parser.parse(&source, None) else {
         return Fragment::Prose;
     };
@@ -379,19 +379,19 @@ fn is_terminated_statement(node: Node<'_>) -> bool {
 }
 
 #[cfg(feature = "plugin")]
-impl whisker_plugin::DeclaresRules for CommentedOutCode {
+impl stiles_plugin::DeclaresRules for CommentedOutCode {
     fn rules(&self) -> Vec<RuleId> {
         vec![RuleId::new("lint.commented-out-code")]
     }
 }
 
-whisker_plugin::export_lints![rust: [CommentedOutCode::new()]];
+stiles_plugin::export_lints![rust: [CommentedOutCode::new()]];
 
 #[cfg(test)]
 mod tests {
-    use whisker_rust::RustLintPassAdapter;
-    use whisker_testing::{assert_diagnostic, assert_no_diagnostics, execute, parse};
-    use whisker_types::{Language, LintPass, Severity};
+    use stiles_rust::RustLintPassAdapter;
+    use stiles_testing::{assert_diagnostic, assert_no_diagnostics, execute, parse};
+    use stiles_types::{Language, LintPass, Severity};
 
     use super::*;
 

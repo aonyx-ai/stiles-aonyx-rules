@@ -3,8 +3,8 @@ mod test_code;
 
 use std::path::Path;
 
-use whisker_rust::{RuleId, RustLintPass};
-use whisker_types::{DecoratedNode, Diagnostic, Severity};
+use stiles_rust::{RuleId, RustLintPass};
+use stiles_types::{DecoratedNode, Diagnostic, Severity};
 
 use self::resolve::Namespace;
 
@@ -92,13 +92,13 @@ impl RustLintPass for TerminalOutput {
 }
 
 #[cfg(feature = "plugin")]
-impl whisker_plugin::DeclaresRules for TerminalOutput {
+impl stiles_plugin::DeclaresRules for TerminalOutput {
     fn rules(&self) -> Vec<RuleId> {
         vec![RULE_ID]
     }
 }
 
-whisker_plugin::export_lints![rust: [TerminalOutput]];
+stiles_plugin::export_lints![rust: [TerminalOutput]];
 
 /// The fix a print macro's finding asks for
 const PRINT_ADVICE: &str = "return the result, or write to a handle the caller passes in";
@@ -146,7 +146,7 @@ fn report(node: &DecoratedNode<'_>, message: String) -> Vec<Diagnostic> {
 /// Returns whether the rule skips every node of the file at `path`
 ///
 /// The nearest enclosing directory named `src`, `tests`, `benches`, or
-/// `examples` places the file in its package. Whisker can hand a rule an
+/// `examples` places the file in its package. Stiles can hand a rule an
 /// absolute path, so a `tests` directory above the project must not count.
 /// The nearest of the four names is the one inside the package.
 ///
@@ -203,9 +203,9 @@ fn is_cargo_directory(directory: &str) -> bool {
 mod tests {
     use std::path::Path;
 
-    use whisker_rust::RustLintPassAdapter;
-    use whisker_testing::{assert_diagnostic, execute};
-    use whisker_types::{DecoratedTree, Language, LintPass};
+    use stiles_rust::RustLintPassAdapter;
+    use stiles_testing::{assert_diagnostic, execute};
+    use stiles_types::{DecoratedTree, Language, LintPass};
 
     use super::*;
 
@@ -216,7 +216,7 @@ mod tests {
     fn parse_at(path: &Path, source: &str) -> DecoratedTree {
         let mut parser = tree_sitter::Parser::new();
         parser
-            .set_language(&whisker_rust::language())
+            .set_language(&stiles_rust::language())
             .expect("should load the Rust grammar");
         let tree = parser.parse(source, None).expect("should parse");
         DecoratedTree::builder()

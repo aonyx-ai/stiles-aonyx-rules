@@ -1,21 +1,21 @@
-# whisker-aonyx-rules
+# stiles-aonyx-rules
 
-Aonyx's lint rules for [whisker][whisker]. These are the rules that enforce
+Aonyx's lint rules for [stiles][stiles]. These are the rules that enforce
 the conventions in Aonyx's `CLAUDE.md` files: the ones Clippy does not
 cover, like derive ordering, wildcard match arms, and imports written inside
 function bodies.
 
-Whisker ships no rules of its own. A project that wants these runs them by
+Stiles ships no rules of its own. A project that wants these runs them by
 naming this repository and a commit:
 
 ```toml
-# .config/whisker.toml
+# .config/stiles.toml
 [[lints]]
-git = "https://github.com/aonyx-ai/whisker-aonyx-rules"
+git = "https://github.com/aonyx-ai/stiles-aonyx-rules"
 rev = "0123456789abcdef0123456789abcdef01234567"
 ```
 
-Whisker fetches that commit, builds every rule in it, and loads them. The
+Stiles fetches that commit, builds every rule in it, and loads them. The
 revision is written out in full and no branch or tag is accepted, so a check
 runs the same rules today and next month.
 
@@ -60,23 +60,23 @@ spoke.
 
 ## Pinning
 
-A rule is a `cdylib` that whisker loads into its own process. Rust has no
-stable ABI of its own, so whisker lays every type that crosses that boundary
+A rule is a `cdylib` that stiles loads into its own process. Rust has no
+stable ABI of its own, so stiles lays every type that crosses that boundary
 out with stabby and loads a plugin regardless of which rustc built it. It
 still refuses a plugin whose protocol version or layout fingerprints differ
-from its own, which happens when whisker's plugin boundary changed between the
+from its own, which happens when stiles's plugin boundary changed between the
 two revisions. Two things therefore move together:
 
-- The `rev` that the whisker dependencies in this repository's `Cargo.toml`
+- The `rev` that the stiles dependencies in this repository's `Cargo.toml`
   share, which every rule builds against. `just pin` prints it.
-- The `rev` that a project names in its own `.config/whisker.toml`, which
-  should be a commit of this repository built against the whisker that
+- The `rev` that a project names in its own `.config/stiles.toml`, which
+  should be a commit of this repository built against the stiles that
   project runs.
 
 `rust-toolchain.toml` is this repository's own choice.
 
-To bump: move every whisker `rev` in `[workspace.dependencies]` to the new
-whisker commit, run `cargo update -w`, and let CI's dogfood job confirm
+To bump: move every stiles `rev` in `[workspace.dependencies]` to the new
+stiles commit, run `cargo update -w`, and let CI's dogfood job confirm
 the pair still loads. A mismatch is a refusal with an error naming what to
 rebuild, never a silent wrong answer.
 
@@ -86,12 +86,12 @@ Copy the smallest existing rule, `lints/todo_comment`, and change the
 name in its `Cargo.toml`, its rule id, and its logic. A rule implements the
 generated `RustLintPass` trait, `TypeScriptLintPass`, or both, returns
 diagnostics with a stable rule id and a severity, and hands itself to
-`whisker_plugin::export_lints!` under each language it implements. Rules that read
+`stiles_plugin::export_lints!` under each language it implements. Rules that read
 semantic decorations **fail open**: when the decoration is missing, the rule
 stays silent rather than guessing.
 
 Every rule has tests beside it, and `just test` runs all of them. `just
-check-self <path-to-whisker>` checks this repository with the rules in it.
+check-self <path-to-stiles>` checks this repository with the rules in it.
 
 ## License
 
@@ -110,4 +110,4 @@ Unless you explicitly state otherwise, any contribution intentionally submitted
 for inclusion in the work by you, as defined in the Apache-2.0 license, shall be
 dual licensed as above, without any additional terms or conditions.
 
-[whisker]: https://github.com/aonyx-ai/whisker
+[stiles]: https://github.com/aonyx-ai/stiles

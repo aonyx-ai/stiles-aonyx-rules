@@ -15,10 +15,10 @@ dependencies = [
 name = "anyhow_missing_context"
 version = "0.1.0"
 dependencies = [
- "whisker-plugin",
- "whisker-rust",
- "whisker-testing",
- "whisker-types",
+ "stiles-plugin",
+ "stiles-rust",
+ "stiles-testing",
+ "stiles-types",
 ]
 
 [[package]]
@@ -80,10 +80,10 @@ name = "bool_param"
 version = "0.1.0"
 dependencies = [
  "boundary",
- "whisker-plugin",
- "whisker-rust",
- "whisker-testing",
- "whisker-types",
+ "stiles-plugin",
+ "stiles-rust",
+ "stiles-testing",
+ "stiles-types",
 ]
 
 [[package]]
@@ -114,8 +114,8 @@ dependencies = [
 name = "boundary"
 version = "0.1.0"
 dependencies = [
- "whisker-testing",
- "whisker-types",
+ "stiles-testing",
+ "stiles-types",
 ]
 
 [[package]]
@@ -162,11 +162,11 @@ name = "commented_out_code"
 version = "0.1.0"
 dependencies = [
  "proptest",
+ "stiles-plugin",
+ "stiles-rust",
+ "stiles-testing",
+ "stiles-types",
  "tree-sitter",
- "whisker-plugin",
- "whisker-rust",
- "whisker-testing",
- "whisker-types",
 ]
 
 [[package]]
@@ -222,10 +222,10 @@ dependencies = [
 name = "derive_order"
 version = "0.1.0"
 dependencies = [
- "whisker-plugin",
- "whisker-rust",
- "whisker-testing",
- "whisker-types",
+ "stiles-plugin",
+ "stiles-rust",
+ "stiles-testing",
+ "stiles-types",
 ]
 
 [[package]]
@@ -233,8 +233,8 @@ name = "doc_comment"
 version = "0.1.0"
 dependencies = [
  "proptest",
- "whisker-testing",
- "whisker-types",
+ "stiles-testing",
+ "stiles-types",
 ]
 
 [[package]]
@@ -242,10 +242,10 @@ name = "doc_summary_period"
 version = "0.1.0"
 dependencies = [
  "doc_comment",
- "whisker-plugin",
- "whisker-rust",
- "whisker-testing",
- "whisker-types",
+ "stiles-plugin",
+ "stiles-rust",
+ "stiles-testing",
+ "stiles-types",
 ]
 
 [[package]]
@@ -253,10 +253,10 @@ name = "doc_summary_person"
 version = "0.1.0"
 dependencies = [
  "doc_comment",
- "whisker-plugin",
- "whisker-rust",
- "whisker-testing",
- "whisker-types",
+ "stiles-plugin",
+ "stiles-rust",
+ "stiles-testing",
+ "stiles-types",
 ]
 
 [[package]]
@@ -264,11 +264,11 @@ name = "em_dash_aside"
 version = "0.1.0"
 dependencies = [
  "doc_comment",
- "whisker-plugin",
- "whisker-rust",
- "whisker-testing",
- "whisker-types",
- "whisker-typescript",
+ "stiles-plugin",
+ "stiles-rust",
+ "stiles-testing",
+ "stiles-types",
+ "stiles-typescript",
 ]
 
 [[package]]
@@ -291,31 +291,31 @@ dependencies = [
 name = "error_enum_shape"
 version = "0.1.0"
 dependencies = [
- "whisker-plugin",
- "whisker-rust",
- "whisker-testing",
- "whisker-types",
+ "stiles-plugin",
+ "stiles-rust",
+ "stiles-testing",
+ "stiles-types",
 ]
 
 [[package]]
 name = "external_type_in_port"
 version = "0.1.0"
 dependencies = [
+ "stiles-plugin",
+ "stiles-rust",
+ "stiles-testing",
+ "stiles-types",
  "tree-sitter",
- "whisker-plugin",
- "whisker-rust",
- "whisker-testing",
- "whisker-types",
 ]
 
 [[package]]
 name = "facade_bypass_import"
 version = "0.1.0"
 dependencies = [
- "whisker-plugin",
- "whisker-rust",
- "whisker-testing",
- "whisker-types",
+ "stiles-plugin",
+ "stiles-rust",
+ "stiles-testing",
+ "stiles-types",
 ]
 
 [[package]]
@@ -340,10 +340,10 @@ checksum = "3f9eec918d3f24069decb9af1554cad7c880e2da24a9afd88aca000531ab82c1"
 name = "function_scoped_import"
 version = "0.1.0"
 dependencies = [
- "whisker-plugin",
- "whisker-rust",
- "whisker-testing",
- "whisker-types",
+ "stiles-plugin",
+ "stiles-rust",
+ "stiles-testing",
+ "stiles-types",
 ]
 
 [[package]]
@@ -374,10 +374,10 @@ checksum = "b9e0384b61958566e926dc50660321d12159025e767c18e043daf26b70104c39"
 name = "if_let_with_else"
 version = "0.1.0"
 dependencies = [
- "whisker-plugin",
- "whisker-rust",
- "whisker-testing",
- "whisker-types",
+ "stiles-plugin",
+ "stiles-rust",
+ "stiles-testing",
+ "stiles-types",
 ]
 
 [[package]]
@@ -394,12 +394,12 @@ dependencies = [
 name = "inline_comment"
 version = "0.1.0"
 dependencies = [
+ "stiles-plugin",
+ "stiles-rust",
+ "stiles-testing",
+ "stiles-types",
+ "stiles-typescript",
  "tree-sitter",
- "whisker-plugin",
- "whisker-rust",
- "whisker-testing",
- "whisker-types",
- "whisker-typescript",
 ]
 
 [[package]]
@@ -408,21 +408,21 @@ version = "0.1.0"
 dependencies = [
  "bon",
  "doc_comment",
- "whisker-plugin",
- "whisker-rust",
- "whisker-testing",
- "whisker-types",
- "whisker-typescript",
+ "stiles-plugin",
+ "stiles-rust",
+ "stiles-testing",
+ "stiles-types",
+ "stiles-typescript",
 ]
 
 [[package]]
 name = "io_in_pure_function"
 version = "0.1.0"
 dependencies = [
- "whisker-plugin",
- "whisker-rust",
- "whisker-testing",
- "whisker-types",
+ "stiles-plugin",
+ "stiles-rust",
+ "stiles-testing",
+ "stiles-types",
 ]
 
 [[package]]
@@ -449,21 +449,21 @@ version = "0.1.0"
 dependencies = [
  "bon",
  "doc_comment",
- "whisker-plugin",
- "whisker-rust",
- "whisker-testing",
- "whisker-types",
- "whisker-typescript",
+ "stiles-plugin",
+ "stiles-rust",
+ "stiles-testing",
+ "stiles-types",
+ "stiles-typescript",
 ]
 
 [[package]]
 name = "matches_macro"
 version = "0.1.0"
 dependencies = [
- "whisker-plugin",
- "whisker-rust",
- "whisker-testing",
- "whisker-types",
+ "stiles-plugin",
+ "stiles-rust",
+ "stiles-testing",
+ "stiles-types",
 ]
 
 [[package]]
@@ -476,41 +476,41 @@ checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
 name = "missing_examples_doc"
 version = "0.1.0"
 dependencies = [
- "whisker-plugin",
- "whisker-rust",
- "whisker-testing",
- "whisker-types",
+ "stiles-plugin",
+ "stiles-rust",
+ "stiles-testing",
+ "stiles-types",
 ]
 
 [[package]]
 name = "missing_trait_tests"
 version = "0.1.0"
 dependencies = [
- "whisker-plugin",
- "whisker-rust",
- "whisker-testing",
- "whisker-types",
+ "stiles-plugin",
+ "stiles-rust",
+ "stiles-testing",
+ "stiles-types",
 ]
 
 [[package]]
 name = "multi_assert_test"
 version = "0.1.0"
 dependencies = [
- "whisker-plugin",
- "whisker-rust",
- "whisker-testing",
- "whisker-types",
+ "stiles-plugin",
+ "stiles-rust",
+ "stiles-testing",
+ "stiles-types",
 ]
 
 [[package]]
 name = "multi_param_constructor"
 version = "0.1.0"
 dependencies = [
+ "stiles-plugin",
+ "stiles-rust",
+ "stiles-testing",
+ "stiles-types",
  "tree-sitter",
- "whisker-plugin",
- "whisker-rust",
- "whisker-testing",
- "whisker-types",
 ]
 
 [[package]]
@@ -532,20 +532,20 @@ checksum = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
 name = "open_vocabulary"
 version = "0.1.0"
 dependencies = [
- "whisker-plugin",
- "whisker-rust",
- "whisker-testing",
- "whisker-types",
+ "stiles-plugin",
+ "stiles-rust",
+ "stiles-testing",
+ "stiles-types",
 ]
 
 [[package]]
 name = "outer_module_doc"
 version = "0.1.0"
 dependencies = [
- "whisker-plugin",
- "whisker-rust",
- "whisker-testing",
- "whisker-types",
+ "stiles-plugin",
+ "stiles-rust",
+ "stiles-testing",
+ "stiles-types",
 ]
 
 [[package]]
@@ -600,21 +600,21 @@ dependencies = [
 name = "pub_anyhow_result"
 version = "0.1.0"
 dependencies = [
+ "stiles-plugin",
+ "stiles-rust",
+ "stiles-testing",
+ "stiles-types",
  "tree-sitter",
- "whisker-plugin",
- "whisker-rust",
- "whisker-testing",
- "whisker-types",
 ]
 
 [[package]]
 name = "pub_field"
 version = "0.1.0"
 dependencies = [
- "whisker-plugin",
- "whisker-rust",
- "whisker-testing",
- "whisker-types",
+ "stiles-plugin",
+ "stiles-rust",
+ "stiles-testing",
+ "stiles-types",
 ]
 
 [[package]]
@@ -696,10 +696,10 @@ checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 name = "repeated_field_access"
 version = "0.1.0"
 dependencies = [
- "whisker-plugin",
- "whisker-rust",
- "whisker-testing",
- "whisker-types",
+ "stiles-plugin",
+ "stiles-rust",
+ "stiles-testing",
+ "stiles-types",
 ]
 
 [[package]]
@@ -707,10 +707,10 @@ name = "repeated_primitive_params"
 version = "0.1.0"
 dependencies = [
  "boundary",
- "whisker-plugin",
- "whisker-rust",
- "whisker-testing",
- "whisker-types",
+ "stiles-plugin",
+ "stiles-rust",
+ "stiles-testing",
+ "stiles-types",
 ]
 
 [[package]]
@@ -819,10 +819,10 @@ checksum = "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba"
 name = "split_binding"
 version = "0.1.0"
 dependencies = [
- "whisker-plugin",
- "whisker-rust",
- "whisker-testing",
- "whisker-types",
+ "stiles-plugin",
+ "stiles-rust",
+ "stiles-testing",
+ "stiles-types",
 ]
 
 [[package]]
@@ -857,6 +857,98 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.119",
+]
+
+[[package]]
+name = "stiles-codegen"
+version = "0.1.0"
+source = "git+https://github.com/aonyx-ai/stiles.git?rev=da1bcf8bd32c12803dd9ead45cd24dc018b80125#da1bcf8bd32c12803dd9ead45cd24dc018b80125"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "stiles-core"
+version = "0.1.0"
+source = "git+https://github.com/aonyx-ai/stiles.git?rev=da1bcf8bd32c12803dd9ead45cd24dc018b80125#da1bcf8bd32c12803dd9ead45cd24dc018b80125"
+dependencies = [
+ "bon",
+ "stiles-types",
+ "thiserror",
+ "tree-sitter",
+]
+
+[[package]]
+name = "stiles-macros"
+version = "0.1.0"
+source = "git+https://github.com/aonyx-ai/stiles.git?rev=da1bcf8bd32c12803dd9ead45cd24dc018b80125#da1bcf8bd32c12803dd9ead45cd24dc018b80125"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 3.0.3",
+]
+
+[[package]]
+name = "stiles-plugin"
+version = "0.1.0"
+source = "git+https://github.com/aonyx-ai/stiles.git?rev=da1bcf8bd32c12803dd9ead45cd24dc018b80125#da1bcf8bd32c12803dd9ead45cd24dc018b80125"
+dependencies = [
+ "stabby",
+ "stiles-rust",
+ "stiles-types",
+ "stiles-typescript",
+]
+
+[[package]]
+name = "stiles-rust"
+version = "0.1.0"
+source = "git+https://github.com/aonyx-ai/stiles.git?rev=da1bcf8bd32c12803dd9ead45cd24dc018b80125#da1bcf8bd32c12803dd9ead45cd24dc018b80125"
+dependencies = [
+ "bon",
+ "stabby",
+ "stiles-codegen",
+ "stiles-macros",
+ "stiles-types",
+ "tree-sitter",
+ "tree-sitter-rust",
+]
+
+[[package]]
+name = "stiles-testing"
+version = "0.1.0"
+source = "git+https://github.com/aonyx-ai/stiles.git?rev=da1bcf8bd32c12803dd9ead45cd24dc018b80125#da1bcf8bd32c12803dd9ead45cd24dc018b80125"
+dependencies = [
+ "stiles-core",
+ "stiles-types",
+ "tree-sitter",
+ "tree-sitter-rust",
+ "tree-sitter-typescript",
+]
+
+[[package]]
+name = "stiles-types"
+version = "0.1.0"
+source = "git+https://github.com/aonyx-ai/stiles.git?rev=da1bcf8bd32c12803dd9ead45cd24dc018b80125#da1bcf8bd32c12803dd9ead45cd24dc018b80125"
+dependencies = [
+ "bon",
+ "stabby",
+ "thiserror",
+ "tree-sitter",
+]
+
+[[package]]
+name = "stiles-typescript"
+version = "0.1.0"
+source = "git+https://github.com/aonyx-ai/stiles.git?rev=da1bcf8bd32c12803dd9ead45cd24dc018b80125#da1bcf8bd32c12803dd9ead45cd24dc018b80125"
+dependencies = [
+ "bon",
+ "stabby",
+ "stiles-codegen",
+ "stiles-macros",
+ "stiles-types",
+ "tree-sitter",
+ "tree-sitter-typescript",
 ]
 
 [[package]]
@@ -910,11 +1002,11 @@ dependencies = [
 name = "terminal_output"
 version = "0.1.0"
 dependencies = [
+ "stiles-plugin",
+ "stiles-rust",
+ "stiles-testing",
+ "stiles-types",
  "tree-sitter",
- "whisker-plugin",
- "whisker-rust",
- "whisker-testing",
- "whisker-types",
 ]
 
 [[package]]
@@ -941,11 +1033,11 @@ dependencies = [
 name = "todo_comment"
 version = "0.1.0"
 dependencies = [
- "whisker-plugin",
- "whisker-rust",
- "whisker-testing",
- "whisker-types",
- "whisker-typescript",
+ "stiles-plugin",
+ "stiles-rust",
+ "stiles-testing",
+ "stiles-types",
+ "stiles-typescript",
 ]
 
 [[package]]
@@ -1033,30 +1125,30 @@ checksum = "e6e4313cd5fcd3dad5cafa179702e2b244f760991f45397d14d4ebf38247da75"
 name = "unprefixed_submodule_path"
 version = "0.1.0"
 dependencies = [
- "whisker-plugin",
- "whisker-rust",
- "whisker-testing",
- "whisker-types",
+ "stiles-plugin",
+ "stiles-rust",
+ "stiles-testing",
+ "stiles-types",
 ]
 
 [[package]]
 name = "unseparated_test_body"
 version = "0.1.0"
 dependencies = [
- "whisker-plugin",
- "whisker-rust",
- "whisker-testing",
- "whisker-types",
+ "stiles-plugin",
+ "stiles-rust",
+ "stiles-testing",
+ "stiles-types",
 ]
 
 [[package]]
 name = "unsorted_test"
 version = "0.1.0"
 dependencies = [
- "whisker-plugin",
- "whisker-rust",
- "whisker-testing",
- "whisker-types",
+ "stiles-plugin",
+ "stiles-rust",
+ "stiles-testing",
+ "stiles-types",
 ]
 
 [[package]]
@@ -1069,105 +1161,13 @@ dependencies = [
 ]
 
 [[package]]
-name = "whisker-codegen"
-version = "0.1.0"
-source = "git+https://github.com/aonyx-ai/whisker.git?rev=289ee8cbf9ef071cddc48259415e6f6d69870a11#289ee8cbf9ef071cddc48259415e6f6d69870a11"
-dependencies = [
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "whisker-core"
-version = "0.1.0"
-source = "git+https://github.com/aonyx-ai/whisker.git?rev=289ee8cbf9ef071cddc48259415e6f6d69870a11#289ee8cbf9ef071cddc48259415e6f6d69870a11"
-dependencies = [
- "bon",
- "thiserror",
- "tree-sitter",
- "whisker-types",
-]
-
-[[package]]
-name = "whisker-macros"
-version = "0.1.0"
-source = "git+https://github.com/aonyx-ai/whisker.git?rev=289ee8cbf9ef071cddc48259415e6f6d69870a11#289ee8cbf9ef071cddc48259415e6f6d69870a11"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 3.0.3",
-]
-
-[[package]]
-name = "whisker-plugin"
-version = "0.1.0"
-source = "git+https://github.com/aonyx-ai/whisker.git?rev=289ee8cbf9ef071cddc48259415e6f6d69870a11#289ee8cbf9ef071cddc48259415e6f6d69870a11"
-dependencies = [
- "stabby",
- "whisker-rust",
- "whisker-types",
- "whisker-typescript",
-]
-
-[[package]]
-name = "whisker-rust"
-version = "0.1.0"
-source = "git+https://github.com/aonyx-ai/whisker.git?rev=289ee8cbf9ef071cddc48259415e6f6d69870a11#289ee8cbf9ef071cddc48259415e6f6d69870a11"
-dependencies = [
- "bon",
- "stabby",
- "tree-sitter",
- "tree-sitter-rust",
- "whisker-codegen",
- "whisker-macros",
- "whisker-types",
-]
-
-[[package]]
-name = "whisker-testing"
-version = "0.1.0"
-source = "git+https://github.com/aonyx-ai/whisker.git?rev=289ee8cbf9ef071cddc48259415e6f6d69870a11#289ee8cbf9ef071cddc48259415e6f6d69870a11"
-dependencies = [
- "tree-sitter",
- "tree-sitter-rust",
- "tree-sitter-typescript",
- "whisker-core",
- "whisker-types",
-]
-
-[[package]]
-name = "whisker-types"
-version = "0.1.0"
-source = "git+https://github.com/aonyx-ai/whisker.git?rev=289ee8cbf9ef071cddc48259415e6f6d69870a11#289ee8cbf9ef071cddc48259415e6f6d69870a11"
-dependencies = [
- "bon",
- "stabby",
- "thiserror",
- "tree-sitter",
-]
-
-[[package]]
-name = "whisker-typescript"
-version = "0.1.0"
-source = "git+https://github.com/aonyx-ai/whisker.git?rev=289ee8cbf9ef071cddc48259415e6f6d69870a11#289ee8cbf9ef071cddc48259415e6f6d69870a11"
-dependencies = [
- "bon",
- "stabby",
- "tree-sitter",
- "tree-sitter-typescript",
- "whisker-codegen",
- "whisker-macros",
- "whisker-types",
-]
-
-[[package]]
 name = "wildcard_match_arm"
 version = "0.1.0"
 dependencies = [
- "whisker-plugin",
- "whisker-rust",
- "whisker-testing",
- "whisker-types",
+ "stiles-plugin",
+ "stiles-rust",
+ "stiles-testing",
+ "stiles-types",
 ]
 
 [[package]]

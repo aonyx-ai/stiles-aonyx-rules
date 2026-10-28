@@ -1,13 +1,13 @@
 //! Whether a signature sits on a boundary that fixes it
 //!
-//! Whisker's guidance allows a primitive at a system boundary, and two
+//! Stiles's guidance allows a primitive at a system boundary, and two
 //! rules act on that: `lint.repeated-primitive-params` and
 //! `lint.bool-param`. Both ask the same question of the same signatures,
 //! under one option a project sets once, so they ask it here. A copy in
 //! each rule could drift. One rule would then exempt a function the other
 //! reports, which reads as a bug in whichever rule spoke.
 
-use whisker_types::DecoratedNode;
+use stiles_types::DecoratedNode;
 
 pub mod corpus;
 
@@ -110,8 +110,8 @@ fn carries_a_boundary_attribute(node: &DecoratedNode<'_>, attributes: &[String])
 
 #[cfg(test)]
 mod tests {
-    use whisker_testing::parse;
-    use whisker_types::{DecoratedTree, Language};
+    use stiles_testing::parse;
+    use stiles_types::{DecoratedTree, Language};
 
     use super::*;
 

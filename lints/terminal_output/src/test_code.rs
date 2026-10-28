@@ -1,4 +1,4 @@
-use whisker_types::DecoratedNode;
+use stiles_types::DecoratedNode;
 
 /// Returns whether `node` sits in code that only a test build compiles
 ///

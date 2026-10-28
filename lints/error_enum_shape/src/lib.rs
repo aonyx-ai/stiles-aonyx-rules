@@ -1,5 +1,5 @@
-use whisker_rust::{RuleId, RustLintPass, RustLintPassAdapter};
-use whisker_types::{DecoratedNode, Diagnostic, LintPass, Severity};
+use stiles_rust::{RuleId, RustLintPass, RustLintPassAdapter};
+use stiles_types::{DecoratedNode, Diagnostic, LintPass, Severity};
 
 const RULE_ID: RuleId = RuleId::new("lint.error-enum-shape");
 
@@ -49,14 +49,14 @@ const FAILED_TO: &str = "failed to";
 /// pub enum LoadPluginError {
 ///     #[error("failed to open {path}")]
 ///     UnreadableLibrary { path: PathBuf, source: libloading::Error },
-///     #[error("the plugin was built by {plugin}, this whisker by {host}")]
+///     #[error("the plugin was built by {plugin}, this stiles by {host}")]
 ///     RustcMismatch { host: String, plugin: String },
 /// }
 /// ```
 pub struct ErrorEnumShape;
 
 impl ErrorEnumShape {
-    /// Creates a boxed [`LintPass`] suitable for the whisker pipeline
+    /// Creates a boxed [`LintPass`] suitable for the stiles pipeline
     ///
     /// # Examples
     ///
@@ -331,18 +331,18 @@ impl RustLintPass for ErrorEnumShape {
 }
 
 #[cfg(feature = "plugin")]
-impl whisker_plugin::DeclaresRules for ErrorEnumShape {
+impl stiles_plugin::DeclaresRules for ErrorEnumShape {
     fn rules(&self) -> Vec<RuleId> {
         vec![RULE_ID]
     }
 }
 
-whisker_plugin::export_lints![rust: [ErrorEnumShape]];
+stiles_plugin::export_lints![rust: [ErrorEnumShape]];
 
 #[cfg(test)]
 mod tests {
-    use whisker_testing::{assert_diagnostic, assert_no_diagnostics, execute, parse};
-    use whisker_types::{Language, LintPass, Severity};
+    use stiles_testing::{assert_diagnostic, assert_no_diagnostics, execute, parse};
+    use stiles_types::{Language, LintPass, Severity};
 
     use super::*;
 
@@ -410,7 +410,7 @@ mod tests {
     #[test]
     fn conforming_enum_not_flagged() {
         let diagnostics = run(
-            "#[derive(Debug, Error)]\npub enum LoadPluginError {\n    #[error(\"failed to open {path}\")]\n    UnreadableLibrary { path: PathBuf, source: libloading::Error },\n    #[error(\"the plugin was built by {plugin}, this whisker by {host}\")]\n    RustcMismatch { host: String, plugin: String },\n}",
+            "#[derive(Debug, Error)]\npub enum LoadPluginError {\n    #[error(\"failed to open {path}\")]\n    UnreadableLibrary { path: PathBuf, source: libloading::Error },\n    #[error(\"the plugin was built by {plugin}, this stiles by {host}\")]\n    RustcMismatch { host: String, plugin: String },\n}",
         );
 
         assert_no_diagnostics(&diagnostics);

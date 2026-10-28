@@ -1,15 +1,15 @@
-# Every rule in this repository is a whisker plugin: a cdylib that whisker
+# Every rule in this repository is a stiles plugin: a cdylib that stiles
 # builds at check time and loads into its own process. Rust has no stable ABI
-# of its own, so whisker lays every type that crosses that boundary out with
+# of its own, so stiles lays every type that crosses that boundary out with
 # stabby, whose layouts hold under any compiler. A plugin is coherent with the
-# whisker that loads it when both lay those types out the same way, which
-# whisker checks with a protocol version and two fingerprints. The pin below is
+# stiles that loads it when both lay those types out the same way, which
+# stiles checks with a protocol version and two fingerprints. The pin below is
 # a commit so that the rules build against a known boundary, and a mismatch
 # refuses the plugin with an error. The toolchain this repository pins is its own choice.
 [workspace]
-# `lints/*` are the rules themselves, each a cdylib whisker loads.
+# `lints/*` are the rules themselves, each a cdylib stiles loads.
 # `crates/*` hold what more than one rule needs, as ordinary rlibs that
-# produce no library for whisker to find.
+# produce no library for stiles to find.
 members = ["crates/*", "lints/*"]
 
 # Opt-in to the new feature resolver introduced in Rust 1.85 and Edition 2024.
@@ -21,7 +21,7 @@ version = "0.1.0"
 edition = "2024"
 
 license = "Apache-2.0 OR MIT"
-repository = "https://github.com/aonyx-ai/whisker-aonyx-rules.git"
+repository = "https://github.com/aonyx-ai/stiles-aonyx-rules.git"
 
 [workspace.lints.clippy]
 missing_errors_doc = "warn"
@@ -32,23 +32,23 @@ missing_panics_doc = "warn"
 match_like_matches_macro = "allow"
 
 [workspace.dependencies]
-# A rule's own types take their builders from bon, as whisker's conventions
+# A rule's own types take their builders from bon, as stiles's conventions
 # ask. No bon type crosses the plugin boundary, so the pin does not cover it.
 bon = "3"
 boundary = { path = "crates/boundary" }
 doc_comment = { path = "crates/doc_comment" }
 proptest = "1"
 # `DecoratedNode::raw()` returns a `tree_sitter::Node`, which some rules name
-# directly. The version matches whisker's own so that the plugin and the host
+# directly. The version matches stiles's own so that the plugin and the host
 # agree on the type that crosses the boundary.
 tree-sitter = "0.27"
-# One pin for every rule. Whisker is not published, so these are git
-# dependencies. The commit decides which whisker source produced a plugin,
+# One pin for every rule. Stiles is not published, so these are git
+# dependencies. The commit decides which stiles source produced a plugin,
 # and a tag can be moved, so the pin is a commit and the release beside it
 # says which one. Renovate reads the pair through a custom manager and
 # moves both, the way it moves a pinned action.
-whisker-plugin = { git = "https://github.com/aonyx-ai/whisker.git", rev = "289ee8cbf9ef071cddc48259415e6f6d69870a11" }
-whisker-rust = { git = "https://github.com/aonyx-ai/whisker.git", rev = "289ee8cbf9ef071cddc48259415e6f6d69870a11", default-features = false }
-whisker-testing = { git = "https://github.com/aonyx-ai/whisker.git", rev = "289ee8cbf9ef071cddc48259415e6f6d69870a11" }
-whisker-types = { git = "https://github.com/aonyx-ai/whisker.git", rev = "289ee8cbf9ef071cddc48259415e6f6d69870a11" }
-whisker-typescript = { git = "https://github.com/aonyx-ai/whisker.git", rev = "289ee8cbf9ef071cddc48259415e6f6d69870a11", default-features = false }
+stiles-plugin = { git = "https://github.com/aonyx-ai/stiles.git", rev = "da1bcf8bd32c12803dd9ead45cd24dc018b80125" }
+stiles-rust = { git = "https://github.com/aonyx-ai/stiles.git", rev = "da1bcf8bd32c12803dd9ead45cd24dc018b80125", default-features = false }
+stiles-testing = { git = "https://github.com/aonyx-ai/stiles.git", rev = "da1bcf8bd32c12803dd9ead45cd24dc018b80125" }
+stiles-types = { git = "https://github.com/aonyx-ai/stiles.git", rev = "da1bcf8bd32c12803dd9ead45cd24dc018b80125" }
+stiles-typescript = { git = "https://github.com/aonyx-ai/stiles.git", rev = "da1bcf8bd32c12803dd9ead45cd24dc018b80125", default-features = false }
