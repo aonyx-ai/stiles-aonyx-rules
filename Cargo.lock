@@ -862,7 +862,7 @@ dependencies = [
 [[package]]
 name = "stiles-codegen"
 version = "0.1.0"
-source = "git+https://github.com/aonyx-ai/stiles.git?rev=da1bcf8bd32c12803dd9ead45cd24dc018b80125#da1bcf8bd32c12803dd9ead45cd24dc018b80125"
+source = "git+https://github.com/aonyx-ai/stiles.git?rev=626dc00ff53e3470707a2c88cbed8556279f9901#626dc00ff53e3470707a2c88cbed8556279f9901"
 dependencies = [
  "serde",
  "serde_json",
@@ -871,7 +871,7 @@ dependencies = [
 [[package]]
 name = "stiles-core"
 version = "0.1.0"
-source = "git+https://github.com/aonyx-ai/stiles.git?rev=da1bcf8bd32c12803dd9ead45cd24dc018b80125#da1bcf8bd32c12803dd9ead45cd24dc018b80125"
+source = "git+https://github.com/aonyx-ai/stiles.git?rev=626dc00ff53e3470707a2c88cbed8556279f9901#626dc00ff53e3470707a2c88cbed8556279f9901"
 dependencies = [
  "bon",
  "stiles-types",
@@ -882,7 +882,7 @@ dependencies = [
 [[package]]
 name = "stiles-macros"
 version = "0.1.0"
-source = "git+https://github.com/aonyx-ai/stiles.git?rev=da1bcf8bd32c12803dd9ead45cd24dc018b80125#da1bcf8bd32c12803dd9ead45cd24dc018b80125"
+source = "git+https://github.com/aonyx-ai/stiles.git?rev=626dc00ff53e3470707a2c88cbed8556279f9901#626dc00ff53e3470707a2c88cbed8556279f9901"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -892,7 +892,7 @@ dependencies = [
 [[package]]
 name = "stiles-plugin"
 version = "0.1.0"
-source = "git+https://github.com/aonyx-ai/stiles.git?rev=da1bcf8bd32c12803dd9ead45cd24dc018b80125#da1bcf8bd32c12803dd9ead45cd24dc018b80125"
+source = "git+https://github.com/aonyx-ai/stiles.git?rev=626dc00ff53e3470707a2c88cbed8556279f9901#626dc00ff53e3470707a2c88cbed8556279f9901"
 dependencies = [
  "stabby",
  "stiles-rust",
@@ -903,7 +903,7 @@ dependencies = [
 [[package]]
 name = "stiles-rust"
 version = "0.1.0"
-source = "git+https://github.com/aonyx-ai/stiles.git?rev=da1bcf8bd32c12803dd9ead45cd24dc018b80125#da1bcf8bd32c12803dd9ead45cd24dc018b80125"
+source = "git+https://github.com/aonyx-ai/stiles.git?rev=626dc00ff53e3470707a2c88cbed8556279f9901#626dc00ff53e3470707a2c88cbed8556279f9901"
 dependencies = [
  "bon",
  "stabby",
@@ -917,7 +917,7 @@ dependencies = [
 [[package]]
 name = "stiles-testing"
 version = "0.1.0"
-source = "git+https://github.com/aonyx-ai/stiles.git?rev=da1bcf8bd32c12803dd9ead45cd24dc018b80125#da1bcf8bd32c12803dd9ead45cd24dc018b80125"
+source = "git+https://github.com/aonyx-ai/stiles.git?rev=626dc00ff53e3470707a2c88cbed8556279f9901#626dc00ff53e3470707a2c88cbed8556279f9901"
 dependencies = [
  "stiles-core",
  "stiles-types",
@@ -929,7 +929,7 @@ dependencies = [
 [[package]]
 name = "stiles-types"
 version = "0.1.0"
-source = "git+https://github.com/aonyx-ai/stiles.git?rev=da1bcf8bd32c12803dd9ead45cd24dc018b80125#da1bcf8bd32c12803dd9ead45cd24dc018b80125"
+source = "git+https://github.com/aonyx-ai/stiles.git?rev=626dc00ff53e3470707a2c88cbed8556279f9901#626dc00ff53e3470707a2c88cbed8556279f9901"
 dependencies = [
  "bon",
  "stabby",
@@ -940,7 +940,7 @@ dependencies = [
 [[package]]
 name = "stiles-typescript"
 version = "0.1.0"
-source = "git+https://github.com/aonyx-ai/stiles.git?rev=da1bcf8bd32c12803dd9ead45cd24dc018b80125#da1bcf8bd32c12803dd9ead45cd24dc018b80125"
+source = "git+https://github.com/aonyx-ai/stiles.git?rev=626dc00ff53e3470707a2c88cbed8556279f9901#626dc00ff53e3470707a2c88cbed8556279f9901"
 dependencies = [
  "bon",
  "stabby",

@@ -47,8 +47,8 @@ tree-sitter = "0.27"
 # and a tag can be moved, so the pin is a commit and the release beside it
 # says which one. Renovate reads the pair through a custom manager and
 # moves both, the way it moves a pinned action.
-stiles-plugin = { git = "https://github.com/aonyx-ai/stiles.git", rev = "da1bcf8bd32c12803dd9ead45cd24dc018b80125" }
-stiles-rust = { git = "https://github.com/aonyx-ai/stiles.git", rev = "da1bcf8bd32c12803dd9ead45cd24dc018b80125", default-features = false }
-stiles-testing = { git = "https://github.com/aonyx-ai/stiles.git", rev = "da1bcf8bd32c12803dd9ead45cd24dc018b80125" }
-stiles-types = { git = "https://github.com/aonyx-ai/stiles.git", rev = "da1bcf8bd32c12803dd9ead45cd24dc018b80125" }
-stiles-typescript = { git = "https://github.com/aonyx-ai/stiles.git", rev = "da1bcf8bd32c12803dd9ead45cd24dc018b80125", default-features = false }
+stiles-plugin = { git = "https://github.com/aonyx-ai/stiles.git", rev = "626dc00ff53e3470707a2c88cbed8556279f9901" }
+stiles-rust = { git = "https://github.com/aonyx-ai/stiles.git", rev = "626dc00ff53e3470707a2c88cbed8556279f9901", default-features = false }
+stiles-testing = { git = "https://github.com/aonyx-ai/stiles.git", rev = "626dc00ff53e3470707a2c88cbed8556279f9901" }
+stiles-types = { git = "https://github.com/aonyx-ai/stiles.git", rev = "626dc00ff53e3470707a2c88cbed8556279f9901" }
+stiles-typescript = { git = "https://github.com/aonyx-ai/stiles.git", rev = "626dc00ff53e3470707a2c88cbed8556279f9901", default-features = false }
