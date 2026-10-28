@@ -1,5 +1,5 @@
 # A lint is its own cargo package, built as a cdylib and loaded by stiles at
-# check time. Every rule here is built against one pinned stiles revision,
+# check time. Every rule here is built against one pinned stiles release,
 # named once in the workspace manifest, because the handshake compares the
 # stiles a plugin was compiled against with the stiles loading it.
 [package]

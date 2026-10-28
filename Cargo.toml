@@ -4,8 +4,9 @@
 # stabby, whose layouts hold under any compiler. A plugin is coherent with the
 # stiles that loads it when both lay those types out the same way, which
 # stiles checks with a protocol version and two fingerprints. The pin below is
-# a commit so that the rules build against a known boundary, and a mismatch
-# refuses the plugin with an error. The toolchain this repository pins is its own choice.
+# one stiles release so that the rules build against a known boundary, and a
+# mismatch refuses the plugin with an error. The toolchain this repository
+# pins is its own choice.
 [workspace]
 # `lints/*` are the rules themselves, each a cdylib stiles loads.
 # `crates/*` hold what more than one rule needs, as ordinary rlibs that
@@ -45,13 +46,11 @@ proptest = "1"
 # directly. The version matches stiles's own so that the plugin and the host
 # agree on the type that crosses the boundary.
 tree-sitter = "0.27"
-# One pin for every rule. Stiles is not published, so these are git
-# dependencies. The commit decides which stiles source produced a plugin,
-# and a tag can be moved, so the pin is a commit and the release beside it
-# says which one. Renovate reads the pair through a custom manager and
-# moves both, the way it moves a pinned action.
-stiles-plugin = { git = "https://github.com/aonyx-ai/stiles.git", rev = "626dc00ff53e3470707a2c88cbed8556279f9901" }
-stiles-rust = { git = "https://github.com/aonyx-ai/stiles.git", rev = "626dc00ff53e3470707a2c88cbed8556279f9901", default-features = false }
-stiles-testing = { git = "https://github.com/aonyx-ai/stiles.git", rev = "626dc00ff53e3470707a2c88cbed8556279f9901" }
-stiles-types = { git = "https://github.com/aonyx-ai/stiles.git", rev = "626dc00ff53e3470707a2c88cbed8556279f9901" }
-stiles-typescript = { git = "https://github.com/aonyx-ai/stiles.git", rev = "626dc00ff53e3470707a2c88cbed8556279f9901", default-features = false }
+# One pin for every rule: each stiles crate names the same exact release.
+# A plugin built against one stiles is refused by another, so the version
+# is exact and moves for every crate at once.
+stiles-plugin = "=0.1.0"
+stiles-rust = { version = "=0.1.0", default-features = false }
+stiles-testing = "=0.1.0"
+stiles-types = "=0.1.0"
+stiles-typescript = { version = "=0.1.0", default-features = false }

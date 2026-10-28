@@ -19,7 +19,7 @@ test:
 
 # Check this repository with the rules in it
 #
-# The stiles binary must come from the revision `Cargo.toml` pins, because a
+# The stiles binary must be the release `Cargo.toml` pins, because a
 # plugin built against one stiles is refused by any other.
 check-self stiles="stiles":
     {{ stiles }} check .
@@ -65,6 +65,22 @@ package-lints rev stiles:
     rm -rf "dist/${name}"
     (cd dist && shasum -a 256 "${name}.tar.gz" > "${name}.tar.gz.sha256")
 
-# Print the stiles revision every rule is built against
+# Download the stiles release that every rule is built against, for one target
+#
+# The binary lands at `target/stiles/stiles`. CI runs it, so that the rules
+# are checked and packaged by the same stiles that they build against.
+fetch-stiles target:
+    #!/usr/bin/env -S bash -euo pipefail
+    version="$({{ quote(just_executable()) }} --justfile {{ quote(justfile()) }} pin)"
+    name="stiles-${version}-{{ target }}"
+    rm -rf target/stiles
+    mkdir -p target/stiles
+    gh release download "stiles@${version}" --repo aonyx-ai/stiles \
+        --dir target/stiles --pattern "${name}.tar.gz" --pattern "${name}.tar.gz.sha256"
+    (cd target/stiles && shasum -a 256 -c "${name}.tar.gz.sha256")
+    tar -xzf "target/stiles/${name}.tar.gz" -C target/stiles --strip-components 1 "${name}/stiles"
+    target/stiles/stiles --version
+
+# Print the stiles release every rule is built against
 pin:
-    @grep -m1 'rev = ' Cargo.toml | sed 's/.*rev = "\([0-9a-f]*\)".*/\1/'
+    @grep -m1 '^stiles-plugin = ' Cargo.toml | sed 's/.*"=\([^"]*\)".*/\1/'

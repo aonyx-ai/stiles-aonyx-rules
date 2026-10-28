@@ -34,7 +34,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          path: rules
           persist-credentials: false
 
       - name: Install Just
@@ -42,42 +41,29 @@ jobs:
         with:
           tool: just
 
-      # The pin lives in the workspace manifest, so this reads it rather
-      # than repeating it. Stiles refuses a plugin built against any other
-      # revision, and the tag it asks for comes from that same stiles.
-      - name: Read the pinned stiles revision
-        id: pin
-        run: echo "rev=$(just --justfile rules/justfile --working-directory rules pin)" >> "$GITHUB_OUTPUT"
-
-      - name: Checkout stiles at the pinned revision
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: aonyx-ai/stiles
-          ref: ${{ steps.pin.outputs.rev }}
-          path: stiles
-          persist-credentials: false
+      # The stiles release that the workspace manifest pins. Stiles refuses a
+      # plugin built against any other release, and the tag it asks for
+      # comes from that same stiles.
+      - name: Download the pinned stiles
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET: ${{ matrix.target }}
+        run: just fetch-stiles "${TARGET}"
 
       # The rules build with the toolchain this repository pins. Stiles
       # loads them regardless of which rustc built them.
       - name: Install the pinned toolchain
-        working-directory: rules
         run: rustup toolchain install
 
       # This job deliberately keeps no Cargo cache. A pull request can write
       # to one, and these archives are loaded into stiles's own process on
       # someone else's machine.
-      - name: Build stiles at the pin
-        working-directory: stiles
-        run: cargo build --release --locked -p stiles
-
       - name: Assemble the archive
-        working-directory: rules
         env:
           REV: ${{ github.sha }}
-        run: just package-lints "${REV}" ../stiles/target/release/stiles
+        run: just package-lints "${REV}" target/stiles/stiles
 
       - name: Attach the archive to the release
-        working-directory: rules
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.event.release.tag_name }}

@@ -75,12 +75,13 @@ type all carry the same name in their own spelling: `todo_comment`,
 
 ### The pin is load-bearing
 
-`[workspace.dependencies]` names one stiles revision. Stiles loads a plugin
-only when its protocol version and layout fingerprints match stiles's own, so
-the rules must build against a stiles whose plugin boundary matches the
-stiles that loads them. The compiler plays no part, so `rust-toolchain.toml`
-is this repository's own choice. `README.md` describes the bump. Do not change
-the pin to make a build pass.
+`[workspace.dependencies]` names one stiles release, as an exact version that
+every stiles crate shares. Stiles loads a plugin only when its protocol
+version and layout fingerprints match stiles's own, so the rules must build
+against a stiles whose plugin boundary matches the stiles that loads them.
+The compiler plays no part, so `rust-toolchain.toml` is this repository's own
+choice. `README.md` describes the bump. Do not change the pin to make a build
+pass.
 
 ### A change that users notice adds a changeset
 
