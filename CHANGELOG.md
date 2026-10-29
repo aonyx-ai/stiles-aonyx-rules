@@ -8,6 +8,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-10-29
+
+### Changed
+
+- The rules build against stiles 0.1.0 from crates.io. The prebuilt rules need plugin ABI 0.6 ([#106])
+- Every rule reports its findings as errors, so a project that adopts this release fails `stiles check` on any finding ([#107])
+
 ## [0.1.0] - 2026-10-28
 
 ### Changed
@@ -90,3 +97,6 @@ and this project adheres to
 [0.1.0-rc.1]: https://github.com/aonyx-ai/stiles-aonyx-rules/releases/tag/v0.1.0-rc.1
 [0.1.0]: https://github.com/aonyx-ai/stiles-aonyx-rules/releases/tag/stiles-aonyx-rules@0.1.0
 [#103]: https://github.com/aonyx-ai/stiles-aonyx-rules/pull/103
+[0.2.0]: https://github.com/aonyx-ai/stiles-aonyx-rules/releases/tag/stiles-aonyx-rules@0.2.0
+[#106]: https://github.com/aonyx-ai/stiles-aonyx-rules/pull/106
+[#107]: https://github.com/aonyx-ai/stiles-aonyx-rules/pull/107
