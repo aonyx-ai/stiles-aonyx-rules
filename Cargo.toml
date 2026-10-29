@@ -21,7 +21,7 @@ resolver = "3"
 # Otto releases every crate that inherits this version as one unit. The
 # version is the last release, and Otto moves it at the next one.
 [workspace.package]
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 
 license = "Apache-2.0 OR MIT"
