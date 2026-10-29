@@ -514,6 +514,7 @@ dependencies = [
 name = "multi_param_constructor"
 version = "0.2.0"
 dependencies = [
+ "attribute",
  "stiles-plugin",
  "stiles-rust",
  "stiles-testing",
@@ -715,6 +716,7 @@ dependencies = [
 name = "repeated_primitive_params"
 version = "0.2.0"
 dependencies = [
+ "attribute",
  "boundary",
  "stiles-plugin",
  "stiles-rust",
