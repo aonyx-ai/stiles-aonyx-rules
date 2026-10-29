@@ -22,6 +22,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "attribute"
+version = "0.2.0"
+dependencies = [
+ "stiles-testing",
+ "stiles-types",
+]
+
+[[package]]
 name = "autocfg"
 version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -611,6 +619,7 @@ dependencies = [
 name = "pub_field"
 version = "0.2.0"
 dependencies = [
+ "attribute",
  "stiles-plugin",
  "stiles-rust",
  "stiles-testing",

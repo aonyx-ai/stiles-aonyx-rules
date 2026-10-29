@@ -36,6 +36,7 @@ missing_panics_doc = "warn"
 match_like_matches_macro = "allow"
 
 [workspace.dependencies]
+attribute = { path = "crates/attribute" }
 # A rule's own types take their builders from bon, as stiles's conventions
 # ask. No bon type crosses the plugin boundary, so the pin does not cover it.
 bon = "3"
