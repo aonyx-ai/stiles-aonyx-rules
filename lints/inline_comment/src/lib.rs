@@ -11,9 +11,9 @@ const SAFETY_MARKER: &str = "SAFETY:";
 
 /// The openings of a TypeScript comment that a tool reads
 ///
-/// Each one is an instruction rather than an explanation: the TypeScript
-/// compiler reads `@ts-expect-error`, a linter or formatter reads its
-/// suppressions, a coverage tool reads its ignores, a bundler reads its
+/// Each one is an instruction rather than an explanation. The TypeScript
+/// compiler reads `@ts-expect-error`, and a linter or formatter reads its
+/// suppressions. A coverage tool reads its ignores, a bundler reads its
 /// hints and purity annotations, and a JSX compiler reads its pragmas.
 /// Removing one changes what a tool does, so the rule leaves them alone.
 const TOOL_DIRECTIVES: &[&str] = &[
@@ -49,6 +49,23 @@ const TOOL_DIRECTIVES: &[&str] = &[
 /// reads, such as `// @ts-expect-error`, a linter's suppression, or a
 /// `/// <reference />` directive, which [`TOOL_DIRECTIVES`] lists. A
 /// directive is one line, so the prose comment under it is still reported.
+///
+/// # Examples
+///
+/// ```
+/// use inline_comment::InlineComment;
+/// use stiles_rust::RustLintPassAdapter;
+/// use stiles_testing::{execute, parse};
+/// use stiles_types::{Language, LintPass};
+///
+/// let tree = parse("fn f() {\n    // an ordinary note\n    g();\n}", Language::Rust);
+/// let pass: Box<dyn LintPass> = Box::new(RustLintPassAdapter::new(InlineComment));
+/// let mut passes = vec![pass];
+///
+/// let diagnostics = execute(&tree, &mut passes);
+///
+/// assert_eq!(diagnostics.len(), 1);
+/// ```
 pub struct InlineComment;
 
 /// The grammar a comment was parsed with, which decides how it is read
@@ -300,7 +317,7 @@ fn check_comment(node: &DecoratedNode<'_>, syntax: Syntax) -> Vec<Diagnostic> {
     vec![
         Diagnostic::builder()
             .rule_id(RuleId::new("lint.inline-comment"))
-            .severity(Severity::Warn)
+            .severity(Severity::Error)
             .message(message)
             .span(span)
             .build(),
@@ -542,7 +559,7 @@ mod tests {
 
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.inline-comment")
-            .has_severity(Severity::Warn)
+            .has_severity(Severity::Error)
             .message_contains("section divider");
     }
 
@@ -640,12 +657,12 @@ mod tests {
     }
 
     #[test]
-    fn module_level_comment_is_flagged_with_a_warning_that_suggests_a_doc_comment() {
+    fn module_level_comment_is_flagged_with_an_error_that_suggests_a_doc_comment() {
         let diagnostics = run("use std::fmt;\n// helpers live below\nfn f() {}");
 
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.inline-comment")
-            .has_severity(Severity::Warn)
+            .has_severity(Severity::Error)
             .message_contains("doc comment");
     }
 
@@ -778,6 +795,12 @@ mod tests {
     }
 
     #[test]
+    fn trait_send_syntax() {
+        fn assert_send<T: Send>() {}
+        assert_send::<Syntax>();
+    }
+
+    #[test]
     fn trait_sync() {
         fn assert_sync<T: Sync>() {}
         assert_sync::<InlineComment>();
@@ -790,6 +813,12 @@ mod tests {
     }
 
     #[test]
+    fn trait_sync_syntax() {
+        fn assert_sync<T: Sync>() {}
+        assert_sync::<Syntax>();
+    }
+
+    #[test]
     fn trait_unpin() {
         fn assert_unpin<T: Unpin>() {}
         assert_unpin::<InlineComment>();
@@ -799,6 +828,12 @@ mod tests {
     fn trait_unpin_comment_kind() {
         fn assert_unpin<T: Unpin>() {}
         assert_unpin::<CommentKind>();
+    }
+
+    #[test]
+    fn trait_unpin_syntax() {
+        fn assert_unpin<T: Unpin>() {}
+        assert_unpin::<Syntax>();
     }
 
     mod typescript {

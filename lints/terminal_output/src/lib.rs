@@ -43,6 +43,23 @@ const PRINT_MACROS: [&str; 4] = ["print", "println", "eprint", "eprintln"];
 /// and `examples`. An example is a program that shows its output to a
 /// person, like `main.rs`. Code inside a macro argument or a macro body is
 /// invisible to the rule, because tree-sitter does not parse it as code.
+///
+/// # Examples
+///
+/// ```
+/// use stiles_rust::RustLintPassAdapter;
+/// use stiles_testing::{execute, parse};
+/// use stiles_types::{Language, LintPass};
+/// use terminal_output::TerminalOutput;
+///
+/// let tree = parse("fn run() { println!(\"building\"); }", Language::Rust);
+/// let pass: Box<dyn LintPass> = Box::new(RustLintPassAdapter::new(TerminalOutput));
+/// let mut passes = vec![pass];
+///
+/// let diagnostics = execute(&tree, &mut passes);
+///
+/// assert_eq!(diagnostics.len(), 1);
+/// ```
 pub struct TerminalOutput;
 
 impl RustLintPass for TerminalOutput {
@@ -136,7 +153,7 @@ fn report(node: &DecoratedNode<'_>, message: String) -> Vec<Diagnostic> {
     vec![
         Diagnostic::builder()
             .rule_id(RULE_ID)
-            .severity(Severity::Warn)
+            .severity(Severity::Error)
             .message(message)
             .span(node.span())
             .build(),
@@ -491,7 +508,7 @@ mod tests {
 
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.terminal-output")
-            .has_severity(Severity::Warn)
+            .has_severity(Severity::Error)
             .has_span(LIBRARY, 9, 22);
     }
 

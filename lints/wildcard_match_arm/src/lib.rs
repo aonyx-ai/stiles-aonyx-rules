@@ -8,6 +8,33 @@ use stiles_types::{DecoratedNode, Diagnostic, Severity};
 /// enum. Explicit matching forces you to handle each variant
 /// deliberately. The lint allows wildcards on non-enum types and on
 /// external `#[non_exhaustive]` enums where a wildcard is required.
+///
+/// # Examples
+///
+/// The rule reads the type of the scrutinee, which the Rust provider attaches
+/// as a decoration. This example attaches it by hand.
+///
+/// ```
+/// use stiles_rust::RustLintPassAdapter;
+/// use stiles_rust::decorations::ResolvedType;
+/// use stiles_testing::{decorate, execute, parse};
+/// use stiles_types::{DecorationMap, Language, LintPass};
+/// use wildcard_match_arm::WildcardMatchArm;
+///
+/// let mut tree = parse("fn f() { match x { A => {} _ => {} } }", Language::Rust);
+/// let function = tree.root_node().named_child(0).unwrap();
+/// let statement = function.child_by_field_name("body").unwrap().named_child(0).unwrap();
+/// let scrutinee = statement.named_child(0).unwrap().child_by_field_name("value").unwrap();
+/// let mut decorations = DecorationMap::new();
+/// decorations.insert(scrutinee.id(), ResolvedType::new("Direction".into()).with_enum(true));
+/// decorate(&mut tree, decorations);
+/// let pass: Box<dyn LintPass> = Box::new(RustLintPassAdapter::new(WildcardMatchArm));
+/// let mut passes = vec![pass];
+///
+/// let diagnostics = execute(&tree, &mut passes);
+///
+/// assert_eq!(diagnostics.len(), 1);
+/// ```
 pub struct WildcardMatchArm;
 
 impl RustLintPass for WildcardMatchArm {
@@ -46,7 +73,7 @@ impl RustLintPass for WildcardMatchArm {
                 diagnostics.push(
                     Diagnostic::builder()
                         .rule_id(RuleId::new("lint.wildcard-match-arm"))
-                        .severity(Severity::Warn)
+                        .severity(Severity::Error)
                         .message("wildcard match arm hides unhandled variants")
                         .span(pattern.span())
                         .build(),
@@ -129,7 +156,7 @@ mod tests {
     }
 
     #[test]
-    fn detect_with_enum_scrutinee_flags_wildcard_with_a_warning() {
+    fn detect_with_enum_scrutinee_flags_wildcard_with_an_error() {
         let source = "fn f() { match x { A => {} _ => {} } }";
         let mut tree = parse(source, Language::Rust);
         let scrutinee_id = find_scrutinee_id(&tree);
@@ -144,7 +171,7 @@ mod tests {
 
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.wildcard-match-arm")
-            .has_severity(Severity::Warn)
+            .has_severity(Severity::Error)
             .message_contains("wildcard");
     }
 
@@ -239,7 +266,7 @@ mod tests {
     }
 
     #[test]
-    fn non_exhaustive_local_enum_is_flagged_as_a_warning() {
+    fn non_exhaustive_local_enum_is_flagged_as_an_error() {
         let source = "fn f() { match x { A => {} _ => {} } }";
         let mut tree = parse(source, Language::Rust);
         let scrutinee_id = find_scrutinee_id(&tree);
@@ -255,7 +282,7 @@ mod tests {
 
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.wildcard-match-arm")
-            .has_severity(Severity::Warn);
+            .has_severity(Severity::Error);
     }
 
     #[test]

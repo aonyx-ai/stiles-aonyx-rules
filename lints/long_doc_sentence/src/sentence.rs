@@ -1,3 +1,5 @@
+use std::ops::Range;
+
 use crate::doc_line::DocLine;
 
 /// Abbreviations that end in a period but never end a sentence
@@ -168,7 +170,18 @@ impl Prose {
 struct Fence {
     character: u8,
     length: usize,
-    labeled: bool,
+    info: InfoString,
+}
+
+/// Whether a fence line carries a label, such as `rust`, after its run
+///
+/// A labeled run only opens a block, so it never closes one.
+#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
+enum InfoString {
+    /// Nothing but whitespace follows the run
+    Absent,
+    /// A label follows the run
+    Present,
 }
 
 impl Fence {
@@ -184,16 +197,32 @@ impl Fence {
             return None;
         }
 
+        let info = match text[length..].trim().is_empty() {
+            true => InfoString::Absent,
+            false => InfoString::Present,
+        };
+
         Some(Self {
             character,
             length,
-            labeled: !text[length..].trim().is_empty(),
+            info,
         })
     }
 
     /// Returns whether this fence closes the block that `opened` started
     fn closes(&self, opened: Self) -> bool {
-        self.character == opened.character && self.length >= opened.length && !self.labeled
+        let Self {
+            character,
+            length,
+            info,
+        } = *self;
+        let Self {
+            character: opened_character,
+            length: opened_length,
+            ..
+        } = opened;
+
+        character == opened_character && length >= opened_length && info == InfoString::Absent
     }
 }
 
@@ -250,10 +279,11 @@ fn mask_code_spans(text: &str) -> String {
         }
 
         let fence = backtick_run(bytes, index);
-        masked.push_str(&text[index..index + fence]);
-        index += fence;
+        let opening = index..index + fence;
+        masked.push_str(&text[opening.clone()]);
+        index = opening.end;
 
-        let Some(close) = closing_backticks(bytes, index, fence) else {
+        let Some(close) = closing_backticks(bytes, opening) else {
             continue;
         };
         for _ in index..close {
@@ -271,11 +301,13 @@ fn backtick_run(bytes: &[u8], index: usize) -> usize {
     bytes[index..].iter().take_while(|&&b| b == b'`').count()
 }
 
-/// Finds the run of exactly `fence` backticks that closes a code span
+/// Finds the run of backticks that closes the code span `opening` opened
 ///
-/// A span that never closes yields nothing, and the text stays unmasked.
-fn closing_backticks(bytes: &[u8], from: usize, fence: usize) -> Option<usize> {
-    let mut index = from;
+/// The closing run has exactly the width of the opening run. A span that
+/// never closes yields nothing, and the text stays unmasked.
+fn closing_backticks(bytes: &[u8], opening: Range<usize>) -> Option<usize> {
+    let fence = opening.len();
+    let mut index = opening.end;
     while index < bytes.len() {
         if bytes[index] != b'`' {
             index += 1;
@@ -311,7 +343,7 @@ fn split(text: &str) -> Vec<(usize, usize)> {
             index = end;
             continue;
         }
-        if !ends_sentence(text, start, index, end) {
+        if !ends_sentence(text, start..end, index) {
             index = end;
             continue;
         }
@@ -328,7 +360,10 @@ fn split(text: &str) -> Vec<(usize, usize)> {
     ranges
 }
 
-/// Decides whether the terminator at `at` ends a sentence
+/// Decides whether the terminator at `at` ends the `sentence` it closes
+///
+/// The sentence runs from its first byte to the end of the closers after
+/// the terminator.
 ///
 /// An abbreviation and a sentence end look the same. For a period, the word
 /// before it decides. A `!` or a `?` also needs the word after it, because a
@@ -337,7 +372,8 @@ fn split(text: &str) -> Vec<(usize, usize)> {
 /// The word after a period decides nothing. Rust prose starts sentences with
 /// names such as `rust-analyzer`, so lower case is no sign that the sentence
 /// goes on.
-fn ends_sentence(text: &str, start: usize, at: usize, end: usize) -> bool {
+fn ends_sentence(text: &str, sentence: Range<usize>, at: usize) -> bool {
+    let Range { start, end } = sentence;
     let word = text[start..at]
         .rfind(char::is_whitespace)
         .map_or(start, |offset| start + offset + 1);
@@ -697,6 +733,12 @@ mod tests {
     }
 
     #[test]
+    fn trait_send_holds_for_info_string() {
+        fn assert_send<T: Send>() {}
+        assert_send::<InfoString>();
+    }
+
+    #[test]
     fn trait_send_holds_for_prose() {
         fn assert_send<T: Send>() {}
         assert_send::<Prose>();
@@ -715,6 +757,12 @@ mod tests {
     }
 
     #[test]
+    fn trait_sync_holds_for_info_string() {
+        fn assert_sync<T: Sync>() {}
+        assert_sync::<InfoString>();
+    }
+
+    #[test]
     fn trait_sync_holds_for_prose() {
         fn assert_sync<T: Sync>() {}
         assert_sync::<Prose>();
@@ -730,6 +778,12 @@ mod tests {
     fn trait_unpin_holds_for_fence() {
         fn assert_unpin<T: Unpin>() {}
         assert_unpin::<Fence>();
+    }
+
+    #[test]
+    fn trait_unpin_holds_for_info_string() {
+        fn assert_unpin<T: Unpin>() {}
+        assert_unpin::<InfoString>();
     }
 
     #[test]

@@ -67,7 +67,7 @@ fn check_function(function: &DecoratedNode<'_>) -> Option<Diagnostic> {
     Some(
         Diagnostic::builder()
             .rule_id(RULE_ID)
-            .severity(Severity::Warn)
+            .severity(Severity::Error)
             .message(format!(
                 "test `{}` makes {} assertions; split it into one test per assertion",
                 name.text(),
@@ -308,7 +308,7 @@ mod tests {
 
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.multi-assert-test")
-            .has_severity(Severity::Warn)
+            .has_severity(Severity::Error)
             .message_contains("test `parses` makes 2 assertions");
     }
 

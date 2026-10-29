@@ -77,7 +77,7 @@ fn check_scope(scope: &DecoratedNode<'_>) -> Vec<Diagnostic> {
         diagnostics.push(
             Diagnostic::builder()
                 .rule_id(RULE_ID)
-                .severity(Severity::Warn)
+                .severity(Severity::Error)
                 .message(format!(
                     "test `{key}` is out of alphabetical order; move it before `{target}`"
                 ))
@@ -288,7 +288,7 @@ mod tests {
 
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.unsorted-test")
-            .has_severity(Severity::Warn)
+            .has_severity(Severity::Error)
             .has_span("<test>", start, start + 1);
     }
 

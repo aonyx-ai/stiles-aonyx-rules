@@ -112,7 +112,7 @@ impl CommentedOutCode {
             Fragment::Code => vec![
                 Diagnostic::builder()
                     .rule_id(RuleId::new("lint.commented-out-code"))
-                    .severity(Severity::Warn)
+                    .severity(Severity::Error)
                     .message("remove this commented-out code; version control keeps the history")
                     .span(span)
                     .build(),
@@ -240,8 +240,8 @@ fn strip_star_margin(body: &str) -> String {
 /// Returns whether only whitespace comes before `node` on its line
 ///
 /// The rule judges a trailing comment by itself. Joining it with the
-/// comment below would splice a prose remark onto a statement, so the
-/// pair would fail to parse and the commented-out code on the lower line
+/// comment below would splice a prose remark onto a statement. The pair
+/// would then fail to parse, and the commented-out code on the lower line
 /// would go unreported.
 fn starts_its_own_line(node: &DecoratedNode<'_>) -> bool {
     match node.raw().prev_sibling() {
@@ -522,12 +522,12 @@ mod tests {
     }
 
     #[test]
-    fn commented_out_function_is_flagged_as_a_commented_out_code_warning() {
+    fn commented_out_function_is_flagged_as_a_commented_out_code_error() {
         let diagnostics = check("// fn old_way() { }\nfn f() {}");
 
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.commented-out-code")
-            .has_severity(Severity::Warn)
+            .has_severity(Severity::Error)
             .message_contains("commented-out code");
     }
 

@@ -36,6 +36,23 @@ const ATTACHED_KINDS: &[&str] = &[
 /// comes before the comment, the summary can lie in that text, so the rule
 /// stays silent. A summary that runs to the end of the comment can also
 /// continue in later docs of the same item. The rule stays silent then too.
+///
+/// # Examples
+///
+/// ```
+/// use doc_summary_period::DocSummaryPeriod;
+/// use stiles_rust::RustLintPassAdapter;
+/// use stiles_testing::{execute, parse};
+/// use stiles_types::{Language, LintPass};
+///
+/// let tree = parse("/// Returns the length.\nfn len() {}", Language::Rust);
+/// let pass: Box<dyn LintPass> = Box::new(RustLintPassAdapter::new(DocSummaryPeriod));
+/// let mut passes = vec![pass];
+///
+/// let diagnostics = execute(&tree, &mut passes);
+///
+/// assert_eq!(diagnostics.len(), 1);
+/// ```
 pub struct DocSummaryPeriod;
 
 /// Which item a doc comment or a doc attribute documents
@@ -86,7 +103,7 @@ fn report(node: &DecoratedNode<'_>) -> Option<Diagnostic> {
     Some(
         Diagnostic::builder()
             .rule_id(RULE_ID)
-            .severity(Severity::Warn)
+            .severity(Severity::Error)
             .message("doc summary ends with a period")
             .span(
                 Span::builder()
@@ -318,7 +335,7 @@ mod tests {
         assert_eq!(&source[span.start()..span.end()], ".");
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.doc-summary-period")
-            .has_severity(Severity::Warn)
+            .has_severity(Severity::Error)
             .message_contains("doc summary ends with a period");
         span.start()
     }

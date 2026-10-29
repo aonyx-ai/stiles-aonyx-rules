@@ -109,7 +109,7 @@ fn check_function(function: &DecoratedNode<'_>) -> Option<Diagnostic> {
     Some(
         Diagnostic::builder()
             .rule_id(RULE_ID)
-            .severity(Severity::Warn)
+            .severity(Severity::Error)
             .message(format!(
                 "`{}` builds `{}` from {count} positional parameters; {advice}",
                 name.text(),
@@ -294,7 +294,7 @@ mod tests {
         assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.multi-param-constructor")
-            .has_severity(Severity::Warn);
+            .has_severity(Severity::Error);
     }
 
     #[test]

@@ -1,3 +1,5 @@
+use std::ops::Range;
+
 use stiles_rust::{RuleId, RustLintPass};
 use stiles_types::{DecoratedNode, Diagnostic, Severity};
 
@@ -11,6 +13,28 @@ const RULE_ID: RuleId = RuleId::new("lint.split-binding");
 /// sits inside the second binding's initializer. The two names differ but
 /// share their last word. That second condition spares `path` and `file`,
 /// which name two values rather than one.
+///
+/// # Examples
+///
+/// ```
+/// use split_binding::SplitBinding;
+/// use stiles_rust::RustLintPassAdapter;
+/// use stiles_testing::{execute, parse};
+/// use stiles_types::{Language, LintPass};
+///
+/// let source = "fn f() {
+///     let raw_input = read();
+///     let trimmed_input = raw_input.trim();
+///     use_it(trimmed_input);
+/// }";
+/// let tree = parse(source, Language::Rust);
+/// let pass: Box<dyn LintPass> = Box::new(RustLintPassAdapter::new(SplitBinding));
+/// let mut passes = vec![pass];
+///
+/// let diagnostics = execute(&tree, &mut passes);
+///
+/// assert_eq!(diagnostics.len(), 1);
+/// ```
 pub struct SplitBinding;
 
 /// A `let` statement that binds one plain, immutable name to a value
@@ -19,7 +43,7 @@ pub struct SplitBinding;
 /// `let ... else`, a `mut` binding, a name that starts with `_`, and a `let`
 /// with no value.
 struct Binding<'a> {
-    name: &'a str,
+    name: Name<'a>,
     pattern: DecoratedNode<'a>,
     value: DecoratedNode<'a>,
     end: usize,
@@ -49,6 +73,7 @@ impl<'a> Binding<'a> {
         if name.starts_with('_') {
             return None;
         }
+        let name = Name(name);
 
         let value = statement.child_by_field_name("value")?;
         let end = statement.raw().end_byte();
@@ -59,6 +84,53 @@ impl<'a> Binding<'a> {
             value,
             end,
         })
+    }
+}
+
+/// The name a `let` statement binds
+#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
+struct Name<'a>(&'a str);
+
+impl<'a> Name<'a> {
+    /// Returns the name as the source spells it
+    fn as_str(self) -> &'a str {
+        let Self(name) = self;
+        name
+    }
+
+    /// Returns whether `text` captures this name inline, as `{name}` or
+    /// `{name:`
+    ///
+    /// An inline capture such as `println!("{raw_input}")` reads the binding
+    /// without an `identifier` node, so the rule must find it in the text. The
+    /// check is textual, so a match in any other string also counts.
+    fn is_captured_by_format(self, text: &str) -> bool {
+        let Self(name) = self;
+        text.contains(&format!("{{{name}}}")) || text.contains(&format!("{{{name}:"))
+    }
+
+    /// Returns the last word this name shares with a differing `other`
+    ///
+    /// A shared last word is the rule's proxy for one value at two stages, and
+    /// the diagnostic offers that word as the name to keep. A word that does
+    /// not begin with a letter is a disambiguator rather than a head noun, so
+    /// `left_1` and `right_1` share nothing.
+    fn shared_head(self, other: Name<'_>) -> Option<&'a str> {
+        let Self(name) = self;
+        let Name(other) = other;
+        if name == other {
+            return None;
+        }
+
+        let shared = head(name);
+        if shared != head(other) {
+            return None;
+        }
+        if !shared.starts_with(|character: char| character.is_alphabetic()) {
+            return None;
+        }
+
+        Some(shared)
     }
 }
 
@@ -92,11 +164,14 @@ fn analyze(block: &DecoratedNode<'_>) -> Vec<Diagnostic> {
 
     let mut diagnostics = Vec::new();
     for (index, binding) in bindings.iter().enumerate() {
+        let Binding {
+            name, pattern, end, ..
+        } = *binding;
         let uses: Vec<usize> = identifiers
             .iter()
-            .filter(|identifier| identifier.text() == binding.name)
+            .filter(|identifier| identifier.text() == name.as_str())
             .map(|identifier| identifier.raw().start_byte())
-            .filter(|offset| *offset >= binding.end)
+            .filter(|offset| *offset >= end)
             .collect();
 
         let Some(first) = uses.first() else { continue };
@@ -114,25 +189,27 @@ fn analyze(block: &DecoratedNode<'_>) -> Vec<Diagnostic> {
         {
             continue;
         }
-        let Some(shared) = shared_head(binding.name, successor.name) else {
+        let Some(shared) = name.shared_head(successor.name) else {
             continue;
         };
-        if !draws_only_on(&successor.value, binding.name) {
+        if !draws_only_on(&successor.value, name.as_str()) {
             continue;
         }
-        if is_captured_by_format(&text[binding.end - start..], binding.name) {
+        if name.is_captured_by_format(&text[end - start..]) {
             continue;
         }
 
         diagnostics.push(
             Diagnostic::builder()
                 .rule_id(RULE_ID)
-                .severity(Severity::Warn)
+                .severity(Severity::Error)
                 .message(format!(
                     "`{}` is only used to initialize `{}`; use `{}` for both and shadow",
-                    binding.name, successor.name, shared
+                    name.as_str(),
+                    successor.name.as_str(),
+                    shared
                 ))
-                .span(binding.pattern.span())
+                .span(pattern.span())
                 .build(),
         );
     }
@@ -155,8 +232,8 @@ fn collect_identifiers<'a>(node: &DecoratedNode<'a>, out: &mut Vec<DecoratedNode
 
 /// Returns whether `node` covers the byte at `offset`
 fn contains(node: &DecoratedNode<'_>, offset: usize) -> bool {
-    let range = node.raw().byte_range();
-    range.start <= offset && offset < range.end
+    let Range { start, end } = node.raw().byte_range();
+    start <= offset && offset < end
 }
 
 /// Returns whether `value` is built from `name` and nothing else in scope
@@ -167,12 +244,12 @@ fn contains(node: &DecoratedNode<'_>, offset: usize) -> bool {
 ///
 /// A value built from several things is not that. `conn.query_row(sql, (kind,
 /// payload, app_id), read)` names an app's id among its arguments and returns
-/// a job's id, and giving both names to one binding would say they are the
-/// same value. The same goes for `author.unwrap_or(&default_author)`, where
-/// the second binding borrows from the first and the two cannot merge at all.
+/// a job's id. Giving both names to one binding would say they are the same
+/// value. The same goes for `author.unwrap_or(&default_author)`. There the
+/// second binding borrows from the first, and the two cannot merge at all.
 ///
-/// The names of the things being called do not count as sources, and neither
-/// does a name the initializer binds itself, so a closure parameter in
+/// The names of the things being called do not count as sources. Neither
+/// does a name the initializer binds itself. So a closure parameter in
 /// `xs.iter().map(|x| f(x))` leaves `xs` the only source.
 fn draws_only_on(value: &DecoratedNode<'_>, name: &str) -> bool {
     let mut bound = Vec::new();
@@ -191,9 +268,9 @@ fn draws_only_on(value: &DecoratedNode<'_>, name: &str) -> bool {
 
 /// Appends the name of every identifier below `node` that reads a value
 ///
-/// A method's name, a called function's name, the path of a scoped name, and
-/// the field named on the left of a struct literal all appear as identifiers
-/// and none of them reads a value, so each is skipped.
+/// Some identifiers read no value, so the walk skips them. These are a
+/// method's name, a called function's name, and the path of a scoped name.
+/// The field named on the left of a struct literal is one too.
 fn collect_sources<'a>(node: &DecoratedNode<'a>, out: &mut Vec<&'a str>) {
     let skip = match node.kind() {
         "field_expression" => node.child_by_field_name("field"),
@@ -263,37 +340,6 @@ fn head(name: &str) -> &str {
     name.rsplit('_')
         .find(|word| !word.is_empty())
         .unwrap_or(name)
-}
-
-/// Returns whether `text` captures `name` inline, as `{name}` or `{name:`
-///
-/// An inline capture such as `println!("{raw_input}")` reads the binding
-/// without an `identifier` node, so the rule must find it in the text. The
-/// check is textual, so a match in any other string also counts.
-fn is_captured_by_format(text: &str, name: &str) -> bool {
-    text.contains(&format!("{{{name}}}")) || text.contains(&format!("{{{name}:"))
-}
-
-/// Returns the last word two differing binding names share
-///
-/// A shared last word is the rule's proxy for one value at two stages, and the
-/// diagnostic offers that word as the name to keep. A word that does not begin
-/// with a letter is a disambiguator rather than a head noun, so `left_1` and
-/// `right_1` share nothing.
-fn shared_head<'a>(first: &'a str, second: &str) -> Option<&'a str> {
-    if first == second {
-        return None;
-    }
-
-    let shared = head(first);
-    if shared != head(second) {
-        return None;
-    }
-    if !shared.starts_with(|character: char| character.is_alphabetic()) {
-        return None;
-    }
-
-    Some(shared)
 }
 
 #[cfg(feature = "plugin")]
@@ -370,7 +416,7 @@ mod tests {
 
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.split-binding")
-            .has_severity(Severity::Warn)
+            .has_severity(Severity::Error)
             .message_contains("`raw_values`");
     }
 
@@ -540,17 +586,17 @@ mod tests {
 
     #[test]
     fn is_captured_by_format_with_bare_name_returns_true() {
-        assert!(is_captured_by_format("println!(\"{input}\")", "input"));
+        assert!(Name("input").is_captured_by_format("println!(\"{input}\")"));
     }
 
     #[test]
     fn is_captured_by_format_with_format_spec_returns_true() {
-        assert!(is_captured_by_format("println!(\"{input:?}\")", "input"));
+        assert!(Name("input").is_captured_by_format("println!(\"{input:?}\")"));
     }
 
     #[test]
     fn is_captured_by_format_with_other_name_returns_false() {
-        assert!(!is_captured_by_format("println!(\"{other}\")", "input"));
+        assert!(!Name("input").is_captured_by_format("println!(\"{other}\")"));
     }
 
     #[test]
@@ -586,7 +632,7 @@ mod tests {
 
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.split-binding")
-            .has_severity(Severity::Warn)
+            .has_severity(Severity::Error)
             .message_contains("`raw_input`");
     }
 
@@ -661,38 +707,47 @@ mod tests {
 
     #[test]
     fn shared_head_with_bare_last_word_returns_it() {
-        assert_eq!(shared_head("raw_input", "input"), Some("input"));
+        assert_eq!(Name("raw_input").shared_head(Name("input")), Some("input"));
     }
 
     #[test]
     fn shared_head_with_different_last_words_returns_none() {
-        assert!(shared_head("left", "right").is_none());
+        assert!(Name("left").shared_head(Name("right")).is_none());
     }
 
     #[test]
     fn shared_head_with_equal_names_returns_none() {
-        assert!(shared_head("input", "input").is_none());
+        assert!(Name("input").shared_head(Name("input")).is_none());
     }
 
     #[test]
     fn shared_head_with_numeric_last_word_returns_none() {
-        assert!(shared_head("left_1", "right_1").is_none());
+        assert!(Name("left_1").shared_head(Name("right_1")).is_none());
     }
 
     #[test]
     fn shared_head_with_one_name_a_prefix_of_the_other_returns_none() {
-        assert!(shared_head("config", "config_path").is_none());
+        assert!(Name("config").shared_head(Name("config_path")).is_none());
     }
 
     #[test]
     fn shared_head_with_shared_last_word_returns_it() {
-        assert_eq!(shared_head("raw_input", "trimmed_input"), Some("input"));
+        assert_eq!(
+            Name("raw_input").shared_head(Name("trimmed_input")),
+            Some("input")
+        );
     }
 
     #[test]
     fn trait_send_holds_for_binding() {
         fn assert_send<T: Send>() {}
         assert_send::<Binding<'_>>();
+    }
+
+    #[test]
+    fn trait_send_holds_for_name() {
+        fn assert_send<T: Send>() {}
+        assert_send::<Name<'_>>();
     }
 
     #[test]
@@ -708,6 +763,12 @@ mod tests {
     }
 
     #[test]
+    fn trait_sync_holds_for_name() {
+        fn assert_sync<T: Sync>() {}
+        assert_sync::<Name<'_>>();
+    }
+
+    #[test]
     fn trait_sync_holds_for_split_binding() {
         fn assert_sync<T: Sync>() {}
         assert_sync::<SplitBinding>();
@@ -717,6 +778,12 @@ mod tests {
     fn trait_unpin_holds_for_binding() {
         fn assert_unpin<T: Unpin>() {}
         assert_unpin::<Binding<'_>>();
+    }
+
+    #[test]
+    fn trait_unpin_holds_for_name() {
+        fn assert_unpin<T: Unpin>() {}
+        assert_unpin::<Name<'_>>();
     }
 
     #[test]
@@ -735,7 +802,7 @@ mod tests {
 
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.split-binding")
-            .has_severity(Severity::Warn)
+            .has_severity(Severity::Error)
             .message_contains("`raw_input` is only used to initialize `input`");
     }
 

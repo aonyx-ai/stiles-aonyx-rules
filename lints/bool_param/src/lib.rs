@@ -14,13 +14,28 @@ const RULE_ID: RuleId = RuleId::new("lint.bool-param");
 /// trait method is reported where the trait fixes it.
 ///
 /// The rule skips a signature that sits on a boundary, because a caller
-/// outside Rust fixes it: an `extern` ABI, an `extern` block, or an
-/// attribute macro the project named in `boundary-attributes`. It is the
-/// same option `lint.repeated-primitive-params` reads, and it means the
-/// same thing; a project that sets one usually sets both.
+/// outside Rust fixes it. An `extern` ABI, an `extern` block, and an
+/// attribute macro the project named in `boundary-attributes` are such
+/// boundaries. `lint.repeated-primitive-params` reads the same option, and
+/// it means the same thing; a project that sets one usually sets both.
 ///
 /// A struct is not a signature, so a `bool` field is reported whatever the
 /// struct carries.
+///
+/// # Examples
+///
+/// ```
+/// use bool_param::BoolParam;
+/// use stiles_testing::{execute, parse};
+/// use stiles_types::Language;
+///
+/// let tree = parse("fn toggle(enabled: bool) {}", Language::Rust);
+/// let mut passes = vec![BoolParam::into_lint_pass()];
+///
+/// let diagnostics = execute(&tree, &mut passes);
+///
+/// assert_eq!(diagnostics.len(), 1);
+/// ```
 #[derive(Default)]
 pub struct BoolParam {
     boundary_attributes: Vec<String>,
@@ -54,8 +69,8 @@ fn is_bool_type(node: &DecoratedNode<'_>) -> bool {
 ///
 /// A declaration and a definition are one position for this rule. An
 /// implementor writes a body against the signature a trait fixed, and every
-/// caller reads the trait, so a `bool` on a declaration reaches further than
-/// one on a free function.
+/// caller reads the trait. So a `bool` on a declaration reaches further
+/// than one on a free function.
 ///
 /// The rule skips a signature on a boundary, because a caller outside Rust
 /// fixes it.
@@ -80,7 +95,7 @@ fn check_signature(node: &DecoratedNode<'_>, boundary_attributes: &[String]) -> 
             diagnostics.push(
                 Diagnostic::builder()
                     .rule_id(RULE_ID)
-                    .severity(Severity::Warn)
+                    .severity(Severity::Error)
                     .message("parameter has type `bool`; use an enum with meaningful variants")
                     .span(ty.span())
                     .build(),
@@ -121,7 +136,7 @@ impl RustLintPass for BoolParam {
                 diagnostics.push(
                     Diagnostic::builder()
                         .rule_id(RULE_ID)
-                        .severity(Severity::Warn)
+                        .severity(Severity::Error)
                         .message(
                             "struct field has type `bool`; use an enum with meaningful variants",
                         )
@@ -255,7 +270,7 @@ mod tests {
 
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.bool-param")
-            .has_severity(Severity::Warn)
+            .has_severity(Severity::Error)
             .message_contains("parameter has type `bool`");
     }
 
@@ -318,7 +333,7 @@ mod tests {
 
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.bool-param")
-            .has_severity(Severity::Warn)
+            .has_severity(Severity::Error)
             .message_contains("struct field has type `bool`");
     }
 
@@ -362,7 +377,7 @@ mod tests {
 
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.bool-param")
-            .has_severity(Severity::Warn)
+            .has_severity(Severity::Error)
             .message_contains("parameter has type `bool`");
     }
 
@@ -379,7 +394,7 @@ mod tests {
 
         assert_diagnostic(&diagnostics[1])
             .has_rule_id("lint.bool-param")
-            .has_severity(Severity::Warn)
+            .has_severity(Severity::Error)
             .message_contains("parameter has type `bool`");
     }
 

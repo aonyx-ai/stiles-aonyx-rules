@@ -32,9 +32,9 @@ const CATCH_ALL_NAMES: &[&str] = &["Other", "Custom", "Unknown", "Extension", "U
 /// `Box`, `Any`, `String`, or map name counts unless a `use` in scope binds
 /// it to something else. The rule reads no decoration.
 ///
-/// A type that deserializes an external format holds a `serde_json::Value`
-/// for good reason. The rule cannot tell which types those are, so it only
-/// warns.
+/// A type that deserializes an external format may hold a
+/// `serde_json::Value`, but the rule cannot tell which types those are. Such
+/// a type keeps the value in a private field, which the rule does not report.
 ///
 /// # Examples
 ///
@@ -513,7 +513,7 @@ fn slot_diagnostics(fields: Vec<Field<'_>>, owner: &str, imports: &Imports) -> V
             continue;
         };
 
-        diagnostics.push(Diagnostic::builder().rule_id(RULE_ID).severity(Severity::Warn).message(format!(
+        diagnostics.push(Diagnostic::builder().rule_id(RULE_ID).severity(Severity::Error).message(format!(
                 "field {label}{owner} holds {}, which takes values no consumer can match; give it a type that names them",
                 slot.description()
             )).span(node.span()).build());
@@ -540,7 +540,7 @@ fn variant_diagnostics(variant: &DecoratedNode<'_>, imports: &Imports) -> Vec<Di
 
     let mut diagnostics = Vec::new();
     if CATCH_ALL_NAMES.contains(&name.text()) {
-        diagnostics.push(Diagnostic::builder().rule_id(RULE_ID).severity(Severity::Warn).message(format!(
+        diagnostics.push(Diagnostic::builder().rule_id(RULE_ID).severity(Severity::Error).message(format!(
                 "variant `{}` is a catch-all with a payload; give each case it holds a variant of its own",
                 name.text()
             )).span(name.span()).build());
@@ -746,13 +746,13 @@ mod tests {
     }
 
     #[test]
-    fn catch_all_name_with_tuple_payload_flagged_as_a_catch_all_warning() {
+    fn catch_all_name_with_tuple_payload_flagged_as_a_catch_all_error() {
         for name in CATCH_ALL_NAMES {
             let diagnostics = run(&format!("pub enum Kind {{ Known, {name}(u32) }}"));
 
             assert_diagnostic(&diagnostics[0])
                 .has_rule_id("lint.open-vocabulary")
-                .has_severity(Severity::Warn)
+                .has_severity(Severity::Error)
                 .message_contains(&format!("variant `{name}` is a catch-all with a payload"));
         }
     }

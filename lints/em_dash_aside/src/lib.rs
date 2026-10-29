@@ -1,3 +1,5 @@
+use std::ops::Range;
+
 use stiles_rust::{RuleId, RustLintPass};
 use stiles_types::{DecoratedNode, Diagnostic, Severity, Span};
 use stiles_typescript::TypeScriptLintPass;
@@ -23,8 +25,25 @@ const EN_DASH: &[u8] = "–".as_bytes();
 ///
 /// In TypeScript the lint reads a `/** */` doc comment. The hyphen a block
 /// tag writes between a name and its description, as in `@param a - the
-/// first`, is syntax rather than an aside, and an `@example` section is
-/// code, so neither is read.
+/// first`, is syntax rather than an aside. An `@example` section is code.
+/// The lint reads neither.
+///
+/// # Examples
+///
+/// ```
+/// use em_dash_aside::EmDashAside;
+/// use stiles_rust::RustLintPassAdapter;
+/// use stiles_testing::{execute, parse};
+/// use stiles_types::{Language, LintPass};
+///
+/// let tree = parse("/// Returns the type — or nothing\nfn f() {}", Language::Rust);
+/// let pass: Box<dyn LintPass> = Box::new(RustLintPassAdapter::new(EmDashAside));
+/// let mut passes = vec![pass];
+///
+/// let diagnostics = execute(&tree, &mut passes);
+///
+/// assert_eq!(diagnostics.len(), 1);
+/// ```
 pub struct EmDashAside;
 
 impl RustLintPass for EmDashAside {
@@ -110,7 +129,7 @@ fn diagnose(
 
             Diagnostic::builder()
                 .rule_id(RULE_ID)
-                .severity(Severity::Warn)
+                .severity(Severity::Error)
                 .message(format!(
                     "{dash} interrupts the sentence; use a colon, a period, or a subordinate clause"
                 ))
@@ -133,14 +152,14 @@ fn diagnose(
 /// paragraphs, because a dash is only an aside when prose surrounds it.
 fn prose_lines<'a>(lines: &[DocLine<'a>]) -> Vec<Option<DocLine<'a>>> {
     let mut prose = Vec::with_capacity(lines.len());
-    let mut fence: Option<&str> = None;
+    let mut fence: Option<Fence<'_>> = None;
     let mut indented_code = false;
 
     for (index, line) in lines.iter().enumerate() {
         let trimmed = line.text.trim_start();
 
         if let Some(open) = fence {
-            if closes_fence(trimmed, open) {
+            if open.is_closed_by(trimmed) {
                 fence = None;
             }
             prose.push(None);
@@ -189,26 +208,33 @@ fn prose_lines<'a>(lines: &[DocLine<'a>]) -> Vec<Option<DocLine<'a>>> {
     prose
 }
 
+/// The run of backticks or tildes that opened a code fence
+#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
+struct Fence<'a>(&'a str);
+
+impl Fence<'_> {
+    /// Returns whether a line closes this fence
+    fn is_closed_by(self, trimmed: &str) -> bool {
+        let Self(open) = self;
+        let Some(marker) = open.chars().next() else {
+            return false;
+        };
+
+        let width = trimmed.len() - trimmed.trim_start_matches(marker).len();
+        width >= open.len() && trimmed[width..].trim().is_empty()
+    }
+}
+
 /// Returns the run of backticks or tildes that opens a code fence
-fn fence_run(trimmed: &str) -> Option<&str> {
+fn fence_run(trimmed: &str) -> Option<Fence<'_>> {
     for marker in ['`', '~'] {
         let width = trimmed.len() - trimmed.trim_start_matches(marker).len();
         if width >= 3 {
-            return Some(&trimmed[..width]);
+            return Some(Fence(&trimmed[..width]));
         }
     }
 
     None
-}
-
-/// Returns whether a line closes the fence that `open` started
-fn closes_fence(trimmed: &str, open: &str) -> bool {
-    let Some(marker) = open.chars().next() else {
-        return false;
-    };
-
-    let width = trimmed.len() - trimmed.trim_start_matches(marker).len();
-    width >= open.len() && trimmed[width..].trim().is_empty()
 }
 
 /// Returns how far a line is indented, where a tab is four columns
@@ -231,8 +257,8 @@ fn indent_width(text: &str) -> usize {
 
 /// Returns whether a line is an ATX heading, such as `# Errors`
 ///
-/// CommonMark accepts a tab after the hashes as readily as a space, so
-/// a heading written with one still has to be exempt from the scan.
+/// CommonMark accepts a tab after the hashes as readily as a space. A
+/// heading written with one still has to be exempt from the scan.
 fn is_heading(trimmed: &str) -> bool {
     let hashes = trimmed.len() - trimmed.trim_start_matches('#').len();
     if hashes == 0 || hashes > 6 {
@@ -350,8 +376,8 @@ fn find_asides(lines: &[DocLine<'_>]) -> Vec<Aside> {
 /// A dash inside a code span or a quotation belongs to the code or to
 /// whoever is quoted. The filler is as long as what it hides, so byte
 /// offsets stay correct. The text is a whole paragraph rather than one
-/// line, so a delimiter that opens on one line and closes on the next
-/// still pairs up.
+/// line. A delimiter that opens on one line and closes on the next still
+/// pairs up.
 fn mask(text: &str) -> Vec<u8> {
     let mut bytes = text.as_bytes().to_vec();
     mask_code_spans(&mut bytes);
@@ -374,9 +400,8 @@ fn mask_code_spans(bytes: &mut [u8]) {
 
         let start = index;
         index = run_end(bytes, index);
-        let width = index - start;
 
-        let end = closing_run(bytes, index, width).unwrap_or(bytes.len());
+        let end = closing_run(bytes, start..index).unwrap_or(bytes.len());
         bytes[start..end].fill(FILLER);
         index = end;
     }
@@ -392,9 +417,13 @@ fn run_end(bytes: &[u8], from: usize) -> usize {
     index
 }
 
-/// Returns the end of the backtick run of `width` that closes a span
-fn closing_run(bytes: &[u8], from: usize, width: usize) -> Option<usize> {
-    let mut index = from;
+/// Returns the end of the backtick run that closes the span `opening` opened
+///
+/// The closing run has the width of the opening run and starts after it.
+fn closing_run(bytes: &[u8], opening: Range<usize>) -> Option<usize> {
+    let Range { start, end } = opening;
+    let width = end - start;
+    let mut index = end;
     while index < bytes.len() {
         if bytes[index] != b'`' {
             index += 1;
@@ -434,10 +463,10 @@ fn mask_quotes(bytes: &mut [u8]) {
 
 /// Records every dash aside in one paragraph
 ///
-/// The paragraph is scanned as a single text, because a dash only
-/// interrupts a sentence when prose sits on both sides of it and that
-/// prose may be a line away. Joining also lets the mask cover a code
-/// span or a quotation that wraps across two lines.
+/// The paragraph is scanned as a single text. A dash only interrupts a
+/// sentence when prose sits on both sides of it, and that prose may be a
+/// line away. Joining also lets the mask cover a code span or a quotation
+/// that wraps across two lines.
 fn scan(paragraph: &[DocLine<'_>], asides: &mut Vec<Aside>) {
     let (text, starts) = join(paragraph);
     let masked = mask(&text);
@@ -466,7 +495,7 @@ fn scan(paragraph: &[DocLine<'_>], asides: &mut Vec<Aside>) {
 /// Joins the lines of a paragraph, and reports where each one begins
 ///
 /// The newline between two lines stands in for the space the writer
-/// would have typed, so a dash at the end of a line still reads as
+/// would have typed. A dash at the end of a line therefore still reads as
 /// spaced.
 fn join(paragraph: &[DocLine<'_>]) -> (String, Vec<usize>) {
     let mut text = String::new();
@@ -685,14 +714,14 @@ mod tests {
     }
 
     #[test]
-    fn em_dash_in_an_inner_doc_comment_is_flagged_as_an_em_dash_warning() {
+    fn em_dash_in_an_inner_doc_comment_is_flagged_as_an_em_dash_error() {
         let source = "//! Loads a project — and reports what it skipped\nfn f() {}";
 
         let diagnostics = check(source);
 
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.em-dash-aside")
-            .has_severity(Severity::Warn)
+            .has_severity(Severity::Error)
             .message_contains("em dash");
     }
 
@@ -967,6 +996,12 @@ mod tests {
     }
 
     #[test]
+    fn trait_send_fence() {
+        fn assert_send<T: Send>() {}
+        assert_send::<Fence<'_>>();
+    }
+
+    #[test]
     fn trait_send_pass() {
         fn assert_send<T: Send>() {}
         assert_send::<EmDashAside>();
@@ -991,6 +1026,12 @@ mod tests {
     }
 
     #[test]
+    fn trait_sync_fence() {
+        fn assert_sync<T: Sync>() {}
+        assert_sync::<Fence<'_>>();
+    }
+
+    #[test]
     fn trait_sync_pass() {
         fn assert_sync<T: Sync>() {}
         assert_sync::<EmDashAside>();
@@ -1012,6 +1053,12 @@ mod tests {
     fn trait_unpin_doc_line() {
         fn assert_unpin<T: Unpin>() {}
         assert_unpin::<DocLine<'_>>();
+    }
+
+    #[test]
+    fn trait_unpin_fence() {
+        fn assert_unpin<T: Unpin>() {}
+        assert_unpin::<Fence<'_>>();
     }
 
     #[test]
@@ -1042,7 +1089,7 @@ mod tests {
             let start = source.find('\u{2014}').unwrap();
             assert_diagnostic(&diagnostics[0])
                 .has_rule_id("lint.em-dash-aside")
-                .has_severity(Severity::Warn)
+                .has_severity(Severity::Error)
                 .has_span("<test>", start, start + '\u{2014}'.len_utf8());
         }
 

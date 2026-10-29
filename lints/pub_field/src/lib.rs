@@ -11,6 +11,21 @@ const RULE_ID: RuleId = RuleId::new("lint.pub-field");
 ///
 /// Restricted forms such as `pub(crate)` narrow the exposure on purpose, so
 /// the rule leaves them alone. Enums and unions are out of scope.
+///
+/// # Examples
+///
+/// ```
+/// use pub_field::PubField;
+/// use stiles_testing::{execute, parse};
+/// use stiles_types::Language;
+///
+/// let tree = parse("struct Config { pub verbose: u32 }", Language::Rust);
+/// let mut passes = vec![PubField::into_lint_pass()];
+///
+/// let diagnostics = execute(&tree, &mut passes);
+///
+/// assert_eq!(diagnostics.len(), 1);
+/// ```
 pub struct PubField;
 
 impl PubField {
@@ -52,7 +67,7 @@ fn named_field_diagnostics(body: &DecoratedNode<'_>) -> Vec<Diagnostic> {
         diagnostics.push(
             Diagnostic::builder()
                 .rule_id(RULE_ID)
-                .severity(Severity::Warn)
+                .severity(Severity::Error)
                 .message(format!(
                     "field `{}` is public; make it private and derive a getter with `getset`",
                     name.text()
@@ -91,7 +106,7 @@ fn ordered_field_diagnostics(body: &DecoratedNode<'_>) -> Vec<Diagnostic> {
         diagnostics.push(
             Diagnostic::builder()
                 .rule_id(RULE_ID)
-                .severity(Severity::Warn)
+                .severity(Severity::Error)
                 .message(format!(
                     "field {index} is public; make it private and add an accessor method"
                 ))
@@ -165,12 +180,12 @@ mod tests {
     }
 
     #[test]
-    fn named_pub_field_flagged_as_a_warning_naming_the_field() {
+    fn named_pub_field_flagged_as_an_error_naming_the_field() {
         let diagnostics = run("struct Config { pub verbose: u32 }");
 
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.pub-field")
-            .has_severity(Severity::Warn)
+            .has_severity(Severity::Error)
             .message_contains("field `verbose` is public")
             .message_contains("getset");
     }
@@ -232,12 +247,12 @@ mod tests {
     }
 
     #[test]
-    fn newtype_pub_field_flagged_as_a_warning_naming_the_index() {
+    fn newtype_pub_field_flagged_as_an_error_naming_the_index() {
         let diagnostics = run("pub struct ProviderName(pub &'static str);");
 
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.pub-field")
-            .has_severity(Severity::Warn)
+            .has_severity(Severity::Error)
             .message_contains("field 0 is public")
             .message_contains("accessor method");
     }

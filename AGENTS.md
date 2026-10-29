@@ -36,6 +36,20 @@ Every rule here is a stiles plugin. The conventions for Rust, Markdown, Git,
 and everything else are [stiles's `CLAUDE.md`][stiles-claude], which these
 rules exist to enforce; follow it, and read the additions below.
 
+### Every rule reports an error
+
+Every rule reports an error. A convention that a rule cannot report as an
+error does not become a rule. A finding that is allowed to stay
+accumulates, so the repository never ships a warning.
+
+A rule that cannot always be right does not become a warning. Narrow the
+rule until the author must fix each finding it reports. A rule that fails
+open already does this for decorations.
+
+`crates/rule_severity` holds a test that reads every source under `lints/`.
+The test fails when a source names a severity other than `Severity::Error`.
+`just test` runs it, so CI refuses a rule that reports anything else.
+
 ### A rule is a pure function of a decorated tree
 
 A rule reads syntax from tree-sitter and semantics only from **decorations**

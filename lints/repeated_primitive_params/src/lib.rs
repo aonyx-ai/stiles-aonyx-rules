@@ -15,6 +15,21 @@ const RULE_ID: RuleId = RuleId::new("lint.repeated-primitive-params");
 ///
 /// The `boundary-attributes` option names the attribute macros that fix a
 /// signature the way `extern` does. See [`boundary::crosses_a_boundary`].
+///
+/// # Examples
+///
+/// ```
+/// use repeated_primitive_params::RepeatedPrimitiveParams;
+/// use stiles_testing::{execute, parse};
+/// use stiles_types::Language;
+///
+/// let tree = parse("fn rename(from: String, to: String) {}", Language::Rust);
+/// let mut passes = vec![RepeatedPrimitiveParams::into_lint_pass()];
+///
+/// let diagnostics = execute(&tree, &mut passes);
+///
+/// assert_eq!(diagnostics.len(), 1);
+/// ```
 #[derive(Default)]
 pub struct RepeatedPrimitiveParams {
     boundary_attributes: Vec<String>,
@@ -143,7 +158,7 @@ fn check_signature(node: &DecoratedNode<'_>, boundary: &[String]) -> Vec<Diagnos
         diagnostics.push(
             Diagnostic::builder()
                 .rule_id(RULE_ID)
-                .severity(Severity::Warn)
+                .severity(Severity::Error)
                 .message(format!(
                     "parameters {} share type `{type_name}`; a caller can transpose them, \
                  so give each one a newtype",
@@ -378,7 +393,7 @@ mod tests {
         let start = source.find("String").expect("source contains a type");
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.repeated-primitive-params")
-            .has_severity(Severity::Warn)
+            .has_severity(Severity::Error)
             .message_contains("parameters `to` and `from` share type `String`")
             .has_span("<test>", start, start + "String".len());
     }

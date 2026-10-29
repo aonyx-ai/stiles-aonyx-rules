@@ -20,18 +20,44 @@ const FIELD_THRESHOLD: usize = 2;
 ///
 /// The lint ignores `self`. A method body reads `self.field` everywhere, and
 /// destructuring `self` fights the borrow checker.
+///
+/// # Examples
+///
+/// ```
+/// use repeated_field_access::RepeatedFieldAccess;
+/// use stiles_rust::RustLintPassAdapter;
+/// use stiles_testing::{execute, parse};
+/// use stiles_types::{Language, LintPass};
+///
+/// let tree = parse("fn area() -> u32 { r.width * r.height }", Language::Rust);
+/// let pass: Box<dyn LintPass> = Box::new(RustLintPassAdapter::new(RepeatedFieldAccess));
+/// let mut passes = vec![pass];
+///
+/// let diagnostics = execute(&tree, &mut passes);
+///
+/// assert_eq!(diagnostics.len(), 1);
+/// ```
 pub struct RepeatedFieldAccess;
 
 /// The fields one statement reads from one binding
 ///
-/// `used_whole` records that the statement also needs the binding itself, so
-/// the lint cannot suggest a destructuring `let`. A method call, an
-/// assignment target, and a bare mention of the name all set it.
+/// `usage` records whether the statement also needs the binding itself.
+/// The lint cannot suggest a destructuring `let` then. A method call, an
+/// assignment target, and a bare mention of the name all need it whole.
 struct BindingReads<'a> {
     name: &'a str,
     fields: Vec<&'a str>,
     span: Span,
-    used_whole: bool,
+    usage: Usage,
+}
+
+/// How much of a binding one statement needs
+#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
+enum Usage {
+    /// The statement reads only fields of the binding
+    FieldsOnly,
+    /// The statement also needs the binding itself
+    Whole,
 }
 
 impl RustLintPass for RepeatedFieldAccess {
@@ -80,7 +106,7 @@ fn record<'a>(node: &DecoratedNode<'a>, reads: &mut Vec<BindingReads<'a>>) {
 
     if kind == "identifier" {
         if !is_field_base(node) {
-            entry(reads, node.text(), node.span()).used_whole = true;
+            entry(reads, node.text(), node.span()).usage = Usage::Whole;
         }
         return;
     }
@@ -98,7 +124,7 @@ fn record<'a>(node: &DecoratedNode<'a>, reads: &mut Vec<BindingReads<'a>>) {
     let name = value.text();
 
     if is_call_target(node) || is_assignment_target(node) {
-        entry(reads, name, node.span()).used_whole = true;
+        entry(reads, name, node.span()).usage = Usage::Whole;
         return;
     }
 
@@ -128,7 +154,7 @@ fn entry<'a, 'r>(
                 name,
                 fields: Vec::new(),
                 span,
-                used_whole: false,
+                usage: Usage::FieldsOnly,
             });
             reads.len() - 1
         }
@@ -147,10 +173,14 @@ fn diagnose(binding: BindingReads<'_>, loop_name: Option<&str>) -> Option<Diagno
         name,
         fields,
         span,
-        used_whole,
+        usage,
     } = binding;
 
-    if used_whole || fields.len() < FIELD_THRESHOLD {
+    match usage {
+        Usage::Whole => return None,
+        Usage::FieldsOnly => {}
+    }
+    if fields.len() < FIELD_THRESHOLD {
         return None;
     }
 
@@ -166,7 +196,7 @@ fn diagnose(binding: BindingReads<'_>, loop_name: Option<&str>) -> Option<Diagno
     Some(
         Diagnostic::builder()
             .rule_id(RULE_ID)
-            .severity(Severity::Warn)
+            .severity(Severity::Error)
             .message(message)
             .span(span)
             .build(),
@@ -310,7 +340,7 @@ mod tests {
 
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.repeated-field-access")
-            .has_severity(Severity::Warn)
+            .has_severity(Severity::Error)
             .message_contains("2 fields of `r`");
     }
 
@@ -616,7 +646,7 @@ mod tests {
 
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.repeated-field-access")
-            .has_severity(Severity::Warn)
+            .has_severity(Severity::Error)
             .message_contains("this statement reads 3 fields of `user`; destructure `user`");
     }
 
@@ -633,6 +663,12 @@ mod tests {
     }
 
     #[test]
+    fn trait_send_holds_for_usage() {
+        fn assert_send<T: Send>() {}
+        assert_send::<Usage>();
+    }
+
+    #[test]
     fn trait_sync_holds_for_binding_reads() {
         fn assert_sync<T: Sync>() {}
         assert_sync::<BindingReads<'static>>();
@@ -645,6 +681,12 @@ mod tests {
     }
 
     #[test]
+    fn trait_sync_holds_for_usage() {
+        fn assert_sync<T: Sync>() {}
+        assert_sync::<Usage>();
+    }
+
+    #[test]
     fn trait_unpin_holds_for_binding_reads() {
         fn assert_unpin<T: Unpin>() {}
         assert_unpin::<BindingReads<'static>>();
@@ -654,6 +696,12 @@ mod tests {
     fn trait_unpin_holds_for_repeated_field_access() {
         fn assert_unpin<T: Unpin>() {}
         assert_unpin::<RepeatedFieldAccess>();
+    }
+
+    #[test]
+    fn trait_unpin_holds_for_usage() {
+        fn assert_unpin<T: Unpin>() {}
+        assert_unpin::<Usage>();
     }
 
     #[test]

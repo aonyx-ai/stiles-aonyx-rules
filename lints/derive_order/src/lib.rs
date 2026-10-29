@@ -18,6 +18,21 @@ const STD_DERIVES: &[&str] = &[
 /// Standard library derives must appear first in the prescribed order
 /// (Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Default),
 /// followed by third-party derives sorted alphabetically.
+///
+/// # Examples
+///
+/// ```
+/// use derive_order::DeriveOrder;
+/// use stiles_testing::{execute, parse};
+/// use stiles_types::Language;
+///
+/// let tree = parse("#[derive(Debug, Clone)]\nstruct Point;", Language::Rust);
+/// let mut passes = vec![DeriveOrder::into_lint_pass()];
+///
+/// let diagnostics = execute(&tree, &mut passes);
+///
+/// assert_eq!(diagnostics.len(), 1);
+/// ```
 pub struct DeriveOrder;
 
 impl DeriveOrder {
@@ -111,7 +126,7 @@ impl RustLintPass for DeriveOrder {
         vec![
             Diagnostic::builder()
                 .rule_id(RuleId::new("lint.derive-order"))
-                .severity(Severity::Warn)
+                .severity(Severity::Error)
                 .message(format!(
                     "derive macros are not in canonical order; expected: {expected_str}"
                 ))
@@ -211,7 +226,7 @@ mod tests {
 
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.derive-order")
-            .has_severity(Severity::Warn)
+            .has_severity(Severity::Error)
             .message_contains("Clone, Debug, Builder");
     }
 
@@ -228,7 +243,7 @@ mod tests {
 
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.derive-order")
-            .has_severity(Severity::Warn)
+            .has_severity(Severity::Error)
             .message_contains("Alpha, Gamma");
     }
 
@@ -263,7 +278,7 @@ mod tests {
 
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.derive-order")
-            .has_severity(Severity::Warn)
+            .has_severity(Severity::Error)
             .message_contains("Clone, Debug, Alpha, Beta");
     }
 
@@ -280,7 +295,7 @@ mod tests {
 
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.derive-order")
-            .has_severity(Severity::Warn)
+            .has_severity(Severity::Error)
             .message_contains("Clone, Debug, Default");
     }
 
@@ -297,7 +312,7 @@ mod tests {
 
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.derive-order")
-            .has_severity(Severity::Warn)
+            .has_severity(Severity::Error)
             .message_contains("Copy, Clone, Default");
     }
 }

@@ -11,6 +11,21 @@ const RULE_ID: RuleId = RuleId::new("lint.function-scoped-import");
 /// the narrow scope is then deliberate. The lint also spares an import
 /// whose qualifier resolves to an enum, because a variant import belongs
 /// beside the match that uses it.
+///
+/// # Examples
+///
+/// ```
+/// use function_scoped_import::FunctionScopedImport;
+/// use stiles_testing::{execute, parse};
+/// use stiles_types::Language;
+///
+/// let tree = parse("fn f() { use std::fmt::Write; }", Language::Rust);
+/// let mut passes = vec![FunctionScopedImport::into_lint_pass()];
+///
+/// let diagnostics = execute(&tree, &mut passes);
+///
+/// assert_eq!(diagnostics.len(), 1);
+/// ```
 pub struct FunctionScopedImport;
 
 impl FunctionScopedImport {
@@ -47,7 +62,7 @@ fn is_inside_block(node: &DecoratedNode<'_>) -> bool {
 /// Returns whether the node or an enclosing item carries a `cfg` attribute
 ///
 /// An item writes its gate in front of itself, and a module or a file writes
-/// it inside, so both spellings count at every level of the walk.
+/// it inside. Both spellings count at every level of the walk.
 fn is_cfg_gated(node: &DecoratedNode<'_>) -> bool {
     let mut current = Some(*node);
     loop {
@@ -94,8 +109,8 @@ fn has_cfg_attribute(node: &DecoratedNode<'_>) -> bool {
 
 /// Returns whether a `cfg` attribute opens the node's own children
 ///
-/// A file and a module body gate everything under them with `#![cfg(..)]`,
-/// which tree-sitter puts inside the `source_file` or the
+/// A file and a module body gate everything under them with `#![cfg(..)]`.
+/// Tree-sitter puts that attribute inside the `source_file` or the
 /// `declaration_list` rather than in front of the item. The search stops at
 /// the first child that is neither an inner attribute nor a comment.
 fn has_inner_cfg_attribute(node: &DecoratedNode<'_>) -> bool {
@@ -160,7 +175,7 @@ impl RustLintPass for FunctionScopedImport {
         vec![
             Diagnostic::builder()
                 .rule_id(RULE_ID)
-                .severity(Severity::Warn)
+                .severity(Severity::Error)
                 .message("`use` sits inside a function body; move it to the top of the module")
                 .span(node.span())
                 .build(),
@@ -324,12 +339,12 @@ mod tests {
     }
 
     #[test]
-    fn function_import_is_flagged_as_a_warning_pointing_to_the_module_top() {
+    fn function_import_is_flagged_as_an_error_pointing_to_the_module_top() {
         let diagnostics = run("fn f() { use std::collections::HashMap; }");
 
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.function-scoped-import")
-            .has_severity(Severity::Warn)
+            .has_severity(Severity::Error)
             .message_contains("top of the module");
     }
 
