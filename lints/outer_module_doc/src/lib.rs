@@ -227,7 +227,7 @@ mod tests {
 
         let diagnostics = check(source);
 
-        assert_diagnostic(&diagnostics[0]).has_span("<test>", 0, 33);
+        assert_diagnostic(&diagnostics[0]).has_span("<test>", 0..33);
     }
 
     #[test]
@@ -290,7 +290,7 @@ mod tests {
 
         let diagnostics = check(source);
 
-        assert_diagnostic(&diagnostics[0]).has_span("<test>", 0, 37);
+        assert_diagnostic(&diagnostics[0]).has_span("<test>", 0..37);
     }
 
     #[test]
@@ -344,7 +344,7 @@ mod tests {
 
         let diagnostics = check(source);
 
-        assert_diagnostic(&diagnostics[0]).has_span("<test>", 0, 13);
+        assert_diagnostic(&diagnostics[0]).has_span("<test>", 0..13);
     }
 
     #[test]
@@ -376,7 +376,7 @@ mod tests {
             .has_severity(Severity::Error)
             .message_contains("`mod manifests;`")
             .message_contains("`//!`")
-            .has_span("<test>", 0, 45);
+            .has_span("<test>", 0..45);
     }
 
     #[test]
@@ -412,7 +412,7 @@ mod tests {
 
         let diagnostics = check(source);
 
-        assert_diagnostic(&diagnostics[0]).has_span("<test>", 0, 13);
+        assert_diagnostic(&diagnostics[0]).has_span("<test>", 0..13);
     }
 
     #[test]
@@ -421,7 +421,7 @@ mod tests {
 
         let diagnostics = check(source);
 
-        assert_diagnostic(&diagnostics[0]).has_span("<test>", 0, source.len() - 11);
+        assert_diagnostic(&diagnostics[0]).has_span("<test>", 0..source.len() - 11);
     }
 
     #[test]
@@ -448,7 +448,7 @@ mod tests {
 
         let diagnostics = check(source);
 
-        assert_diagnostic(&diagnostics[0]).has_span("<test>", 10, 23);
+        assert_diagnostic(&diagnostics[0]).has_span("<test>", 10..23);
     }
 
     #[test]
@@ -457,7 +457,7 @@ mod tests {
 
         let diagnostics = check(source);
 
-        assert_diagnostic(&diagnostics[0]).has_span("<test>", 0, 13);
+        assert_diagnostic(&diagnostics[0]).has_span("<test>", 0..13);
     }
 
     #[test]
@@ -574,7 +574,7 @@ mod tests {
 
         let diagnostics = check(source);
 
-        assert_diagnostic(&diagnostics[0]).has_span("<test>", 0, 49);
+        assert_diagnostic(&diagnostics[0]).has_span("<test>", 0..49);
     }
 
     #[test]

@@ -429,11 +429,8 @@ mod tests {
 
         let diagnostics = run(source);
 
-        assert_diagnostic(&diagnostics[0]).has_span(
-            "<test>",
-            start,
-            start + "// an ordinary note".len(),
-        );
+        assert_diagnostic(&diagnostics[0])
+            .has_span("<test>", start..start + "// an ordinary note".len());
     }
 
     #[test]
@@ -518,7 +515,7 @@ mod tests {
 
         let diagnostics = run(source);
 
-        assert_diagnostic(&diagnostics[0]).has_span("<test>", start, end);
+        assert_diagnostic(&diagnostics[0]).has_span("<test>", start..end);
     }
 
     #[test]
@@ -879,7 +876,7 @@ mod tests {
 
             let diagnostics = run(source);
 
-            assert_diagnostic(&diagnostics[0]).has_span("<test>", start, end);
+            assert_diagnostic(&diagnostics[0]).has_span("<test>", start..end);
         }
 
         #[test]
@@ -889,11 +886,8 @@ mod tests {
 
             let diagnostics = run(source);
 
-            assert_diagnostic(&diagnostics[0]).has_span(
-                "<test>",
-                start,
-                start + "// log while debugging".len(),
-            );
+            assert_diagnostic(&diagnostics[0])
+                .has_span("<test>", start..start + "// log while debugging".len());
         }
 
         #[test]

@@ -50,8 +50,8 @@ tree-sitter = "0.27"
 # One pin for every rule: each stiles crate names the same exact release.
 # A plugin built against one stiles is refused by another, so the version
 # is exact and moves for every crate at once.
-stiles-plugin = "=0.1.0"
-stiles-rust = { version = "=0.1.0", default-features = false }
-stiles-testing = "=0.1.0"
-stiles-types = "=0.1.0"
-stiles-typescript = { version = "=0.1.0", default-features = false }
+stiles-plugin = "=0.2.0"
+stiles-rust = { version = "=0.2.0", default-features = false }
+stiles-testing = "=0.2.0"
+stiles-types = "=0.2.0"
+stiles-typescript = { version = "=0.2.0", default-features = false }

@@ -404,7 +404,7 @@ mod tests {
 
         let diagnostics = run(source);
 
-        assert_diagnostic(&diagnostics[0]).has_span("<test>", start, start + 5);
+        assert_diagnostic(&diagnostics[0]).has_span("<test>", start..start + 5);
     }
 
     #[test]
@@ -522,7 +522,7 @@ mod tests {
     fn enum_name_diagnostic_spans_the_name() {
         let diagnostics = run("#[derive(Error)]\nenum Plugin { A }");
 
-        assert_diagnostic(&diagnostics[0]).has_span("<test>", 22, 28);
+        assert_diagnostic(&diagnostics[0]).has_span("<test>", 22..28);
     }
 
     #[test]
@@ -690,7 +690,7 @@ mod tests {
 
         let diagnostics = run(source);
 
-        assert_diagnostic(&diagnostics[0]).has_span("<test>", start, start + 13);
+        assert_diagnostic(&diagnostics[0]).has_span("<test>", start..start + 13);
     }
 
     #[test]
@@ -909,7 +909,7 @@ mod tests {
 
         let diagnostics = run(source);
 
-        assert_diagnostic(&diagnostics[0]).has_span("<test>", start, start + 8);
+        assert_diagnostic(&diagnostics[0]).has_span("<test>", start..start + 8);
     }
 
     #[test]

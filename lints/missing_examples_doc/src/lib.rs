@@ -677,7 +677,7 @@ mod tests {
             .has_rule_id("lint.missing-examples-doc")
             .has_severity(Severity::Error)
             .message_contains("public struct `Foo` has no `# Examples` section")
-            .has_span("<test>", source.len() - 4, source.len() - 1);
+            .has_span("<test>", source.len() - 4..source.len() - 1);
     }
 
     #[test]

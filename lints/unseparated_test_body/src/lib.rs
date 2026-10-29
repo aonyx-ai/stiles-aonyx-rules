@@ -513,6 +513,6 @@ mod tests {
             .has_rule_id("lint.unseparated-test-body")
             .has_severity(Severity::Error)
             .message_contains("test body of 3 statements has no blank line")
-            .has_span("<test>", start, start + "parse_works".len());
+            .has_span("<test>", start..start + "parse_works".len());
     }
 }

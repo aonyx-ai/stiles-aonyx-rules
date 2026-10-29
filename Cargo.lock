@@ -881,9 +881,9 @@ version = "0.2.0"
 
 [[package]]
 name = "stiles-codegen"
-version = "0.1.0"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d8a195a1226d12de3ec48d79593e483f57fb0f0d43b5905656049d0d859ea642"
+checksum = "f6293e45fb643c6f9dc0dca00a28d4b3c426e8903d0fe39e3b95d7bb3724d48b"
 dependencies = [
  "serde",
  "serde_json",
@@ -891,9 +891,9 @@ dependencies = [
 
 [[package]]
 name = "stiles-core"
-version = "0.1.0"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "128bcefc789b7062c7a6d6a7c873ae2f2a777af8239669856c3ee302d1a85b9d"
+checksum = "74af84e62a695d4f148bd0c6deede045bf9734a1cebad69ae899768801278b2c"
 dependencies = [
  "bon",
  "stiles-types",
@@ -903,9 +903,9 @@ dependencies = [
 
 [[package]]
 name = "stiles-macros"
-version = "0.1.0"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "435cb754203a535194e90f4c73a2778b45af449a3ea9e3dd76ef7558235369ec"
+checksum = "1df4cc07cba853acff6c4f8b4082eb39f291de5b58b959a7d807f158b68d7f3a"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -914,9 +914,9 @@ dependencies = [
 
 [[package]]
 name = "stiles-plugin"
-version = "0.1.0"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "734111773690d093488598997048929ef64442acbdf0d1f38d7d9d3fb5b8494d"
+checksum = "a3aae7f4d15636fd15221da65af877360fed75cd1fd1ff104716bda4f8dfa357"
 dependencies = [
  "stabby",
  "stiles-rust",
@@ -926,9 +926,9 @@ dependencies = [
 
 [[package]]
 name = "stiles-rust"
-version = "0.1.0"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1bc91373abbbbf979489641b542aa8c13ec6c672dc5fd963eb773f2f33f4c9ad"
+checksum = "c92bbb0102594bae5c627bb0029700be5e234186a54f48696c58a8ea0fdb9c54"
 dependencies = [
  "bon",
  "stabby",
@@ -941,9 +941,9 @@ dependencies = [
 
 [[package]]
 name = "stiles-testing"
-version = "0.1.0"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "581368b9f905d9c3825a9ac782868adc326b78c424444290ce32a723a571a1b3"
+checksum = "ce3362c0b1b7c75b325e72df72851676346698e3776da37f5f3e8f2fd3f574ff"
 dependencies = [
  "stiles-core",
  "stiles-types",
@@ -954,9 +954,9 @@ dependencies = [
 
 [[package]]
 name = "stiles-types"
-version = "0.1.0"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f11da20b9d1bf95e427242ebcca28e0c8d3ad994b3d444136a011c87c173b495"
+checksum = "890effe159a9a5e3e1c04322acd6caaa2610ed56be95a9dd7f518fb7046463a0"
 dependencies = [
  "bon",
  "stabby",
@@ -966,9 +966,9 @@ dependencies = [
 
 [[package]]
 name = "stiles-typescript"
-version = "0.1.0"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "01182a4dd96151e7377bc613e3268c06c3dd74b37ce826b3f7b7214847ffe6ce"
+checksum = "91e25dc58206bd4d10ebd0fca781cd9a80f6d8c9114814a684ac79ad7188b70c"
 dependencies = [
  "bon",
  "stabby",

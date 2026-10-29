@@ -927,7 +927,7 @@ mod tests {
 
         let diagnostics = check(source);
 
-        assert_diagnostic(&diagnostics[0]).has_span("<test>", start, start + "—".len());
+        assert_diagnostic(&diagnostics[0]).has_span("<test>", start..start + "—".len());
     }
 
     #[test]
@@ -937,7 +937,7 @@ mod tests {
 
         let diagnostics = check(source);
 
-        assert_diagnostic(&diagnostics[0]).has_span("<test>", start, start + "—".len());
+        assert_diagnostic(&diagnostics[0]).has_span("<test>", start..start + "—".len());
     }
 
     #[test]
@@ -1090,7 +1090,7 @@ mod tests {
             assert_diagnostic(&diagnostics[0])
                 .has_rule_id("lint.em-dash-aside")
                 .has_severity(Severity::Error)
-                .has_span("<test>", start, start + '\u{2014}'.len_utf8());
+                .has_span("<test>", start..start + '\u{2014}'.len_utf8());
         }
 
         #[test]

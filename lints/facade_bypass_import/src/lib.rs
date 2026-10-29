@@ -533,7 +533,7 @@ mod tests {
                 "`facade_core::thing::Thing` is also exported as `facade::thing::Thing`, and \
                  this file already imports from `facade`; import it through `facade`",
             )
-            .has_span("<test>", 19, 44);
+            .has_span("<test>", 19..44);
     }
 
     #[test]
@@ -723,7 +723,7 @@ mod tests {
 
         assert_diagnostic(&diagnostics[0])
             .message_contains("`facade_core::thing::Thing` is also exported")
-            .has_span("<test>", 33, 45);
+            .has_span("<test>", 33..45);
     }
 
     #[test]

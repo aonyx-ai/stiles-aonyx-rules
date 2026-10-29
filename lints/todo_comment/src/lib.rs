@@ -236,7 +236,7 @@ mod tests {
 
         let diagnostics = execute(&parse(source, Language::Rust), &mut passes());
 
-        assert_diagnostic(&diagnostics[0]).has_span("<test>", 4, 8);
+        assert_diagnostic(&diagnostics[0]).has_span("<test>", 4..8);
     }
 
     #[test]
@@ -352,7 +352,7 @@ mod tests {
 
         let diagnostics = execute(&parse(source, Language::Rust), &mut passes());
 
-        assert_diagnostic(&diagnostics[0]).has_span("<test>", 4, 7);
+        assert_diagnostic(&diagnostics[0]).has_span("<test>", 4..7);
     }
 
     #[test]
@@ -417,7 +417,7 @@ mod tests {
 
         let diagnostics = execute(&parse(source, Language::Rust), &mut passes());
 
-        assert_diagnostic(&diagnostics[0]).has_span("<test>", 12, 16);
+        assert_diagnostic(&diagnostics[0]).has_span("<test>", 12..16);
     }
 
     #[test]
@@ -435,7 +435,7 @@ mod tests {
 
         let diagnostics = execute(&parse(source, Language::Rust), &mut passes());
 
-        assert_diagnostic(&diagnostics[0]).has_span("<test>", 4, 8);
+        assert_diagnostic(&diagnostics[0]).has_span("<test>", 4..8);
     }
 
     #[test]
@@ -475,7 +475,7 @@ mod tests {
             .has_rule_id("lint.todo-comment")
             .has_severity(Severity::Error)
             .message_contains("issue tracker")
-            .has_span("<test>", 3, 7);
+            .has_span("<test>", 3..7);
     }
 
     #[test]
@@ -493,7 +493,7 @@ mod tests {
 
         let diagnostics = execute(&parse(source, Language::Rust), &mut passes());
 
-        assert_diagnostic(&diagnostics[0]).has_span("<test>", 3, 7);
+        assert_diagnostic(&diagnostics[0]).has_span("<test>", 3..7);
     }
 
     #[test]
@@ -547,7 +547,7 @@ mod tests {
 
         let diagnostics = execute(&parse(source, Language::Rust), &mut passes());
 
-        assert_diagnostic(&diagnostics[1]).has_span("<test>", 16, 21);
+        assert_diagnostic(&diagnostics[1]).has_span("<test>", 16..21);
     }
 
     #[test]
@@ -556,7 +556,7 @@ mod tests {
 
         let diagnostics = execute(&parse(source, Language::Rust), &mut passes());
 
-        assert_diagnostic(&diagnostics[0]).has_span("<test>", 3, 7);
+        assert_diagnostic(&diagnostics[0]).has_span("<test>", 3..7);
     }
 
     #[test]
@@ -620,7 +620,7 @@ mod tests {
 
             let diagnostics = execute(&parse(source, Language::TypeScript), &mut passes());
 
-            assert_diagnostic(&diagnostics[0]).has_span("<test>", start, start + 4);
+            assert_diagnostic(&diagnostics[0]).has_span("<test>", start..start + 4);
         }
 
         #[test]

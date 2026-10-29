@@ -289,7 +289,7 @@ mod tests {
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.unsorted-test")
             .has_severity(Severity::Error)
-            .has_span("<test>", start, start + 1);
+            .has_span("<test>", start..start + 1);
     }
 
     #[test]

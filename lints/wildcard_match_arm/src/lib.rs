@@ -16,7 +16,7 @@ use stiles_types::{DecoratedNode, Diagnostic, Severity};
 ///
 /// ```
 /// use stiles_rust::RustLintPassAdapter;
-/// use stiles_rust::decorations::ResolvedType;
+/// use stiles_rust::decorations::{AdtKind, ResolvedType};
 /// use stiles_testing::{decorate, execute, parse};
 /// use stiles_types::{DecorationMap, Language, LintPass};
 /// use wildcard_match_arm::WildcardMatchArm;
@@ -26,7 +26,7 @@ use stiles_types::{DecoratedNode, Diagnostic, Severity};
 /// let statement = function.child_by_field_name("body").unwrap().named_child(0).unwrap();
 /// let scrutinee = statement.named_child(0).unwrap().child_by_field_name("value").unwrap();
 /// let mut decorations = DecorationMap::new();
-/// decorations.insert(scrutinee.id(), ResolvedType::new("Direction".into()).with_enum(true));
+/// decorations.insert(scrutinee.id(), ResolvedType::new("Direction".into()).with_adt_kind(AdtKind::Enum));
 /// decorate(&mut tree, decorations);
 /// let pass: Box<dyn LintPass> = Box::new(RustLintPassAdapter::new(WildcardMatchArm));
 /// let mut passes = vec![pass];
@@ -114,6 +114,7 @@ stiles_plugin::export_lints![rust: [WildcardMatchArm]];
 #[cfg(test)]
 mod tests {
     use stiles_rust::RustLintPassAdapter;
+    use stiles_rust::decorations::{AdtKind, Exhaustiveness};
     use stiles_testing::{assert_diagnostic, assert_no_diagnostics, decorate, execute, parse};
     use stiles_types::{DecorationMap, Language, LintPass, Severity};
 
@@ -146,7 +147,7 @@ mod tests {
         let mut map = DecorationMap::new();
         map.insert(
             scrutinee_id,
-            ResolvedType::new("MyEnum".into()).with_enum(true),
+            ResolvedType::new("MyEnum".into()).with_adt_kind(AdtKind::Enum),
         );
         decorate(&mut tree, map);
 
@@ -163,7 +164,7 @@ mod tests {
         let mut map = DecorationMap::new();
         map.insert(
             scrutinee_id,
-            ResolvedType::new("MyEnum".into()).with_enum(true),
+            ResolvedType::new("MyEnum".into()).with_adt_kind(AdtKind::Enum),
         );
         decorate(&mut tree, map);
 
@@ -203,7 +204,7 @@ mod tests {
         let mut map = DecorationMap::new();
         map.insert(
             scrutinee_id,
-            ResolvedType::new("MyEnum".into()).with_enum(true),
+            ResolvedType::new("MyEnum".into()).with_adt_kind(AdtKind::Enum),
         );
         decorate(&mut tree, map);
 
@@ -220,7 +221,7 @@ mod tests {
         let mut map = DecorationMap::new();
         map.insert(
             scrutinee_id,
-            ResolvedType::new("i32".into()).with_enum(false),
+            ResolvedType::new("i32".into()).with_adt_kind(AdtKind::Other),
         );
         decorate(&mut tree, map);
 
@@ -237,9 +238,12 @@ mod tests {
         let mut map = DecorationMap::new();
         map.insert(
             scrutinee_id,
-            ResolvedType::new("ExternalEnum".into()).with_enum(true),
+            ResolvedType::new("ExternalEnum".into()).with_adt_kind(AdtKind::Enum),
         );
-        map.insert(scrutinee_id, AdtFlags::new(true));
+        map.insert(
+            scrutinee_id,
+            AdtFlags::from_exhaustiveness(Exhaustiveness::NonExhaustive),
+        );
         decorate(&mut tree, map);
 
         let diagnostics = execute(&tree, &mut passes());
@@ -255,9 +259,12 @@ mod tests {
         let mut map = DecorationMap::new();
         map.insert(
             scrutinee_id,
-            ResolvedType::new("LocalEnum".into()).with_enum(true),
+            ResolvedType::new("LocalEnum".into()).with_adt_kind(AdtKind::Enum),
         );
-        map.insert(scrutinee_id, AdtFlags::new(false));
+        map.insert(
+            scrutinee_id,
+            AdtFlags::from_exhaustiveness(Exhaustiveness::Exhaustive),
+        );
         decorate(&mut tree, map);
 
         let diagnostics = execute(&tree, &mut passes());
@@ -273,9 +280,12 @@ mod tests {
         let mut map = DecorationMap::new();
         map.insert(
             scrutinee_id,
-            ResolvedType::new("LocalEnum".into()).with_enum(true),
+            ResolvedType::new("LocalEnum".into()).with_adt_kind(AdtKind::Enum),
         );
-        map.insert(scrutinee_id, AdtFlags::new(false));
+        map.insert(
+            scrutinee_id,
+            AdtFlags::from_exhaustiveness(Exhaustiveness::Exhaustive),
+        );
         decorate(&mut tree, map);
 
         let diagnostics = execute(&tree, &mut passes());

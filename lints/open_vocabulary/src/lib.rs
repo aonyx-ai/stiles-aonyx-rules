@@ -672,7 +672,7 @@ mod tests {
             .find(needle)
             .expect("the needle should be in the source");
         let end = start + needle.len();
-        assert_diagnostic(&diagnostics[0]).has_span("<test>", start, end);
+        assert_diagnostic(&diagnostics[0]).has_span("<test>", start..end);
     }
 
     #[test]
@@ -728,7 +728,7 @@ mod tests {
             .find(needle)
             .expect("the needle should be in the source");
         let end = start + needle.len();
-        assert_diagnostic(&diagnostics[0]).has_span("<test>", start, end);
+        assert_diagnostic(&diagnostics[0]).has_span("<test>", start..end);
     }
 
     #[test]
@@ -1046,7 +1046,7 @@ mod tests {
         let end = start + needle.len();
         assert_diagnostic(&diagnostics[0])
             .message_contains("holds a map keyed by `String`")
-            .has_span("<test>", start, end);
+            .has_span("<test>", start..end);
     }
 
     #[test]

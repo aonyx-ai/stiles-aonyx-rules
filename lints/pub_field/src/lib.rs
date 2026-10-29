@@ -207,7 +207,7 @@ mod tests {
     fn named_field_diagnostic_spans_the_visibility_modifier() {
         let diagnostics = run("struct Config { pub verbose: u32 }");
 
-        assert_diagnostic(&diagnostics[0]).has_span("<test>", 16, 19);
+        assert_diagnostic(&diagnostics[0]).has_span("<test>", 16..19);
     }
 
     #[test]
@@ -274,7 +274,7 @@ mod tests {
     fn newtype_diagnostic_spans_the_visibility_modifier() {
         let diagnostics = run("pub struct ProviderName(pub &'static str);");
 
-        assert_diagnostic(&diagnostics[0]).has_span("<test>", 24, 27);
+        assert_diagnostic(&diagnostics[0]).has_span("<test>", 24..27);
     }
 
     #[test]

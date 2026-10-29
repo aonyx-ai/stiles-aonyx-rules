@@ -649,7 +649,7 @@ mod tests {
         let diagnostics = check(source);
 
         let start = source.find("Return").unwrap();
-        assert_diagnostic(&diagnostics[0]).has_span("<test>", start, start + "Return".len());
+        assert_diagnostic(&diagnostics[0]).has_span("<test>", start..start + "Return".len());
     }
 
     #[test]
@@ -745,7 +745,7 @@ mod tests {
 
         assert_diagnostic(&diagnostics[0])
             .message_contains("opens with \"`len`\"")
-            .has_span("<test>", 4, 9);
+            .has_span("<test>", 4..9);
     }
 
     #[test]
@@ -934,7 +934,7 @@ mod tests {
             .message_contains(
                 "doc summary opens with \"Return\"; open it with a third-person verb, such as \"Returns\" or \"Creates\"",
             )
-            .has_span("<test>", 4, 10);
+            .has_span("<test>", 4..10);
     }
 
     #[test]
@@ -944,7 +944,7 @@ mod tests {
         let diagnostics = check(source);
 
         let start = source.find("Return").unwrap();
-        assert_diagnostic(&diagnostics[0]).has_span("<test>", start, start + "Return".len());
+        assert_diagnostic(&diagnostics[0]).has_span("<test>", start..start + "Return".len());
     }
 
     #[test]
@@ -1249,7 +1249,7 @@ mod tests {
         let diagnostics = check(source);
 
         let start = source.find("Return").unwrap();
-        assert_diagnostic(&diagnostics[0]).has_span("<test>", start, start + "Return".len());
+        assert_diagnostic(&diagnostics[0]).has_span("<test>", start..start + "Return".len());
     }
 
     #[test]

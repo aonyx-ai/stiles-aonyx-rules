@@ -577,7 +577,7 @@ mod tests {
     fn consecutive_comment_lines_report_one_span_across_all_lines() {
         let diagnostics = check("// fn old() {\n//     let x = 1;\n// }\nfn f() {}");
 
-        assert_diagnostic(&diagnostics[0]).has_span("<test>", 0, 36);
+        assert_diagnostic(&diagnostics[0]).has_span("<test>", 0..36);
     }
 
     #[test]
