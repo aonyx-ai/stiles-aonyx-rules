@@ -436,7 +436,7 @@ mod tests {
             .has_rule_id("lint.repeated-primitive-params")
             .has_severity(Severity::Error)
             .message_contains("parameters `to` and `from` share type `String`")
-            .has_span("<test>", start, start + "String".len());
+            .has_span("<test>", start..start + "String".len());
     }
 
     #[test]

@@ -383,7 +383,7 @@ mod tests {
             let end = source.find(") exactly").unwrap() + 1;
             assert_diagnostic(&diagnostics[0])
                 .has_rule_id("lint.inline-doc-link")
-                .has_span("<test>", start, end);
+                .has_span("<test>", start..end);
         }
 
         #[test]

@@ -52,7 +52,7 @@ const ANYHOW_ERROR: TypePathRef<'static> = TypePathRef::builder()
 ///
 /// ```
 /// use pub_anyhow_result::PubAnyhowResult;
-/// use stiles_rust::decorations::{ErrorType, FnSignature, ResolvedType, ReturnMode, TypePath};
+/// use stiles_rust::decorations::{ErrorType, FnSignature, ResolvedType, ResultKind, ReturnMode, TypePath};
 /// use stiles_testing::{decorate, execute, parse};
 /// use stiles_types::{DecorationMap, Language};
 ///
@@ -60,7 +60,7 @@ const ANYHOW_ERROR: TypePathRef<'static> = TypePathRef::builder()
 /// let function = tree.root_node().named_child(0).unwrap();
 /// let error = TypePath::builder().krate("anyhow").modules([] as [&str; 0]).name("Error").build();
 /// let signature = FnSignature::builder()
-///     .return_type(ResolvedType::new("Result<()>".into()).with_result(true))
+///     .return_type(ResolvedType::new("Result<()>".into()).with_result_kind(ResultKind::Result))
 ///     .error_type(ErrorType::Named(error))
 ///     .return_mode(ReturnMode::Direct)
 ///     .build();
@@ -367,7 +367,7 @@ stiles_plugin::export_lints![rust: [PubAnyhowResult]];
 
 #[cfg(test)]
 mod tests {
-    use stiles_rust::decorations::{ErrorType, ResolvedType, ReturnMode, TypePath};
+    use stiles_rust::decorations::{ErrorType, ResolvedType, ResultKind, ReturnMode, TypePath};
     use stiles_testing::{assert_diagnostic, assert_no_diagnostics, decorate, execute, parse};
     use stiles_types::{DecoratedTree, DecorationMap, Language};
 
@@ -375,7 +375,7 @@ mod tests {
 
     /// Returns the signature the provider records for `anyhow::Result<()>`
     fn anyhow_signature() -> FnSignature {
-        let ret = ResolvedType::new("Result<()>".into()).with_result(true);
+        let ret = ResolvedType::new("Result<()>".into()).with_result_kind(ResultKind::Result);
         let error = ErrorType::Named(
             TypePath::builder()
                 .krate("anyhow")
@@ -393,7 +393,7 @@ mod tests {
     /// Returns the signature the provider records for an `async fn` whose
     /// future yields `anyhow::Result<()>`
     fn anyhow_async_signature() -> FnSignature {
-        let ret = ResolvedType::new("Result<()>".into()).with_result(true);
+        let ret = ResolvedType::new("Result<()>".into()).with_result_kind(ResultKind::Result);
         let error = ErrorType::Named(
             TypePath::builder()
                 .krate("anyhow")
@@ -414,7 +414,8 @@ mod tests {
     /// The name renders as `Error` like `anyhow`'s, so only the definition
     /// path tells the two apart.
     fn local_error_signature() -> FnSignature {
-        let ret = ResolvedType::new("Result<(), Error>".into()).with_result(true);
+        let ret =
+            ResolvedType::new("Result<(), Error>".into()).with_result_kind(ResultKind::Result);
         let error = ErrorType::Named(
             TypePath::builder()
                 .krate("my_crate")
@@ -515,7 +516,8 @@ mod tests {
 
     #[test]
     fn boxed_error_type_not_flagged() {
-        let ret = ResolvedType::new("Result<(), Box<dyn Error>>".into()).with_result(true);
+        let ret = ResolvedType::new("Result<(), Box<dyn Error>>".into())
+            .with_result_kind(ResultKind::Result);
         let error = ErrorType::Named(
             TypePath::builder()
                 .krate("alloc")
@@ -668,13 +670,14 @@ mod tests {
     fn diagnostic_spans_the_return_type() {
         let diagnostics = run("pub fn f() -> Result<()> {}");
 
-        assert_diagnostic(&diagnostics[0]).has_span("<test>", 14, 24);
+        assert_diagnostic(&diagnostics[0]).has_span("<test>", 14..24);
     }
 
     /// Only the crate root's `Error` is `anyhow::Error`
     #[test]
     fn error_in_anyhow_submodule_not_flagged() {
-        let ret = ResolvedType::new("Result<(), Error>".into()).with_result(true);
+        let ret =
+            ResolvedType::new("Result<(), Error>".into()).with_result_kind(ResultKind::Result);
         let error = ErrorType::Named(
             TypePath::builder()
                 .krate("anyhow")
@@ -695,7 +698,7 @@ mod tests {
 
     #[test]
     fn generic_error_type_not_flagged() {
-        let ret = ResolvedType::new("Result<(), E>".into()).with_result(true);
+        let ret = ResolvedType::new("Result<(), E>".into()).with_result_kind(ResultKind::Result);
         let signature = FnSignature::builder()
             .return_type(ret)
             .error_type(ErrorType::Generic)

@@ -434,7 +434,7 @@ mod tests {
                 .has_rule_id("lint.long-doc-sentence")
                 .has_severity(Severity::Error)
                 .message_contains("26 words")
-                .has_span("<test>", start, start + sentence.len());
+                .has_span("<test>", start..start + sentence.len());
         }
 
         #[test]

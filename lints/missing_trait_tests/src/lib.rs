@@ -701,7 +701,7 @@ mod tests {
 
         let diagnostics = run(source);
 
-        assert_diagnostic(&diagnostics[0]).has_span("<test>", start, start + "Foo".len());
+        assert_diagnostic(&diagnostics[0]).has_span("<test>", start..start + "Foo".len());
     }
 
     #[test]

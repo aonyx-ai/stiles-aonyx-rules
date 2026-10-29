@@ -944,11 +944,8 @@ pub trait Port {
 
         let diagnostics = run(source);
 
-        assert_diagnostic(&diagnostics[0]).has_span(
-            "<test>",
-            start,
-            start + "anyhow::Result".len(),
-        );
+        assert_diagnostic(&diagnostics[0])
+            .has_span("<test>", start..start + "anyhow::Result".len());
     }
 
     #[test]

@@ -34,7 +34,7 @@ const ANYHOW_ERROR: TypePathRef<'static> = TypePathRef::builder()
 ///
 /// ```
 /// use anyhow_missing_context::AnyhowMissingContext;
-/// use stiles_rust::decorations::{ErrorType, FnSignature, ResolvedType, ReturnMode, TypePath};
+/// use stiles_rust::decorations::{ErrorType, FnSignature, ResolvedType, ResultKind, ReturnMode, TypePath};
 /// use stiles_testing::{decorate, execute, parse};
 /// use stiles_types::{DecorationMap, Language};
 ///
@@ -44,12 +44,12 @@ const ANYHOW_ERROR: TypePathRef<'static> = TypePathRef::builder()
 /// let operand = statement.named_child(0).unwrap().named_child(0).unwrap();
 /// let error = TypePath::builder().krate("anyhow").modules([] as [&str; 0]).name("Error").build();
 /// let signature = FnSignature::builder()
-///     .return_type(ResolvedType::new("Result<()>".into()).with_result(true))
+///     .return_type(ResolvedType::new("Result<()>".into()).with_result_kind(ResultKind::Result))
 ///     .error_type(ErrorType::Named(error))
 ///     .return_mode(ReturnMode::Direct)
 ///     .build();
 /// let mut decorations = DecorationMap::new();
-/// decorations.insert(operand.id(), ResolvedType::new("Result<()>".into()).with_result(true));
+/// decorations.insert(operand.id(), ResolvedType::new("Result<()>".into()).with_result_kind(ResultKind::Result));
 /// decorations.insert(function.id(), signature);
 /// decorate(&mut tree, decorations);
 /// let mut passes = vec![AnyhowMissingContext::into_lint_pass()];
@@ -181,7 +181,9 @@ stiles_plugin::export_lints![rust: [AnyhowMissingContext]];
 
 #[cfg(test)]
 mod tests {
-    use stiles_rust::decorations::{ErrorType, FnSignature, ResolvedType, ReturnMode, TypePath};
+    use stiles_rust::decorations::{
+        ErrorType, FnSignature, OptionKind, ResolvedType, ResultKind, ReturnMode, TypePath,
+    };
     use stiles_testing::{assert_diagnostic, assert_no_diagnostics, decorate, execute, parse};
     use stiles_types::{DecorationMap, Language, LintPass, Severity};
 
@@ -192,16 +194,17 @@ mod tests {
     }
 
     fn result_type() -> ResolvedType {
-        ResolvedType::new("Result<(), Error>".into()).with_result(true)
+        ResolvedType::new("Result<(), Error>".into()).with_result_kind(ResultKind::Result)
     }
 
     fn option_type() -> ResolvedType {
-        ResolvedType::new("Option<String>".into()).with_option(true)
+        ResolvedType::new("Option<String>".into()).with_option_kind(OptionKind::Option)
     }
 
     /// Returns the signature the provider reports for `anyhow::Result<()>`
     fn anyhow_fn_sig() -> FnSignature {
-        let ret = ResolvedType::new("Result<(), Error>".into()).with_result(true);
+        let ret =
+            ResolvedType::new("Result<(), Error>".into()).with_result_kind(ResultKind::Result);
         let error = ErrorType::Named(
             TypePath::builder()
                 .krate("anyhow")
@@ -222,7 +225,8 @@ mod tests {
     /// tells the two apart. The path names `core`, because `std::io::Error`
     /// is a re-export of `core::io::error::Error`.
     fn non_anyhow_fn_sig() -> FnSignature {
-        let ret = ResolvedType::new("Result<(), Error>".into()).with_result(true);
+        let ret =
+            ResolvedType::new("Result<(), Error>".into()).with_result_kind(ResultKind::Result);
         let error = ErrorType::Named(
             TypePath::builder()
                 .krate("core")

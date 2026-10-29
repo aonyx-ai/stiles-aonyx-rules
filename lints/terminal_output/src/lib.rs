@@ -509,7 +509,7 @@ mod tests {
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.terminal-output")
             .has_severity(Severity::Error)
-            .has_span(LIBRARY, 9, 22);
+            .has_span(LIBRARY, 9..22);
     }
 
     #[test]
