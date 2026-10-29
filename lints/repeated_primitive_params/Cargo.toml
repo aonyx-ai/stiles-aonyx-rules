@@ -24,6 +24,7 @@ default = ["plugin"]
 plugin = []
 
 [dependencies]
+attribute = { workspace = true }
 stiles-plugin = { workspace = true }
 # Both rules ask one question about a signature and must answer it alike.
 boundary = { workspace = true }

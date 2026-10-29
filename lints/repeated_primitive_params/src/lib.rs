@@ -1,3 +1,4 @@
+use attribute::Builder;
 use stiles_rust::{RuleId, RustLintPass, RustLintPassAdapter};
 use stiles_types::{DecoratedNode, Diagnostic, LintPass, RuleOptions, Severity};
 
@@ -15,6 +16,12 @@ const RULE_ID: RuleId = RuleId::new("lint.repeated-primitive-params");
 ///
 /// The `boundary-attributes` option names the attribute macros that fix a
 /// signature the way `extern` does. See [`boundary::crosses_a_boundary`].
+///
+/// The rule skips a function under `#[builder]`, because `bon` then hides
+/// the function behind a builder that names each argument at the call site.
+/// A `#[builder]` that names a `start_fn` keeps the function callable by
+/// position, so the rule still reports it. `lint.multi-param-constructor`
+/// decides this the same way, through [`attribute::builder`].
 ///
 /// # Examples
 ///
@@ -108,11 +115,14 @@ fn join_names(names: &[&str]) -> String {
 
 /// Reports every primitive type that the signature uses more than once
 ///
-/// The rule skips a signature on a boundary. The diagnostic points at the type of
-/// the first parameter in the group, so two repeated types give two
-/// diagnostics at two places.
+/// The rule skips a signature on a boundary, and one that `#[builder]` hides.
+/// The diagnostic points at the type of the first parameter in the group, so
+/// two repeated types give two diagnostics at two places.
 fn check_signature(node: &DecoratedNode<'_>, boundary: &[String]) -> Vec<Diagnostic> {
     if boundary::crosses_a_boundary(node, boundary) {
+        return Vec::new();
+    }
+    if attribute::builder(node) == Builder::Hidden {
         return Vec::new();
     }
 
@@ -241,6 +251,37 @@ mod tests {
             "#[shard]\nfn a(x: String, y: String) {}\nfn b(x: String, y: String) {}",
             &["shard"],
         );
+
+        assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn check_signature_with_a_builder_attribute_reports_nothing() {
+        let diagnostics = run(
+            "impl Span {\n    #[builder]\n    pub fn new(start: usize, end: usize) -> Self { todo!() }\n}",
+        );
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn check_signature_with_a_builder_attribute_written_in_full_reports_nothing() {
+        let diagnostics = run("#[bon::builder]\nfn f(a: String, b: String) {}");
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn check_signature_with_a_builder_naming_a_start_fn_reports_one_diagnostic() {
+        let diagnostics = run("#[builder(start_fn = make)]\nfn f(a: String, b: String) {}");
+
+        assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn check_signature_with_a_builder_on_the_function_before_reports_one_diagnostic() {
+        let diagnostics =
+            run("#[builder]\nfn a(x: String, y: String) {}\nfn b(x: String, y: String) {}");
 
         assert_eq!(diagnostics.len(), 1);
     }

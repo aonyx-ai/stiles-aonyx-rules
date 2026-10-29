@@ -3,7 +3,7 @@
 //! Tree-sitter leaves an item's attributes beside the item rather than inside
 //! it. A rule that exempts an item for an attribute it carries has to walk
 //! back over the siblings to find them. [`outer`] does that walk, and the
-//! other functions read one attribute that it returns.
+//! other functions read what the attributes it returns state.
 
 use stiles_types::DecoratedNode;
 
@@ -121,6 +121,101 @@ pub fn words<'a>(attribute: &DecoratedNode<'a>) -> Vec<&'a str> {
         .collect()
 }
 
+/// What a `bon` `#[builder]` on a function leaves of the function
+///
+/// `bon` generates a builder from a function under `#[builder]`. Without a
+/// `start_fn` name it hides the function, and the builder takes its name.
+/// With a name, it keeps the function callable under its own name beside
+/// the builder.
+///
+/// # Examples
+///
+/// ```
+/// use attribute::Builder;
+/// use stiles_testing::parse;
+/// use stiles_types::Language;
+///
+/// let tree = parse("#[builder]\nfn new(a: u8, b: u8) {}", Language::Rust);
+/// let function = tree.root_node().named_child(1).unwrap();
+///
+/// assert_eq!(attribute::builder(&function), Builder::Hidden);
+/// ```
+#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
+pub enum Builder {
+    /// The function carries no `#[builder]`
+    Absent,
+
+    /// A `#[builder]` replaces the function with a builder
+    Hidden,
+
+    /// A `#[builder]` names a `start_fn`, so the function stays callable
+    Kept,
+}
+
+/// Returns what a `#[builder]` on `function` leaves of the function
+///
+/// An attribute counts when the last segment of its path is `builder`, so
+/// `#[builder]` and `#[bon::builder]` count alike. `bon` reads the start
+/// function's name from `start_fn = name`, or from `name = ...` inside
+/// `start_fn(...)`. `start_fn(vis = "...")` without a name leaves the
+/// function hidden. Only the attribute's own arguments count, so a
+/// `start_fn` inside another argument does not.
+///
+/// # Examples
+///
+/// ```
+/// use attribute::Builder;
+/// use stiles_testing::parse;
+/// use stiles_types::Language;
+///
+/// let tree = parse("#[builder(start_fn = builder)]\nfn new() {}", Language::Rust);
+/// let function = tree.root_node().named_child(1).unwrap();
+///
+/// assert_eq!(attribute::builder(&function), Builder::Kept);
+/// ```
+pub fn builder(function: &DecoratedNode<'_>) -> Builder {
+    let builders: Vec<_> = outer(function)
+        .into_iter()
+        .filter(|attribute| name(attribute) == Some("builder"))
+        .collect();
+
+    if builders.iter().any(names_a_start_fn) {
+        return Builder::Kept;
+    }
+    match builders.is_empty() {
+        true => Builder::Absent,
+        false => Builder::Hidden,
+    }
+}
+
+/// Returns whether a `#[builder]` attribute names its start function
+fn names_a_start_fn(attribute: &DecoratedNode<'_>) -> bool {
+    let Some(arguments) = attribute.child_by_field_name("arguments") else {
+        return false;
+    };
+    children(&arguments).windows(2).any(|pair| {
+        if pair[0].kind() != "identifier" || pair[0].text() != "start_fn" {
+            return false;
+        }
+        match pair[1].kind() {
+            "=" => true,
+            "token_tree" => children(&pair[1])
+                .windows(2)
+                .any(|inner| inner[0].text() == "name" && inner[1].kind() == "="),
+            _ => false,
+        }
+    })
+}
+
+/// Returns every child of `node` in order, the unnamed ones included
+///
+/// A token tree holds its `=` signs and commas as unnamed children.
+fn children<'a>(node: &DecoratedNode<'a>) -> Vec<DecoratedNode<'a>> {
+    (0..node.child_count() as u32)
+        .filter_map(|index| node.child(index))
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use stiles_testing::parse;
@@ -158,6 +253,69 @@ mod tests {
             .into_iter()
             .map(str::to_owned)
             .collect()
+    }
+
+    /// Returns what a `#[builder]` leaves of the last function in `source`
+    fn builder_of(source: &str) -> Builder {
+        let tree = parse(source, Language::Rust);
+
+        builder(&last_item(&tree))
+    }
+
+    #[test]
+    fn builder_naming_a_start_fn_in_a_list_is_kept() {
+        let left = builder_of("#[builder(start_fn(name = make, vis = \"\"))]\nfn new() {}");
+
+        assert_eq!(left, Builder::Kept);
+    }
+
+    #[test]
+    fn builder_naming_a_start_fn_is_kept() {
+        let left = builder_of("#[builder(finish_fn = done, start_fn = make)]\nfn new() {}");
+
+        assert_eq!(left, Builder::Kept);
+    }
+
+    #[test]
+    fn builder_on_the_function_before_is_absent() {
+        let left = builder_of("#[builder]\nfn a() {}\nfn b() {}");
+
+        assert_eq!(left, Builder::Absent);
+    }
+
+    #[test]
+    fn builder_past_a_doc_comment_is_hidden() {
+        let left = builder_of("#[builder]\n/// Docs\nfn new() {}");
+
+        assert_eq!(left, Builder::Hidden);
+    }
+
+    #[test]
+    fn builder_with_a_start_fn_inside_another_argument_is_hidden() {
+        let left = builder_of("#[builder(on(String, start_fn = make))]\nfn new() {}");
+
+        assert_eq!(left, Builder::Hidden);
+    }
+
+    #[test]
+    fn builder_with_a_start_fn_visibility_only_is_hidden() {
+        let left = builder_of("#[builder(start_fn(vis = \"pub(crate)\"))]\nfn new() {}");
+
+        assert_eq!(left, Builder::Hidden);
+    }
+
+    #[test]
+    fn builder_without_arguments_is_hidden() {
+        let left = builder_of("#[bon::builder]\nfn new() {}");
+
+        assert_eq!(left, Builder::Hidden);
+    }
+
+    #[test]
+    fn builder_without_the_attribute_is_absent() {
+        let left = builder_of("#[inline]\nfn new() {}");
+
+        assert_eq!(left, Builder::Absent);
     }
 
     #[test]
@@ -221,6 +379,24 @@ mod tests {
         let attributes = outer(&last_item(&tree));
 
         assert_eq!(path(&attributes[0]), Some("stabby::stabby"));
+    }
+
+    #[test]
+    fn trait_send_builder() {
+        fn assert_send<T: Send>() {}
+        assert_send::<Builder>();
+    }
+
+    #[test]
+    fn trait_sync_builder() {
+        fn assert_sync<T: Sync>() {}
+        assert_sync::<Builder>();
+    }
+
+    #[test]
+    fn trait_unpin_builder() {
+        fn assert_unpin<T: Unpin>() {}
+        assert_unpin::<Builder>();
     }
 
     #[test]

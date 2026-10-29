@@ -1,9 +1,10 @@
 mod test_code;
 
+use attribute::Builder;
 use stiles_rust::{RuleId, RustLintPass, RustLintPassAdapter};
 use stiles_types::{DecoratedNode, Diagnostic, LintPass, Severity};
 
-use crate::test_code::{attribute_name, is_test_code, outer_attributes};
+use crate::test_code::is_test_code;
 
 const RULE_ID: RuleId = RuleId::new("lint.multi-param-constructor");
 
@@ -92,19 +93,16 @@ fn check_function(function: &DecoratedNode<'_>) -> Option<Diagnostic> {
         return None;
     }
 
-    let builders: Vec<_> = outer_attributes(function)
-        .into_iter()
-        .filter(|attribute| attribute_name(attribute) == Some("builder"))
-        .collect();
-    let keeps_function = builders.iter().any(names_a_start_fn);
-    if (!builders.is_empty() && !keeps_function) || is_test_code(function) {
+    if is_test_code(function) {
         return None;
     }
 
-    let advice = if keeps_function {
-        "remove the `start_fn` name from `#[builder]` so that the builder replaces the function"
-    } else {
-        "derive a builder with `bon`, or put `#[builder]` on the function"
+    let advice = match attribute::builder(function) {
+        Builder::Absent => "derive a builder with `bon`, or put `#[builder]` on the function",
+        Builder::Hidden => return None,
+        Builder::Kept => {
+            "remove the `start_fn` name from `#[builder]` so that the builder replaces the function"
+        }
     };
     Some(
         Diagnostic::builder()
@@ -118,40 +116,6 @@ fn check_function(function: &DecoratedNode<'_>) -> Option<Diagnostic> {
             .span(name.span())
             .build(),
     )
-}
-
-/// Returns whether a `#[builder]` attribute names its start function
-///
-/// `bon` reads the name from `start_fn = name`, or from `name = ...` inside
-/// `start_fn(...)`. With a name, it keeps the original function callable
-/// beside the builder. `start_fn(vis = "...")` without a name leaves the
-/// function hidden. Only the attribute's own arguments count, so a
-/// `start_fn` inside another argument does not.
-fn names_a_start_fn(attribute: &DecoratedNode<'_>) -> bool {
-    let Some(arguments) = attribute.child_by_field_name("arguments") else {
-        return false;
-    };
-    children(&arguments).windows(2).any(|pair| {
-        if pair[0].kind() != "identifier" || pair[0].text() != "start_fn" {
-            return false;
-        }
-        match pair[1].kind() {
-            "=" => true,
-            "token_tree" => children(&pair[1])
-                .windows(2)
-                .any(|inner| inner[0].text() == "name" && inner[1].kind() == "="),
-            _ => false,
-        }
-    })
-}
-
-/// Returns every child of `node` in order, the unnamed ones included
-///
-/// A token tree holds its `=` signs and commas as unnamed children.
-fn children<'a>(node: &DecoratedNode<'a>) -> Vec<DecoratedNode<'a>> {
-    (0..node.child_count() as u32)
-        .filter_map(|index| node.child(index))
-        .collect()
 }
 
 /// Returns whether `parameter` is a receiver with a type, as in

@@ -39,7 +39,7 @@ pub(crate) fn is_test_code(node: &DecoratedNode<'_>) -> bool {
 /// is neither an attribute nor a comment. A doc comment between two
 /// attributes therefore does not end the run. Each entry is the `attribute` node
 /// inside the `attribute_item`.
-pub(crate) fn outer_attributes<'a>(item: &DecoratedNode<'a>) -> Vec<DecoratedNode<'a>> {
+fn outer_attributes<'a>(item: &DecoratedNode<'a>) -> Vec<DecoratedNode<'a>> {
     let Some(parent) = item.parent() else {
         return Vec::new();
     };
@@ -75,7 +75,7 @@ fn inner_attributes<'a>(scope: &DecoratedNode<'a>) -> Vec<DecoratedNode<'a>> {
 
 /// Returns the last segment of an attribute's path, such as `test` for
 /// `#[tokio::test]`
-pub(crate) fn attribute_name<'a>(attribute: &DecoratedNode<'a>) -> Option<&'a str> {
+fn attribute_name<'a>(attribute: &DecoratedNode<'a>) -> Option<&'a str> {
     let path = attribute.named_child(0)?;
     let name = path.text();
     Some(name.rsplit("::").next().unwrap_or(name).trim())
