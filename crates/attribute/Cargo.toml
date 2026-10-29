@@ -1,0 +1,23 @@
+# Several rules read the attributes written on an item, and they have to
+# agree on which ones belong to it. The reading lives here rather than in
+# each rule, because a copy that drifts makes one rule see an attribute that
+# another misses on the same item.
+#
+# This crate is an rlib and exports no plugin declaration, so the build
+# produces no dynamic library for stiles to load.
+[package]
+name = "attribute"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+stiles-types = { workspace = true }
+
+[dev-dependencies]
+stiles-testing = { workspace = true }
+
+[lints]
+workspace = true

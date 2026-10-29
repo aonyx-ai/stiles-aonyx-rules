@@ -12,6 +12,13 @@ const RULE_ID: RuleId = RuleId::new("lint.pub-field");
 /// Restricted forms such as `pub(crate)` narrow the exposure on purpose, so
 /// the rule leaves them alone. Enums and unions are out of scope.
 ///
+/// The rule skips a struct whose layout is a contract with code outside the
+/// crate. That is a struct under `#[repr(C)]`, alone or in a list such as
+/// `#[repr(C, packed)]`, and a struct under `#[stabby::stabby]` or
+/// `#[stabby]`. A loader on the other side reads such fields through raw
+/// pointers at the offsets the layout fixes. An accessor cannot stand in for
+/// them.
+///
 /// # Examples
 ///
 /// ```
@@ -118,8 +125,25 @@ fn ordered_field_diagnostics(body: &DecoratedNode<'_>) -> Vec<Diagnostic> {
     diagnostics
 }
 
+/// Returns whether an attribute fixes the layout of the struct it sits on
+///
+/// `repr` counts when its arguments name `C`. Stabby counts under the path
+/// its crate exports, or under the bare name that a `use` brings in.
+fn fixes_the_layout(attribute: &DecoratedNode<'_>) -> bool {
+    match attribute::path(attribute) {
+        Some("repr") => attribute::words(attribute).contains(&"C"),
+        Some("stabby" | "stabby::stabby") => true,
+        Some(_) => false,
+        None => false,
+    }
+}
+
 impl RustLintPass for PubField {
     fn check_struct_item(&mut self, node: &DecoratedNode<'_>) -> Vec<Diagnostic> {
+        if attribute::outer(node).iter().any(fixes_the_layout) {
+            return Vec::new();
+        }
+
         let Some(body) = node.child_by_field_name("body") else {
             return Vec::new();
         };
@@ -156,6 +180,13 @@ mod tests {
         let tree = parse(source, Language::Rust);
         let mut passes = vec![adapt()];
         execute(&tree, &mut passes)
+    }
+
+    #[test]
+    fn cfg_attr_repr_c_struct_flagged_once() {
+        let diagnostics = run("#[cfg_attr(unix, repr(C))]\nstruct Config { pub verbose: u32 }");
+
+        assert_eq!(diagnostics.len(), 1);
     }
 
     #[test]
@@ -265,6 +296,13 @@ mod tests {
     }
 
     #[test]
+    fn other_crates_stabby_attribute_flagged_once() {
+        let diagnostics = run("#[other::stabby]\nstruct Config { pub verbose: u32 }");
+
+        assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
     fn private_named_field_not_flagged() {
         let diagnostics = run("pub struct Config { verbose: u32 }");
 
@@ -314,8 +352,73 @@ mod tests {
     }
 
     #[test]
+    fn repr_align_struct_flagged_once() {
+        let diagnostics = run("#[repr(align(8))]\nstruct Config { pub verbose: u32 }");
+
+        assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn repr_c_in_a_list_not_flagged() {
+        let diagnostics = run("#[repr(align(8), C)]\nstruct Version { pub major: u32 }");
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn repr_c_on_the_struct_before_does_not_reach_the_next() {
+        let diagnostics = run("#[repr(C)]\nstruct A;\nstruct B { pub verbose: u32 }");
+
+        assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn repr_c_struct_behind_docs_and_a_derive_not_flagged() {
+        let diagnostics = run(
+            "/// Docs\n#[repr(C)]\n/// More docs\n#[derive(Copy, Clone)]\npub struct Version {\n    pub major: u32,\n}",
+        );
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn repr_c_struct_not_flagged() {
+        let diagnostics = run("#[repr(C)]\npub struct Version { pub major: u32, pub minor: u32 }");
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn repr_c_tuple_struct_not_flagged() {
+        let diagnostics = run("#[repr(C)]\npub struct Handle(pub u32);");
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn repr_transparent_struct_flagged_once() {
+        let diagnostics = run("#[repr(transparent)]\npub struct Handle(pub u32);");
+
+        assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
     fn spaced_pub_crate_tuple_field_not_flagged() {
         let diagnostics = run("struct RuleId(pub (crate) u32);");
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn stabby_struct_imported_by_name_not_flagged() {
+        let diagnostics = run("#[stabby]\npub struct Plugin { pub lints: Vec<u32> }");
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn stabby_struct_not_flagged() {
+        let diagnostics = run("#[stabby::stabby]\npub struct Plugin { pub lints: Vec<u32> }");
 
         assert_no_diagnostics(&diagnostics);
     }
