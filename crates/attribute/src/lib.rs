@@ -121,6 +121,43 @@ pub fn words<'a>(attribute: &DecoratedNode<'a>) -> Vec<&'a str> {
         .collect()
 }
 
+/// Returns the last path segment of every derive macro on `item`, in order
+///
+/// `#[derive(Clone, serde::Serialize)]` gives `Clone` and `Serialize`. Every
+/// `#[derive(...)]` on the item counts. A derive inside `#[cfg_attr(...)]`
+/// does not, because it applies only when its predicate holds.
+///
+/// # Examples
+///
+/// ```
+/// use stiles_testing::parse;
+/// use stiles_types::Language;
+///
+/// let tree = parse("#[derive(Debug, clap::Args)]\nstruct S;", Language::Rust);
+/// let item = tree.root_node().named_child(1).unwrap();
+///
+/// assert_eq!(attribute::derives(&item), vec!["Debug", "Args"]);
+/// ```
+pub fn derives<'a>(item: &DecoratedNode<'a>) -> Vec<&'a str> {
+    let mut derives = Vec::new();
+    for attribute in outer(item).iter().rev() {
+        if path(attribute) != Some("derive") {
+            continue;
+        }
+        let Some(arguments) = attribute.child_by_field_name("arguments") else {
+            continue;
+        };
+        let tokens = children(&arguments);
+        for (index, token) in tokens.iter().enumerate() {
+            let next = tokens.get(index + 1).map(|next| next.kind());
+            if token.kind() == "identifier" && next != Some("::") {
+                derives.push(token.text());
+            }
+        }
+    }
+    derives
+}
+
 /// What a `bon` `#[builder]` on a function leaves of the function
 ///
 /// `bon` generates a builder from a function under `#[builder]`. Without a
@@ -316,6 +353,45 @@ mod tests {
         let left = builder_of("#[inline]\nfn new() {}");
 
         assert_eq!(left, Builder::Absent);
+    }
+
+    /// Returns the derives on the last item in `source`
+    fn derives_of(source: &str) -> Vec<String> {
+        let tree = parse(source, Language::Rust);
+
+        derives(&last_item(&tree))
+            .into_iter()
+            .map(str::to_owned)
+            .collect()
+    }
+
+    #[test]
+    fn derives_across_two_attributes_keep_source_order() {
+        let derives =
+            derives_of("#[derive(Debug)]\n/// Docs\n#[derive(serde::Serialize)]\nstruct S;");
+
+        assert_eq!(derives, vec!["Debug", "Serialize"]);
+    }
+
+    #[test]
+    fn derives_inside_cfg_attr_are_skipped() {
+        let derives = derives_of("#[cfg_attr(test, derive(Debug))]\nstruct S;");
+
+        assert!(derives.is_empty(), "{derives:?}");
+    }
+
+    #[test]
+    fn derives_of_a_rooted_path_keep_the_last_segment() {
+        let derives = derives_of("#[derive(::serde::Deserialize, Clone)]\nstruct S;");
+
+        assert_eq!(derives, vec!["Deserialize", "Clone"]);
+    }
+
+    #[test]
+    fn derives_on_the_item_before_are_skipped() {
+        let derives = derives_of("#[derive(Debug)]\nstruct A;\nstruct B;");
+
+        assert!(derives.is_empty(), "{derives:?}");
     }
 
     #[test]

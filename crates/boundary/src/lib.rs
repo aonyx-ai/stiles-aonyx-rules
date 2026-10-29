@@ -1,4 +1,4 @@
-//! Whether a signature sits on a boundary that fixes it
+//! Whether a signature or a type sits on a boundary that fixes it
 //!
 //! Stiles's guidance allows a primitive at a system boundary, and two
 //! rules act on that: `lint.repeated-primitive-params` and
@@ -6,6 +6,10 @@
 //! under one option a project sets once, so they ask it here. A copy in
 //! each rule could drift. One rule would then exempt a function the other
 //! reports, which reads as a bug in whichever rule spoke.
+//!
+//! A type whose derive maps it onto a format outside Rust is a boundary
+//! too: [`derives_a_boundary`] answers that. Only `lint.bool-param` reads
+//! fields, so it is the one rule that asks.
 
 use stiles_types::DecoratedNode;
 
@@ -58,6 +62,57 @@ pub fn crosses_a_boundary(node: &DecoratedNode<'_>, attributes: &[String]) -> bo
         .is_some_and(|grandparent| grandparent.kind() == "foreign_mod_item");
 
     extern_abi || extern_block || carries_a_boundary_attribute(node, attributes)
+}
+
+/// The derive macros that map a type onto a format outside Rust
+///
+/// `Parser`, `Args`, `Subcommand`, and `ValueEnum` are clap's, and map the
+/// type onto a command line. `Serialize` and `Deserialize` are serde's, and
+/// map it onto a data format. A derive counts by the last segment of its
+/// path, so `clap::Parser` and `Parser` count alike.
+///
+/// # Examples
+///
+/// ```
+/// use boundary::DERIVES;
+///
+/// assert!(DERIVES.contains(&"Deserialize"));
+/// ```
+pub const DERIVES: &[&str] = &[
+    "Args",
+    "Deserialize",
+    "Parser",
+    "Serialize",
+    "Subcommand",
+    "ValueEnum",
+];
+
+/// Returns whether the type at `item` derives one of [`DERIVES`]
+///
+/// The format on the other side fixes the shape of each field. A command
+/// line flag that takes no value is a `bool` to clap, and a JSON `true` is
+/// a `bool` to serde. A rule that asks for a better type there asks for
+/// something the format does not hold.
+///
+/// Only a `#[derive(...)]` written on the item counts. A derive under
+/// `#[cfg_attr(...)]` applies only when its predicate holds, so it proves
+/// nothing.
+///
+/// # Examples
+///
+/// ```
+/// use stiles_testing::parse;
+/// use stiles_types::Language;
+///
+/// let tree = parse("#[derive(Debug, clap::Args)]\nstruct A { b: bool }", Language::Rust);
+/// let item = tree.root_node().named_child(1).unwrap();
+///
+/// assert!(boundary::derives_a_boundary(&item));
+/// ```
+pub fn derives_a_boundary(item: &DecoratedNode<'_>) -> bool {
+    attribute::derives(item)
+        .iter()
+        .any(|derive| DERIVES.contains(derive))
 }
 
 /// Returns whether an attribute on the signature is one of `attributes`
@@ -234,6 +289,55 @@ mod tests {
         let crossed = crosses("fn f(a: String) {}", &["shard"]);
 
         assert!(!crossed);
+    }
+
+    /// Reports whether the last item in `source` derives a boundary
+    fn derived(source: &str) -> bool {
+        let tree = parse(source, Language::Rust);
+        let item = tree
+            .root_node()
+            .named_children()
+            .into_iter()
+            .rev()
+            .find(|node| node.kind() != "attribute_item" && node.kind() != "line_comment")
+            .expect("the source should hold an item");
+
+        derives_a_boundary(&item)
+    }
+
+    #[test]
+    fn derives_a_boundary_under_cfg_attr_is_false() {
+        let derived = derived("#[cfg_attr(feature = \"cli\", derive(clap::Args))]\nstruct A;");
+
+        assert!(!derived);
+    }
+
+    #[test]
+    fn derives_a_boundary_with_a_clap_derive_is_true() {
+        let derived = derived("#[derive(Debug, Args)]\nstruct A;");
+
+        assert!(derived);
+    }
+
+    #[test]
+    fn derives_a_boundary_with_a_pathed_serde_derive_is_true() {
+        let derived = derived("#[derive(Clone, serde::Deserialize)]\nstruct A;");
+
+        assert!(derived);
+    }
+
+    #[test]
+    fn derives_a_boundary_with_a_value_enum_is_true() {
+        let derived = derived("#[derive(Clone, ValueEnum)]\nenum Format { Text }");
+
+        assert!(derived);
+    }
+
+    #[test]
+    fn derives_a_boundary_with_other_derives_is_false() {
+        let derived = derived("#[derive(Clone, Debug, bon::Builder)]\nstruct A;");
+
+        assert!(!derived);
     }
 
     #[test]
