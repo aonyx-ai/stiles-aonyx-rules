@@ -19,8 +19,10 @@ const RULE_ID: RuleId = RuleId::new("lint.bool-param");
 /// boundaries. `lint.repeated-primitive-params` reads the same option, and
 /// it means the same thing; a project that sets one usually sets both.
 ///
-/// A struct is not a signature, so a `bool` field is reported whatever the
-/// struct carries.
+/// A struct is not a signature, so `boundary-attributes` does not reach its
+/// fields. The rule skips the fields of a struct that derives one of
+/// [`boundary::DERIVES`], such as clap's `Args` or serde's `Serialize`. The
+/// command line or the data format on the other side fixes their types.
 ///
 /// # Examples
 ///
@@ -119,6 +121,9 @@ impl RustLintPass for BoolParam {
     }
 
     fn check_struct_item(&mut self, node: &DecoratedNode<'_>) -> Vec<Diagnostic> {
+        if boundary::derives_a_boundary(node) {
+            return Vec::new();
+        }
         let Some(body) = node.child_by_field_name("body") else {
             return Vec::new();
         };
@@ -305,6 +310,15 @@ mod tests {
     }
 
     #[test]
+    fn bool_struct_field_behind_a_cfg_attr_derive_flagged_once() {
+        let diagnostics = run(
+            "#[cfg_attr(feature = \"serde\", derive(Serialize))]\nstruct Config { verbose: bool }",
+        );
+
+        assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
     fn bool_struct_field_behind_a_configured_attribute_flagged_once() {
         let diagnostics =
             run_with_boundary_attributes("#[shard]\nstruct Config { verbose: bool }", &["shard"]);
@@ -318,6 +332,14 @@ mod tests {
             run_with_boundary_attributes("#[shard]\nstruct Config { verbose: bool }", &["shard"]);
 
         assert_diagnostic(&diagnostics[0]).message_contains("struct field has type `bool`");
+    }
+
+    #[test]
+    fn bool_struct_field_behind_another_derive_flagged_once() {
+        let diagnostics =
+            run("#[derive(Clone, Debug, bon::Builder)]\nstruct Config { verbose: bool }");
+
+        assert_eq!(diagnostics.len(), 1);
     }
 
     #[test]
@@ -335,6 +357,46 @@ mod tests {
             .has_rule_id("lint.bool-param")
             .has_severity(Severity::Error)
             .message_contains("struct field has type `bool`");
+    }
+
+    #[test]
+    fn bool_struct_field_of_a_clap_args_struct_not_flagged() {
+        let diagnostics = run(
+            "#[derive(Debug, Args)]\npub(crate) struct CheckArgs {\n    #[arg(long)]\n    keep_going: bool,\n}",
+        );
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn bool_struct_field_of_a_clap_parser_struct_not_flagged() {
+        let diagnostics = run("#[derive(clap::Parser)]\nstruct Cli { verbose: bool }");
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn bool_struct_field_of_a_deserialize_struct_not_flagged() {
+        let diagnostics = run(
+            "#[derive(Clone, Debug, Deserialize)]\nstruct Release {\n    #[serde(default)]\n    draft: bool,\n}",
+        );
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn bool_struct_field_of_a_serialize_struct_not_flagged() {
+        let diagnostics = run("#[derive(serde::Serialize)]\nstruct ListedRule { enabled: bool }");
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn bool_struct_field_of_the_struct_after_a_derive_flagged_once() {
+        let diagnostics =
+            run("#[derive(Serialize)]\nstruct A { a: bool }\nstruct Config { verbose: bool }");
+
+        assert_eq!(diagnostics.len(), 1);
     }
 
     /// Pins that this rule ignores every signature the shared corpus holds
