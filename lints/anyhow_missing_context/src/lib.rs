@@ -1,4 +1,4 @@
-use stiles_rust::decorations::{FnSignature, ResolvedType, TypePathRef};
+use stiles_rust::decorations::{FnSignature, OptionKind, ResolvedType, ResultKind, TypePathRef};
 use stiles_rust::{RuleId, RustLintPass};
 use stiles_types::{DecoratedNode, Diagnostic, LintPass, Severity};
 
@@ -85,12 +85,14 @@ impl RustLintPass for AnyhowMissingContext {
             return Vec::new();
         };
 
-        if resolved.is_option() {
-            return Vec::new();
+        match resolved.option_kind() {
+            OptionKind::Option => return Vec::new(),
+            OptionKind::Other => {}
         }
 
-        if !resolved.is_result() {
-            return Vec::new();
+        match resolved.result_kind() {
+            ResultKind::Result => {}
+            ResultKind::Other => return Vec::new(),
         }
 
         let Some(fn_sig) = find_enclosing_fn_signature(node) else {

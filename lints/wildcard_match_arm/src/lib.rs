@@ -1,4 +1,4 @@
-use stiles_rust::decorations::{AdtFlags, ResolvedType};
+use stiles_rust::decorations::{AdtFlags, AdtKind, Exhaustiveness, ResolvedType};
 use stiles_rust::{RuleId, RustLintPass};
 use stiles_types::{DecoratedNode, Diagnostic, Severity};
 
@@ -46,14 +46,17 @@ impl RustLintPass for WildcardMatchArm {
         let Some(resolved) = scrutinee.decoration::<ResolvedType>() else {
             return Vec::new();
         };
-        if !resolved.is_enum() {
-            return Vec::new();
+        match resolved.adt_kind() {
+            AdtKind::Enum => {}
+            AdtKind::Other => return Vec::new(),
         }
 
-        if let Some(flags) = scrutinee.decoration::<AdtFlags>()
-            && flags.non_exhaustive_external()
-        {
-            return Vec::new();
+        let exhaustiveness = scrutinee
+            .decoration::<AdtFlags>()
+            .map_or(Exhaustiveness::Exhaustive, |flags| flags.exhaustiveness());
+        match exhaustiveness {
+            Exhaustiveness::Exhaustive => {}
+            Exhaustiveness::NonExhaustive => return Vec::new(),
         }
 
         let Some(body) = node.child_by_field_name("body") else {
