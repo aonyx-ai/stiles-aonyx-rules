@@ -2,5 +2,5 @@
 # unstable rustfmt option. Nothing else in the tree needs it: no `#![feature]`,
 # no `rustc_private`, and the rust-analyzer crates build on stable.
 [toolchain]
-channel = "nightly-2026-10-01"
+channel = "nightly-2026-11-01"
 components = ["clippy", "rustfmt"]
