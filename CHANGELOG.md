@@ -8,6 +8,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-11-04
+
+### Changed
+
+- `lint.pub-field` skips a struct under `#[repr(C)]` or `#[stabby::stabby]`, whose fields a loader reads at the offsets its layout fixes ([#110])
+- `lint.bool-param` skips the fields of a struct that derives clap's `Parser` or `Args`, or serde's `Serialize` or `Deserialize`, whose format fixes each field's type ([#112])
+- `lint.repeated-primitive-params` skips a function under a `bon` `#[builder]` without a `start_fn` name, whose callers name each argument ([#111])
+- The rules build against stiles 0.3.0 from crates.io. The prebuilt rules need plugin ABI 0.7 ([#116])
+
 ## [0.2.0] - 2026-10-29
 
 ### Changed
@@ -100,3 +109,8 @@ and this project adheres to
 [0.2.0]: https://github.com/aonyx-ai/stiles-aonyx-rules/releases/tag/stiles-aonyx-rules@0.2.0
 [#106]: https://github.com/aonyx-ai/stiles-aonyx-rules/pull/106
 [#107]: https://github.com/aonyx-ai/stiles-aonyx-rules/pull/107
+[0.3.0]: https://github.com/aonyx-ai/stiles-aonyx-rules/releases/tag/stiles-aonyx-rules@0.3.0
+[#110]: https://github.com/aonyx-ai/stiles-aonyx-rules/pull/110
+[#112]: https://github.com/aonyx-ai/stiles-aonyx-rules/pull/112
+[#111]: https://github.com/aonyx-ai/stiles-aonyx-rules/pull/111
+[#116]: https://github.com/aonyx-ai/stiles-aonyx-rules/pull/116

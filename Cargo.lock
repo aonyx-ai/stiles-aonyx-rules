@@ -13,7 +13,7 @@ dependencies = [
 
 [[package]]
 name = "anyhow_missing_context"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "stiles-plugin",
  "stiles-rust",
@@ -23,7 +23,7 @@ dependencies = [
 
 [[package]]
 name = "attribute"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "stiles-testing",
  "stiles-types",
@@ -85,7 +85,7 @@ dependencies = [
 
 [[package]]
 name = "bool_param"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "boundary",
  "stiles-plugin",
@@ -120,7 +120,7 @@ dependencies = [
 
 [[package]]
 name = "boundary"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "attribute",
  "stiles-testing",
@@ -168,7 +168,7 @@ dependencies = [
 
 [[package]]
 name = "commented_out_code"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "proptest",
  "stiles-plugin",
@@ -229,7 +229,7 @@ dependencies = [
 
 [[package]]
 name = "derive_order"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "stiles-plugin",
  "stiles-rust",
@@ -239,7 +239,7 @@ dependencies = [
 
 [[package]]
 name = "doc_comment"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "proptest",
  "stiles-testing",
@@ -248,7 +248,7 @@ dependencies = [
 
 [[package]]
 name = "doc_summary_period"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "doc_comment",
  "stiles-plugin",
@@ -259,7 +259,7 @@ dependencies = [
 
 [[package]]
 name = "doc_summary_person"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "doc_comment",
  "stiles-plugin",
@@ -270,7 +270,7 @@ dependencies = [
 
 [[package]]
 name = "em_dash_aside"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "doc_comment",
  "stiles-plugin",
@@ -298,7 +298,7 @@ dependencies = [
 
 [[package]]
 name = "error_enum_shape"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "stiles-plugin",
  "stiles-rust",
@@ -308,7 +308,7 @@ dependencies = [
 
 [[package]]
 name = "external_type_in_port"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "stiles-plugin",
  "stiles-rust",
@@ -319,7 +319,7 @@ dependencies = [
 
 [[package]]
 name = "facade_bypass_import"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "stiles-plugin",
  "stiles-rust",
@@ -347,7 +347,7 @@ checksum = "3f9eec918d3f24069decb9af1554cad7c880e2da24a9afd88aca000531ab82c1"
 
 [[package]]
 name = "function_scoped_import"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "stiles-plugin",
  "stiles-rust",
@@ -381,7 +381,7 @@ checksum = "b9e0384b61958566e926dc50660321d12159025e767c18e043daf26b70104c39"
 
 [[package]]
 name = "if_let_with_else"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "stiles-plugin",
  "stiles-rust",
@@ -401,7 +401,7 @@ dependencies = [
 
 [[package]]
 name = "inline_comment"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "stiles-plugin",
  "stiles-rust",
@@ -413,7 +413,7 @@ dependencies = [
 
 [[package]]
 name = "inline_doc_link"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "bon",
  "doc_comment",
@@ -426,7 +426,7 @@ dependencies = [
 
 [[package]]
 name = "io_in_pure_function"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "stiles-plugin",
  "stiles-rust",
@@ -454,7 +454,7 @@ checksum = "32a66949e030da00e8c7d4434b251670a91556f4144941d37452769c25d58a53"
 
 [[package]]
 name = "long_doc_sentence"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "bon",
  "doc_comment",
@@ -467,7 +467,7 @@ dependencies = [
 
 [[package]]
 name = "matches_macro"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "stiles-plugin",
  "stiles-rust",
@@ -483,7 +483,7 @@ checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
 
 [[package]]
 name = "missing_examples_doc"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "stiles-plugin",
  "stiles-rust",
@@ -493,7 +493,7 @@ dependencies = [
 
 [[package]]
 name = "missing_trait_tests"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "stiles-plugin",
  "stiles-rust",
@@ -503,7 +503,7 @@ dependencies = [
 
 [[package]]
 name = "multi_assert_test"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "stiles-plugin",
  "stiles-rust",
@@ -513,7 +513,7 @@ dependencies = [
 
 [[package]]
 name = "multi_param_constructor"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "attribute",
  "stiles-plugin",
@@ -540,7 +540,7 @@ checksum = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
 
 [[package]]
 name = "open_vocabulary"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "stiles-plugin",
  "stiles-rust",
@@ -550,7 +550,7 @@ dependencies = [
 
 [[package]]
 name = "outer_module_doc"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "stiles-plugin",
  "stiles-rust",
@@ -608,7 +608,7 @@ dependencies = [
 
 [[package]]
 name = "pub_anyhow_result"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "stiles-plugin",
  "stiles-rust",
@@ -619,7 +619,7 @@ dependencies = [
 
 [[package]]
 name = "pub_field"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "attribute",
  "stiles-plugin",
@@ -705,7 +705,7 @@ checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 
 [[package]]
 name = "repeated_field_access"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "stiles-plugin",
  "stiles-rust",
@@ -715,7 +715,7 @@ dependencies = [
 
 [[package]]
 name = "repeated_primitive_params"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "attribute",
  "boundary",
@@ -727,7 +727,7 @@ dependencies = [
 
 [[package]]
 name = "rule_severity"
-version = "0.2.0"
+version = "0.3.0"
 
 [[package]]
 name = "rustc_version"
@@ -833,7 +833,7 @@ checksum = "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba"
 
 [[package]]
 name = "split_binding"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "stiles-plugin",
  "stiles-rust",
@@ -877,7 +877,7 @@ dependencies = [
 
 [[package]]
 name = "stiles-aonyx-rules"
-version = "0.2.0"
+version = "0.3.0"
 
 [[package]]
 name = "stiles-codegen"
@@ -1028,7 +1028,7 @@ dependencies = [
 
 [[package]]
 name = "terminal_output"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "stiles-plugin",
  "stiles-rust",
@@ -1059,7 +1059,7 @@ dependencies = [
 
 [[package]]
 name = "todo_comment"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "stiles-plugin",
  "stiles-rust",
@@ -1151,7 +1151,7 @@ checksum = "e6e4313cd5fcd3dad5cafa179702e2b244f760991f45397d14d4ebf38247da75"
 
 [[package]]
 name = "unprefixed_submodule_path"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "stiles-plugin",
  "stiles-rust",
@@ -1161,7 +1161,7 @@ dependencies = [
 
 [[package]]
 name = "unseparated_test_body"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "stiles-plugin",
  "stiles-rust",
@@ -1171,7 +1171,7 @@ dependencies = [
 
 [[package]]
 name = "unsorted_test"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "stiles-plugin",
  "stiles-rust",
@@ -1190,7 +1190,7 @@ dependencies = [
 
 [[package]]
 name = "wildcard_match_arm"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "stiles-plugin",
  "stiles-rust",
