@@ -7,7 +7,16 @@ use stiles_types::{DecoratedNode, Diagnostic, LintPass, Severity};
 use crate::imports::{resolve, strip_raw};
 use crate::test_code::is_test_code;
 
-const RULE_ID: RuleId = RuleId::new("lint.io-in-pure-function");
+/// The id that every diagnostic of this rule carries
+///
+/// A project names the rule by this id when it configures the rule.
+///
+/// # Examples
+///
+/// ```
+/// assert_eq!(io_in_pure_function::RULE_ID.as_str(), "lint.io-in-pure-function");
+/// ```
+pub const RULE_ID: RuleId = RuleId::new("lint.io-in-pure-function");
 
 /// Function names that promise a value built from inputs alone
 const PURE_NAMES: [&str; 3] = ["new", "try_from", "from_str"];
@@ -271,6 +280,7 @@ impl stiles_plugin::DeclaresRules for IoInPureFunction {
     }
 }
 
+#[cfg(feature = "plugin")]
 stiles_plugin::export_lints![rust: [IoInPureFunction]];
 
 #[cfg(test)]

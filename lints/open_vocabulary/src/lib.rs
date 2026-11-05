@@ -3,7 +3,16 @@ use std::collections::HashMap;
 use stiles_rust::{RuleId, RustLintPass, RustLintPassAdapter};
 use stiles_types::{DecoratedNode, Diagnostic, LintPass, Severity};
 
-const RULE_ID: RuleId = RuleId::new("lint.open-vocabulary");
+/// The id that every diagnostic of this rule carries
+///
+/// A project names the rule by this id when it configures the rule.
+///
+/// # Examples
+///
+/// ```
+/// assert_eq!(open_vocabulary::RULE_ID.as_str(), "lint.open-vocabulary");
+/// ```
+pub const RULE_ID: RuleId = RuleId::new("lint.open-vocabulary");
 
 /// The variant names that read as a catch-all for whatever the enum lacks
 const CATCH_ALL_NAMES: &[&str] = &["Other", "Custom", "Unknown", "Extension", "Unrecognized"];
@@ -587,6 +596,7 @@ impl stiles_plugin::DeclaresRules for OpenVocabulary {
     }
 }
 
+#[cfg(feature = "plugin")]
 stiles_plugin::export_lints![rust: [OpenVocabulary]];
 
 #[cfg(test)]

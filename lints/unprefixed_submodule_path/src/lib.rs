@@ -1,7 +1,16 @@
 use stiles_rust::{RuleId, RustLintPass, RustLintPassAdapter};
 use stiles_types::{DecoratedNode, Diagnostic, LintPass, Severity};
 
-const RULE_ID: RuleId = RuleId::new("lint.unprefixed-submodule-path");
+/// The id that every diagnostic of this rule carries
+///
+/// A project names the rule by this id when it configures the rule.
+///
+/// # Examples
+///
+/// ```
+/// assert_eq!(unprefixed_submodule_path::RULE_ID.as_str(), "lint.unprefixed-submodule-path");
+/// ```
+pub const RULE_ID: RuleId = RuleId::new("lint.unprefixed-submodule-path");
 
 /// The items in a block that bind a name in the namespace of modules
 ///
@@ -84,6 +93,7 @@ impl stiles_plugin::DeclaresRules for UnprefixedSubmodulePath {
     }
 }
 
+#[cfg(feature = "plugin")]
 stiles_plugin::export_lints![rust: [UnprefixedSubmodulePath]];
 
 /// Reports the unprefixed submodule paths under one node

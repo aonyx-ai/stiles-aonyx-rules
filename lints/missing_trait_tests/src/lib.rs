@@ -4,6 +4,17 @@ use std::path::Path;
 use stiles_rust::{RuleId, RustLintPass};
 use stiles_types::{DecoratedNode, Diagnostic, Severity, Span};
 
+/// The id that every diagnostic of this rule carries
+///
+/// A project names the rule by this id when it configures the rule.
+///
+/// # Examples
+///
+/// ```
+/// assert_eq!(missing_trait_tests::RULE_ID.as_str(), "lint.missing-trait-tests");
+/// ```
+pub const RULE_ID: RuleId = RuleId::new("lint.missing-trait-tests");
+
 /// Flags a `struct` or `enum` that has no `Send`, `Sync`, or `Unpin` test
 ///
 /// A type that quietly loses one of these traits breaks callers far away from
@@ -390,7 +401,7 @@ impl<'a> FileScan<'a> {
 
             diagnostics.push(
                 Diagnostic::builder()
-                    .rule_id(RuleId::new("lint.missing-trait-tests"))
+                    .rule_id(RULE_ID)
                     .severity(Severity::Error)
                     .message(format!(
                         "`{name}` has no {} trait test",
@@ -587,10 +598,11 @@ fn join_traits(traits: &[AutoTrait]) -> String {
 #[cfg(feature = "plugin")]
 impl stiles_plugin::DeclaresRules for MissingTraitTests {
     fn rules(&self) -> Vec<RuleId> {
-        vec![RuleId::new("lint.missing-trait-tests")]
+        vec![RULE_ID]
     }
 }
 
+#[cfg(feature = "plugin")]
 stiles_plugin::export_lints![rust: [MissingTraitTests]];
 
 #[cfg(test)]

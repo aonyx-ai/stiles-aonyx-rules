@@ -2,7 +2,16 @@ use stiles_rust::decorations::ImportSource;
 use stiles_rust::{RuleId, RustLintPass, RustLintPassAdapter};
 use stiles_types::{DecoratedNode, Diagnostic, LintPass, Severity};
 
-const RULE_ID: RuleId = RuleId::new("lint.function-scoped-import");
+/// The id that every diagnostic of this rule carries
+///
+/// A project names the rule by this id when it configures the rule.
+///
+/// # Examples
+///
+/// ```
+/// assert_eq!(function_scoped_import::RULE_ID.as_str(), "lint.function-scoped-import");
+/// ```
+pub const RULE_ID: RuleId = RuleId::new("lint.function-scoped-import");
 
 /// Flags `use` statements inside function bodies
 ///
@@ -190,6 +199,7 @@ impl stiles_plugin::DeclaresRules for FunctionScopedImport {
     }
 }
 
+#[cfg(feature = "plugin")]
 stiles_plugin::export_lints![rust: [FunctionScopedImport]];
 
 #[cfg(test)]

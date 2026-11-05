@@ -2,7 +2,16 @@ use attribute::Builder;
 use stiles_rust::{RuleId, RustLintPass, RustLintPassAdapter};
 use stiles_types::{DecoratedNode, Diagnostic, LintPass, RuleOptions, Severity};
 
-const RULE_ID: RuleId = RuleId::new("lint.repeated-primitive-params");
+/// The id that every diagnostic of this rule carries
+///
+/// A project names the rule by this id when it configures the rule.
+///
+/// # Examples
+///
+/// ```
+/// assert_eq!(repeated_primitive_params::RULE_ID.as_str(), "lint.repeated-primitive-params");
+/// ```
+pub const RULE_ID: RuleId = RuleId::new("lint.repeated-primitive-params");
 
 /// Flags a function that takes two or more parameters of one primitive type
 ///
@@ -202,6 +211,7 @@ impl stiles_plugin::DeclaresRules for RepeatedPrimitiveParams {
     }
 }
 
+#[cfg(feature = "plugin")]
 stiles_plugin::export_lints![rust: [RepeatedPrimitiveParams::default()]];
 
 #[cfg(test)]

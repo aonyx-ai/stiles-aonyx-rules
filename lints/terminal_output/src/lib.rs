@@ -8,7 +8,16 @@ use stiles_types::{DecoratedNode, Diagnostic, Severity};
 
 use self::resolve::Namespace;
 
-const RULE_ID: RuleId = RuleId::new("lint.terminal-output");
+/// The id that every diagnostic of this rule carries
+///
+/// A project names the rule by this id when it configures the rule.
+///
+/// # Examples
+///
+/// ```
+/// assert_eq!(terminal_output::RULE_ID.as_str(), "lint.terminal-output");
+/// ```
+pub const RULE_ID: RuleId = RuleId::new("lint.terminal-output");
 
 /// The macros that write to standard output or standard error
 const PRINT_MACROS: [&str; 4] = ["print", "println", "eprint", "eprintln"];
@@ -115,6 +124,7 @@ impl stiles_plugin::DeclaresRules for TerminalOutput {
     }
 }
 
+#[cfg(feature = "plugin")]
 stiles_plugin::export_lints![rust: [TerminalOutput]];
 
 /// The fix a print macro's finding asks for

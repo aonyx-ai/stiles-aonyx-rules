@@ -3,7 +3,16 @@ use std::ops::Range;
 use stiles_rust::{RuleId, RustLintPass};
 use stiles_types::{DecoratedNode, Diagnostic, Severity};
 
-const RULE_ID: RuleId = RuleId::new("lint.split-binding");
+/// The id that every diagnostic of this rule carries
+///
+/// A project names the rule by this id when it configures the rule.
+///
+/// # Examples
+///
+/// ```
+/// assert_eq!(split_binding::RULE_ID.as_str(), "lint.split-binding");
+/// ```
+pub const RULE_ID: RuleId = RuleId::new("lint.split-binding");
 
 /// Flags a `let` binding that only exists to initialize a later binding
 ///
@@ -349,6 +358,7 @@ impl stiles_plugin::DeclaresRules for SplitBinding {
     }
 }
 
+#[cfg(feature = "plugin")]
 stiles_plugin::export_lints![rust: [SplitBinding]];
 
 #[cfg(test)]

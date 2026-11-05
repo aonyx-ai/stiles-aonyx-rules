@@ -1,7 +1,16 @@
 use stiles_rust::{RuleId, RustLintPass};
 use stiles_types::{DecoratedNode, Diagnostic, Severity};
 
-const RULE_ID: RuleId = RuleId::new("lint.unsorted-test");
+/// The id that every diagnostic of this rule carries
+///
+/// A project names the rule by this id when it configures the rule.
+///
+/// # Examples
+///
+/// ```
+/// assert_eq!(unsorted_test::RULE_ID.as_str(), "lint.unsorted-test");
+/// ```
+pub const RULE_ID: RuleId = RuleId::new("lint.unsorted-test");
 
 /// The last path segments that mark a function as a test
 ///
@@ -147,6 +156,7 @@ impl stiles_plugin::DeclaresRules for UnsortedTest {
     }
 }
 
+#[cfg(feature = "plugin")]
 stiles_plugin::export_lints![rust: [UnsortedTest]];
 
 #[cfg(test)]

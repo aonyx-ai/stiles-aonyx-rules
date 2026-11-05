@@ -1,7 +1,16 @@
 use stiles_rust::{RuleId, RustLintPass, RustLintPassAdapter};
 use stiles_types::{DecoratedNode, Diagnostic, LintPass, Severity};
 
-const RULE_ID: RuleId = RuleId::new("lint.error-enum-shape");
+/// The id that every diagnostic of this rule carries
+///
+/// A project names the rule by this id when it configures the rule.
+///
+/// # Examples
+///
+/// ```
+/// assert_eq!(error_enum_shape::RULE_ID.as_str(), "lint.error-enum-shape");
+/// ```
+pub const RULE_ID: RuleId = RuleId::new("lint.error-enum-shape");
 
 /// The suffix every error enum's name ends in
 const ERROR_SUFFIX: &str = "Error";
@@ -337,6 +346,7 @@ impl stiles_plugin::DeclaresRules for ErrorEnumShape {
     }
 }
 
+#[cfg(feature = "plugin")]
 stiles_plugin::export_lints![rust: [ErrorEnumShape]];
 
 #[cfg(test)]

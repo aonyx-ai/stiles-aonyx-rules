@@ -2,7 +2,16 @@ use stiles_rust::{RuleId, RustLintPass};
 use stiles_types::{DecoratedNode, Diagnostic, Severity, Span};
 use stiles_typescript::TypeScriptLintPass;
 
-const RULE_ID: RuleId = RuleId::new("lint.todo-comment");
+/// The id that every diagnostic of this rule carries
+///
+/// A project names the rule by this id when it configures the rule.
+///
+/// # Examples
+///
+/// ```
+/// assert_eq!(todo_comment::RULE_ID.as_str(), "lint.todo-comment");
+/// ```
+pub const RULE_ID: RuleId = RuleId::new("lint.todo-comment");
 
 /// The markers this rule looks for
 ///
@@ -153,6 +162,7 @@ impl stiles_plugin::DeclaresRules for TodoComment {
     }
 }
 
+#[cfg(feature = "plugin")]
 stiles_plugin::export_lints![rust: [TodoComment], typescript: [TodoComment]];
 
 #[cfg(test)]

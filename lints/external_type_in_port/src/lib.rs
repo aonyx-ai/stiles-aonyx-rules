@@ -8,7 +8,16 @@ use stiles_types::{DecoratedNode, Diagnostic, Severity};
 
 use crate::test_code::is_test_code;
 
-const RULE_ID: RuleId = RuleId::new("lint.external-type-in-port");
+/// The id that every diagnostic of this rule carries
+///
+/// A project names the rule by this id when it configures the rule.
+///
+/// # Examples
+///
+/// ```
+/// assert_eq!(external_type_in_port::RULE_ID.as_str(), "lint.external-type-in-port");
+/// ```
+pub const RULE_ID: RuleId = RuleId::new("lint.external-type-in-port");
 
 /// The crates every Rust toolchain ships, which a port may name freely
 const TOOLCHAIN_CRATES: [&str; 3] = ["std", "core", "alloc"];
@@ -647,6 +656,7 @@ impl stiles_plugin::DeclaresRules for ExternalTypeInPort {
     }
 }
 
+#[cfg(feature = "plugin")]
 stiles_plugin::export_lints![rust: [ExternalTypeInPort]];
 
 #[cfg(test)]

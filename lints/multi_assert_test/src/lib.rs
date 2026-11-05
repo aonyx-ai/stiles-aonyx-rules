@@ -1,7 +1,16 @@
 use stiles_rust::{RuleId, RustLintPass};
 use stiles_types::{DecoratedNode, Diagnostic, Severity};
 
-const RULE_ID: RuleId = RuleId::new("lint.multi-assert-test");
+/// The id that every diagnostic of this rule carries
+///
+/// A project names the rule by this id when it configures the rule.
+///
+/// # Examples
+///
+/// ```
+/// assert_eq!(multi_assert_test::RULE_ID.as_str(), "lint.multi-assert-test");
+/// ```
+pub const RULE_ID: RuleId = RuleId::new("lint.multi-assert-test");
 
 /// Flags a test function whose body holds more than one assertion
 ///
@@ -173,6 +182,7 @@ impl stiles_plugin::DeclaresRules for MultiAssertTest {
     }
 }
 
+#[cfg(feature = "plugin")]
 stiles_plugin::export_lints![rust: [MultiAssertTest]];
 
 #[cfg(test)]

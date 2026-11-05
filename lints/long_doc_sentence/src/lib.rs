@@ -8,6 +8,17 @@ use stiles_typescript::TypeScriptLintPass;
 use crate::doc_line::DocLine;
 use crate::sentence::sentences;
 
+/// The id that every diagnostic of this rule carries
+///
+/// A project names the rule by this id when it configures the rule.
+///
+/// # Examples
+///
+/// ```
+/// assert_eq!(long_doc_sentence::RULE_ID.as_str(), "lint.long-doc-sentence");
+/// ```
+pub const RULE_ID: RuleId = RuleId::new("lint.long-doc-sentence");
+
 /// The most words one doc comment sentence may have
 const MAX_WORDS: usize = 25;
 
@@ -89,7 +100,7 @@ fn report(lines: &[DocLine<'_>], node: &DecoratedNode<'_>) -> Vec<Diagnostic> {
         .filter(|sentence| sentence.words() > MAX_WORDS)
         .map(|sentence| {
             Diagnostic::builder()
-                .rule_id(RuleId::new("lint.long-doc-sentence"))
+                .rule_id(RULE_ID)
                 .severity(Severity::Error)
                 .message(format!(
                     "doc sentence is {} words, over the {MAX_WORDS}-word limit",
@@ -110,10 +121,11 @@ fn report(lines: &[DocLine<'_>], node: &DecoratedNode<'_>) -> Vec<Diagnostic> {
 #[cfg(feature = "plugin")]
 impl stiles_plugin::DeclaresRules for LongDocSentence {
     fn rules(&self) -> Vec<RuleId> {
-        vec![RuleId::new("lint.long-doc-sentence")]
+        vec![RULE_ID]
     }
 }
 
+#[cfg(feature = "plugin")]
 stiles_plugin::export_lints![rust: [LongDocSentence], typescript: [LongDocSentence]];
 
 #[cfg(test)]

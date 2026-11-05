@@ -1,6 +1,17 @@
 use stiles_rust::{RuleId, RustLintPass, RustLintPassAdapter};
 use stiles_types::{DecoratedNode, Diagnostic, LintPass, Severity};
 
+/// The id that every diagnostic of this rule carries
+///
+/// A project names the rule by this id when it configures the rule.
+///
+/// # Examples
+///
+/// ```
+/// assert_eq!(derive_order::RULE_ID.as_str(), "lint.derive-order");
+/// ```
+pub const RULE_ID: RuleId = RuleId::new("lint.derive-order");
+
 const STD_DERIVES: &[&str] = &[
     "Copy",
     "Clone",
@@ -125,7 +136,7 @@ impl RustLintPass for DeriveOrder {
         let expected_str = expected.join(", ");
         vec![
             Diagnostic::builder()
-                .rule_id(RuleId::new("lint.derive-order"))
+                .rule_id(RULE_ID)
                 .severity(Severity::Error)
                 .message(format!(
                     "derive macros are not in canonical order; expected: {expected_str}"
@@ -139,10 +150,11 @@ impl RustLintPass for DeriveOrder {
 #[cfg(feature = "plugin")]
 impl stiles_plugin::DeclaresRules for DeriveOrder {
     fn rules(&self) -> Vec<RuleId> {
-        vec![RuleId::new("lint.derive-order")]
+        vec![RULE_ID]
     }
 }
 
+#[cfg(feature = "plugin")]
 stiles_plugin::export_lints![rust: [DeriveOrder]];
 
 #[cfg(test)]

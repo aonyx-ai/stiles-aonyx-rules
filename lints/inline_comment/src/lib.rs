@@ -3,6 +3,17 @@ use stiles_types::{DecoratedNode, Diagnostic, Severity, Span};
 use stiles_typescript::TypeScriptLintPass;
 use tree_sitter::Node;
 
+/// The id that every diagnostic of this rule carries
+///
+/// A project names the rule by this id when it configures the rule.
+///
+/// # Examples
+///
+/// ```
+/// assert_eq!(inline_comment::RULE_ID.as_str(), "lint.inline-comment");
+/// ```
+pub const RULE_ID: RuleId = RuleId::new("lint.inline-comment");
+
 /// The characters that authors use to draw a horizontal rule
 const DIVIDER_CHARS: &[char] = &['-', '=', '*', '~', '#', '_', '+', '/'];
 
@@ -316,7 +327,7 @@ fn check_comment(node: &DecoratedNode<'_>, syntax: Syntax) -> Vec<Diagnostic> {
 
     vec![
         Diagnostic::builder()
-            .rule_id(RuleId::new("lint.inline-comment"))
+            .rule_id(RULE_ID)
             .severity(Severity::Error)
             .message(message)
             .span(span)
@@ -343,10 +354,11 @@ impl TypeScriptLintPass for InlineComment {
 #[cfg(feature = "plugin")]
 impl stiles_plugin::DeclaresRules for InlineComment {
     fn rules(&self) -> Vec<RuleId> {
-        vec![RuleId::new("lint.inline-comment")]
+        vec![RULE_ID]
     }
 }
 
+#[cfg(feature = "plugin")]
 stiles_plugin::export_lints![rust: [InlineComment], typescript: [InlineComment]];
 
 #[cfg(test)]

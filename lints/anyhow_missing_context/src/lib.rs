@@ -2,7 +2,16 @@ use stiles_rust::decorations::{FnSignature, OptionKind, ResolvedType, ResultKind
 use stiles_rust::{RuleId, RustLintPass};
 use stiles_types::{DecoratedNode, Diagnostic, LintPass, Severity};
 
-const RULE_ID: RuleId = RuleId::new("lint.anyhow-missing-context");
+/// The id that every diagnostic of this rule carries
+///
+/// A project names the rule by this id when it configures the rule.
+///
+/// # Examples
+///
+/// ```
+/// assert_eq!(anyhow_missing_context::RULE_ID.as_str(), "lint.anyhow-missing-context");
+/// ```
+pub const RULE_ID: RuleId = RuleId::new("lint.anyhow-missing-context");
 
 /// The definition path of `anyhow::Error`
 ///
@@ -179,6 +188,7 @@ impl stiles_plugin::DeclaresRules for AnyhowMissingContext {
     }
 }
 
+#[cfg(feature = "plugin")]
 stiles_plugin::export_lints![rust: [AnyhowMissingContext]];
 
 #[cfg(test)]

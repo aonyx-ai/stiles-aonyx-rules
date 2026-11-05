@@ -4,7 +4,16 @@ use stiles_rust::{RuleId, RustLintPass};
 use stiles_types::{DecoratedNode, Diagnostic, Severity, Span};
 use stiles_typescript::TypeScriptLintPass;
 
-const RULE_ID: RuleId = RuleId::new("lint.em-dash-aside");
+/// The id that every diagnostic of this rule carries
+///
+/// A project names the rule by this id when it configures the rule.
+///
+/// # Examples
+///
+/// ```
+/// assert_eq!(em_dash_aside::RULE_ID.as_str(), "lint.em-dash-aside");
+/// ```
+pub const RULE_ID: RuleId = RuleId::new("lint.em-dash-aside");
 
 /// The byte that stands in for text the lint must not read as prose
 ///
@@ -593,6 +602,7 @@ impl stiles_plugin::DeclaresRules for EmDashAside {
     }
 }
 
+#[cfg(feature = "plugin")]
 stiles_plugin::export_lints![rust: [EmDashAside], typescript: [EmDashAside]];
 
 #[cfg(test)]

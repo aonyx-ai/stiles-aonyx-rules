@@ -2,6 +2,17 @@ use stiles_rust::decorations::{AdtFlags, AdtKind, Exhaustiveness, ResolvedType};
 use stiles_rust::{RuleId, RustLintPass};
 use stiles_types::{DecoratedNode, Diagnostic, Severity};
 
+/// The id that every diagnostic of this rule carries
+///
+/// A project names the rule by this id when it configures the rule.
+///
+/// # Examples
+///
+/// ```
+/// assert_eq!(wildcard_match_arm::RULE_ID.as_str(), "lint.wildcard-match-arm");
+/// ```
+pub const RULE_ID: RuleId = RuleId::new("lint.wildcard-match-arm");
+
 /// Flags wildcard (`_`) patterns in match arms when the scrutinee is an enum
 ///
 /// Wildcard arms hide missing cases when new variants are added to an
@@ -75,7 +86,7 @@ impl RustLintPass for WildcardMatchArm {
             if is_wildcard_pattern(&pattern) {
                 diagnostics.push(
                     Diagnostic::builder()
-                        .rule_id(RuleId::new("lint.wildcard-match-arm"))
+                        .rule_id(RULE_ID)
                         .severity(Severity::Error)
                         .message("wildcard match arm hides unhandled variants")
                         .span(pattern.span())
@@ -108,10 +119,11 @@ fn is_wildcard_pattern(match_pattern: &DecoratedNode<'_>) -> bool {
 #[cfg(feature = "plugin")]
 impl stiles_plugin::DeclaresRules for WildcardMatchArm {
     fn rules(&self) -> Vec<RuleId> {
-        vec![RuleId::new("lint.wildcard-match-arm")]
+        vec![RULE_ID]
     }
 }
 
+#[cfg(feature = "plugin")]
 stiles_plugin::export_lints![rust: [WildcardMatchArm]];
 
 #[cfg(test)]
