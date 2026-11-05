@@ -1,0 +1,13 @@
+# Each rule's tests check the negative example and the fix in the docs of
+# its pass, and this crate reads that pair from the rule's source. A rule
+# takes it as a dev-dependency only, so no plugin links it.
+[package]
+name = "example_pair"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lints]
+workspace = true

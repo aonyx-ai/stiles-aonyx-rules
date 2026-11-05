@@ -52,6 +52,16 @@ const LY_VERBS: &[&str] = &[
 ///
 /// # Examples
 ///
+/// ```text
+/// // DON'T
+/// /// Parse the manifest at `path`
+/// fn parse_manifest(path: &Path) -> Manifest { todo!() }
+///
+/// // DO
+/// /// Parses the manifest at `path`
+/// fn parse_manifest(path: &Path) -> Manifest { todo!() }
+/// ```
+///
 /// ```
 /// use doc_summary_person::DocSummaryPerson;
 /// use stiles_rust::RustLintPassAdapter;
@@ -802,6 +812,33 @@ mod tests {
         assert_eq!(diagnostics.len(), 1);
     }
 
+    fn run_documented(source: &str) -> Vec<stiles_types::Diagnostic> {
+        let tree = stiles_testing::parse(source, stiles_types::Language::Rust);
+        stiles_testing::execute(
+            &tree,
+            &mut [Box::new(stiles_rust::RustLintPassAdapter::new(
+                DocSummaryPerson,
+            ))],
+        )
+    }
+
+    #[test]
+    fn documented_example_is_flagged() {
+        let pair = example_pair::ExamplePair::read(include_str!("lib.rs"));
+
+        let diagnostics = run_documented(pair.example());
+
+        assert!(!diagnostics.is_empty());
+    }
+
+    #[test]
+    fn documented_fix_is_not_flagged() {
+        let pair = example_pair::ExamplePair::read(include_str!("lib.rs"));
+
+        let diagnostics = run_documented(pair.fix());
+
+        stiles_testing::assert_no_diagnostics(&diagnostics);
+    }
     #[test]
     fn double_backtick_code_span_is_flagged_whole() {
         assert_eq!(

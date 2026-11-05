@@ -31,6 +31,19 @@ const MARKERS: &[&str] = &["TODO", "FIXME", "HACK", "XXX"];
 ///
 /// # Examples
 ///
+/// ```text
+/// // DON'T
+/// // TODO: handle the empty case
+/// fn parse(input: &str) -> u32 {
+///     input.parse().unwrap()
+/// }
+///
+/// // DO
+/// fn parse(input: &str) -> Result<u32, ParseIntError> {
+///     input.parse()
+/// }
+/// ```
+///
 /// ```
 /// use stiles_rust::RustLintPassAdapter;
 /// use stiles_testing::{execute, parse};
@@ -258,6 +271,31 @@ mod tests {
         assert_eq!(diagnostics.len(), 1);
     }
 
+    fn run_documented(source: &str) -> Vec<stiles_types::Diagnostic> {
+        let tree = stiles_testing::parse(source, stiles_types::Language::Rust);
+        stiles_testing::execute(
+            &tree,
+            &mut [Box::new(stiles_rust::RustLintPassAdapter::new(TodoComment))],
+        )
+    }
+
+    #[test]
+    fn documented_example_is_flagged() {
+        let pair = example_pair::ExamplePair::read(include_str!("lib.rs"));
+
+        let diagnostics = run_documented(pair.example());
+
+        assert!(!diagnostics.is_empty());
+    }
+
+    #[test]
+    fn documented_fix_is_not_flagged() {
+        let pair = example_pair::ExamplePair::read(include_str!("lib.rs"));
+
+        let diagnostics = run_documented(pair.fix());
+
+        stiles_testing::assert_no_diagnostics(&diagnostics);
+    }
     #[test]
     fn find_markers_with_inner_comment_punctuation_returns_empty() {
         let markers = find_markers("/// // TODO: refactor this later");

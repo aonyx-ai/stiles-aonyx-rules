@@ -34,6 +34,7 @@ stiles-types = { workspace = true }
 stiles-typescript = { workspace = true }
 
 [dev-dependencies]
+example_pair = { workspace = true }
 stiles-testing = { workspace = true }
 
 [lints]

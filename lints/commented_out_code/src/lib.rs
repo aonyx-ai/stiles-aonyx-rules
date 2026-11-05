@@ -85,6 +85,19 @@ enum Fragment {
 ///
 /// # Examples
 ///
+/// ```text
+/// // DON'T
+/// fn total(items: &[Item]) -> u32 {
+///     // let tax = compute_tax(items);
+///     items.iter().map(|item| item.price).sum()
+/// }
+///
+/// // DO
+/// fn total(items: &[Item]) -> u32 {
+///     items.iter().map(|item| item.price).sum()
+/// }
+/// ```
+///
 /// ```
 /// use commented_out_code::CommentedOutCode;
 /// use stiles_rust::RustLintPassAdapter;
@@ -599,6 +612,33 @@ mod tests {
         assert_no_diagnostics(&diagnostics);
     }
 
+    fn run_documented(source: &str) -> Vec<stiles_types::Diagnostic> {
+        let tree = stiles_testing::parse(source, stiles_types::Language::Rust);
+        stiles_testing::execute(
+            &tree,
+            &mut [Box::new(stiles_rust::RustLintPassAdapter::new(
+                CommentedOutCode::default(),
+            ))],
+        )
+    }
+
+    #[test]
+    fn documented_example_is_flagged() {
+        let pair = example_pair::ExamplePair::read(include_str!("lib.rs"));
+
+        let diagnostics = run_documented(pair.example());
+
+        assert!(!diagnostics.is_empty());
+    }
+
+    #[test]
+    fn documented_fix_is_not_flagged() {
+        let pair = example_pair::ExamplePair::read(include_str!("lib.rs"));
+
+        let diagnostics = run_documented(pair.fix());
+
+        stiles_testing::assert_no_diagnostics(&diagnostics);
+    }
     #[test]
     fn empty_comment_is_not_flagged() {
         let diagnostics = check("//\nfn f() {}");

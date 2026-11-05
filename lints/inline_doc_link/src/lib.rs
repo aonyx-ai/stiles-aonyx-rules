@@ -41,6 +41,18 @@ pub const RULE_ID: RuleId = RuleId::new("lint.inline-doc-link");
 ///
 /// # Examples
 ///
+/// ```text
+/// // DON'T
+/// /// Parses a config file in [TOML](https://toml.io) format
+/// fn parse_config(text: &str) -> Config { todo!() }
+///
+/// // DO
+/// /// Parses a config file in [TOML] format
+/// ///
+/// /// [TOML]: https://toml.io
+/// fn parse_config(text: &str) -> Config { todo!() }
+/// ```
+///
 /// ```
 /// use inline_doc_link::InlineDocLink;
 /// use stiles_rust::RustLintPassAdapter;
@@ -150,6 +162,33 @@ mod tests {
         assert_eq!(diagnostics.len(), 1);
     }
 
+    fn run_documented(source: &str) -> Vec<stiles_types::Diagnostic> {
+        let tree = stiles_testing::parse(source, stiles_types::Language::Rust);
+        stiles_testing::execute(
+            &tree,
+            &mut [Box::new(stiles_rust::RustLintPassAdapter::new(
+                InlineDocLink,
+            ))],
+        )
+    }
+
+    #[test]
+    fn documented_example_is_flagged() {
+        let pair = example_pair::ExamplePair::read(include_str!("lib.rs"));
+
+        let diagnostics = run_documented(pair.example());
+
+        assert!(!diagnostics.is_empty());
+    }
+
+    #[test]
+    fn documented_fix_is_not_flagged() {
+        let pair = example_pair::ExamplePair::read(include_str!("lib.rs"));
+
+        let diagnostics = run_documented(pair.fix());
+
+        stiles_testing::assert_no_diagnostics(&diagnostics);
+    }
     #[test]
     fn field_doc_comment_with_inline_link_is_flagged_once() {
         let source =

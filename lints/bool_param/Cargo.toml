@@ -31,6 +31,7 @@ stiles-rust = { workspace = true }
 stiles-types = { workspace = true }
 
 [dev-dependencies]
+example_pair = { workspace = true }
 stiles-testing = { workspace = true }
 
 [lints]

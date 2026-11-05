@@ -37,6 +37,26 @@ pub const RULE_ID: RuleId = RuleId::new("lint.missing-trait-tests");
 ///
 /// # Examples
 ///
+/// ```text
+/// // DON'T
+/// pub struct Point { x: i32, y: i32 }
+///
+/// // DO
+/// pub struct Point { x: i32, y: i32 }
+///
+/// #[cfg(test)]
+/// mod tests {
+///     use super::*;
+///
+///     fn assert_auto_traits<T: Send + Sync + Unpin>() {}
+///
+///     #[test]
+///     fn point_is_send_sync_and_unpin() {
+///         assert_auto_traits::<Point>();
+///     }
+/// }
+/// ```
+///
 /// ```
 /// use missing_trait_tests::MissingTraitTests;
 /// use stiles_rust::RustLintPassAdapter;
@@ -714,6 +734,34 @@ mod tests {
         let diagnostics = run(source);
 
         assert_diagnostic(&diagnostics[0]).has_span("<test>", start..start + "Foo".len());
+    }
+
+    fn run_documented(source: &str) -> Vec<stiles_types::Diagnostic> {
+        let tree = stiles_testing::parse(source, stiles_types::Language::Rust);
+        stiles_testing::execute(
+            &tree,
+            &mut [Box::new(stiles_rust::RustLintPassAdapter::new(
+                MissingTraitTests,
+            ))],
+        )
+    }
+
+    #[test]
+    fn documented_example_is_flagged() {
+        let pair = example_pair::ExamplePair::read(include_str!("lib.rs"));
+
+        let diagnostics = run_documented(pair.example());
+
+        assert!(!diagnostics.is_empty());
+    }
+
+    #[test]
+    fn documented_fix_is_not_flagged() {
+        let pair = example_pair::ExamplePair::read(include_str!("lib.rs"));
+
+        let diagnostics = run_documented(pair.fix());
+
+        stiles_testing::assert_no_diagnostics(&diagnostics);
     }
 
     #[test]

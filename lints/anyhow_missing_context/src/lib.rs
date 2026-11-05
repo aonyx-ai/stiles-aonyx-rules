@@ -38,6 +38,20 @@ const ANYHOW_ERROR: TypePathRef<'static> = TypePathRef::builder()
 ///
 /// # Examples
 ///
+/// ```text
+/// // DON'T
+/// fn load(path: &Path) -> anyhow::Result<String> {
+///     let text = fs::read_to_string(path)?;
+///     Ok(text)
+/// }
+///
+/// // DO
+/// fn load(path: &Path) -> anyhow::Result<String> {
+///     let text = fs::read_to_string(path).context("failed to read the config file")?;
+///     Ok(text)
+/// }
+/// ```
+///
 /// The rule reads the types the Rust provider attaches as decorations. This
 /// example attaches them by hand.
 ///
@@ -283,6 +297,59 @@ mod tests {
         walk(&tree.root_node()).expect("should find try_expression operand")
     }
 
+    fn run_documented(source: &str) -> Vec<stiles_types::Diagnostic> {
+        let mut tree = stiles_testing::parse(source, stiles_types::Language::Rust);
+        let decorations = documented_decorations(&tree);
+        stiles_testing::decorate(&mut tree, decorations);
+        stiles_testing::execute(&tree, &mut [AnyhowMissingContext::into_lint_pass()])
+    }
+
+    fn documented_decorations(tree: &stiles_types::DecoratedTree) -> stiles_types::DecorationMap {
+        let mut decorations = stiles_types::DecorationMap::new();
+        for function in documented_nodes(tree, "function_item") {
+            decorations.insert(function.id(), anyhow_fn_sig());
+        }
+        for expression in documented_nodes(tree, "try_expression") {
+            let operand = expression
+                .named_child(0)
+                .expect("`?` should have an operand");
+            decorations.insert(operand.id(), result_type());
+        }
+        decorations
+    }
+
+    fn documented_nodes<'a>(
+        tree: &'a stiles_types::DecoratedTree,
+        kind: &str,
+    ) -> Vec<stiles_types::DecoratedNode<'a>> {
+        let mut pending = vec![tree.root_node()];
+        let mut found = Vec::new();
+        while let Some(node) = pending.pop() {
+            if node.kind() == kind {
+                found.push(node);
+            }
+            pending.extend(node.named_children());
+        }
+        found
+    }
+
+    #[test]
+    fn documented_example_is_flagged() {
+        let pair = example_pair::ExamplePair::read(include_str!("lib.rs"));
+
+        let diagnostics = run_documented(pair.example());
+
+        assert!(!diagnostics.is_empty());
+    }
+
+    #[test]
+    fn documented_fix_is_not_flagged() {
+        let pair = example_pair::ExamplePair::read(include_str!("lib.rs"));
+
+        let diagnostics = run_documented(pair.fix());
+
+        stiles_testing::assert_no_diagnostics(&diagnostics);
+    }
     #[test]
     fn in_anyhow_fn_without_context_is_flagged() {
         let source = "fn foo() -> Result<(), Error> { something()?; }";

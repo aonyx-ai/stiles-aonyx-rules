@@ -39,6 +39,16 @@ const EN_DASH: &[u8] = "–".as_bytes();
 ///
 /// # Examples
 ///
+/// ```text
+/// // DON'T
+/// /// Opens the cache file — and creates it when it is missing
+/// fn open_cache(path: &Path) -> io::Result<File> { todo!() }
+///
+/// // DO
+/// /// Opens the cache file, and creates it when it is missing
+/// fn open_cache(path: &Path) -> io::Result<File> { todo!() }
+/// ```
+///
 /// ```
 /// use em_dash_aside::EmDashAside;
 /// use stiles_rust::RustLintPassAdapter;
@@ -678,6 +688,31 @@ mod tests {
         assert_eq!(diagnostics.len(), 1);
     }
 
+    fn run_documented(source: &str) -> Vec<stiles_types::Diagnostic> {
+        let tree = stiles_testing::parse(source, stiles_types::Language::Rust);
+        stiles_testing::execute(
+            &tree,
+            &mut [Box::new(stiles_rust::RustLintPassAdapter::new(EmDashAside))],
+        )
+    }
+
+    #[test]
+    fn documented_example_is_flagged() {
+        let pair = example_pair::ExamplePair::read(include_str!("lib.rs"));
+
+        let diagnostics = run_documented(pair.example());
+
+        assert!(!diagnostics.is_empty());
+    }
+
+    #[test]
+    fn documented_fix_is_not_flagged() {
+        let pair = example_pair::ExamplePair::read(include_str!("lib.rs"));
+
+        let diagnostics = run_documented(pair.fix());
+
+        stiles_testing::assert_no_diagnostics(&diagnostics);
+    }
     #[test]
     fn double_hyphen_flag_name_is_not_flagged() {
         let source = "/// Pass --deny-warnings to fail on a warning\nfn f() {}";

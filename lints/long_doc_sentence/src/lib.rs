@@ -37,6 +37,21 @@ const MAX_WORDS: usize = 25;
 ///
 /// # Examples
 ///
+/// ```text
+/// // DON'T
+/// /// Retries the request with a growing delay between attempts until
+/// /// the server answers or the configured limit runs out, and returns
+/// /// the last error it saw when every attempt fails.
+/// fn send(request: &Request) -> Result<Response, Error> { todo!() }
+///
+/// // DO
+/// /// Retries the request with a growing delay between attempts
+/// ///
+/// /// The retries stop when the server answers or the configured limit
+/// /// runs out. When every attempt fails, it returns the last error.
+/// fn send(request: &Request) -> Result<Response, Error> { todo!() }
+/// ```
+///
 /// ```
 /// use long_doc_sentence::LongDocSentence;
 /// use stiles_rust::RustLintPassAdapter;
@@ -205,6 +220,33 @@ mod tests {
         assert_eq!(diagnostics.len(), 1);
     }
 
+    fn run_documented(source: &str) -> Vec<stiles_types::Diagnostic> {
+        let tree = stiles_testing::parse(source, stiles_types::Language::Rust);
+        stiles_testing::execute(
+            &tree,
+            &mut [Box::new(stiles_rust::RustLintPassAdapter::new(
+                LongDocSentence,
+            ))],
+        )
+    }
+
+    #[test]
+    fn documented_example_is_flagged() {
+        let pair = example_pair::ExamplePair::read(include_str!("lib.rs"));
+
+        let diagnostics = run_documented(pair.example());
+
+        assert!(!diagnostics.is_empty());
+    }
+
+    #[test]
+    fn documented_fix_is_not_flagged() {
+        let pair = example_pair::ExamplePair::read(include_str!("lib.rs"));
+
+        let diagnostics = run_documented(pair.fix());
+
+        stiles_testing::assert_no_diagnostics(&diagnostics);
+    }
     #[test]
     fn fenced_code_block_is_not_flagged() {
         let source = format!(

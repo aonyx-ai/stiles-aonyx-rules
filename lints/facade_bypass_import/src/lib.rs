@@ -48,6 +48,16 @@ const SYSROOT: &[&str] = &["std", "core", "alloc"];
 ///
 /// # Examples
 ///
+/// ```text
+/// // DON'T
+/// use bevy::prelude::*;
+/// use bevy_ecs::system::Query;
+///
+/// // DO
+/// use bevy::prelude::*;
+/// use bevy::ecs::system::Query;
+/// ```
+///
 /// The rule reads the public paths the Rust provider attaches as a
 /// decoration. This example attaches them by hand.
 ///
@@ -596,6 +606,63 @@ mod tests {
         assert_no_diagnostics(&diagnostics);
     }
 
+    fn run_documented(source: &str) -> Vec<stiles_types::Diagnostic> {
+        let mut tree = stiles_testing::parse(source, stiles_types::Language::Rust);
+        let decorations = documented_decorations(&tree);
+        stiles_testing::decorate(&mut tree, decorations);
+        stiles_testing::execute(
+            &tree,
+            &mut [Box::new(stiles_rust::RustLintPassAdapter::new(
+                FacadeBypassImport,
+            ))],
+        )
+    }
+
+    fn documented_decorations(tree: &stiles_types::DecoratedTree) -> stiles_types::DecorationMap {
+        let mut decorations = stiles_types::DecorationMap::new();
+        for import in documented_nodes(tree, "use_declaration") {
+            let path = import
+                .child_by_field_name("argument")
+                .expect("`use` should name a path");
+            if path.text().starts_with("bevy_ecs::") {
+                decorations.insert(path.id(), reexports(&["bevy::ecs::system::Query"]));
+            }
+        }
+        decorations
+    }
+
+    fn documented_nodes<'a>(
+        tree: &'a stiles_types::DecoratedTree,
+        kind: &str,
+    ) -> Vec<stiles_types::DecoratedNode<'a>> {
+        let mut pending = vec![tree.root_node()];
+        let mut found = Vec::new();
+        while let Some(node) = pending.pop() {
+            if node.kind() == kind {
+                found.push(node);
+            }
+            pending.extend(node.named_children());
+        }
+        found
+    }
+
+    #[test]
+    fn documented_example_is_flagged() {
+        let pair = example_pair::ExamplePair::read(include_str!("lib.rs"));
+
+        let diagnostics = run_documented(pair.example());
+
+        assert!(!diagnostics.is_empty());
+    }
+
+    #[test]
+    fn documented_fix_is_not_flagged() {
+        let pair = example_pair::ExamplePair::read(include_str!("lib.rs"));
+
+        let diagnostics = run_documented(pair.fix());
+
+        stiles_testing::assert_no_diagnostics(&diagnostics);
+    }
     #[test]
     fn each_bypassing_path_is_flagged() {
         let source = "use facade::x;\nuse facade_core::thing::Thing;\nuse facade_cli::Args;";

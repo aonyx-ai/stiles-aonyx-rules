@@ -55,6 +55,18 @@ const PRINT_MACROS: [&str; 4] = ["print", "println", "eprint", "eprintln"];
 ///
 /// # Examples
 ///
+/// ```text
+/// // DON'T
+/// fn report(count: usize) {
+///     println!("found {count} issues");
+/// }
+///
+/// // DO
+/// fn report(out: &mut impl Write, count: usize) -> io::Result<()> {
+///     writeln!(out, "found {count} issues")
+/// }
+/// ```
+///
 /// ```
 /// use stiles_rust::RustLintPassAdapter;
 /// use stiles_testing::{execute, parse};
@@ -534,6 +546,33 @@ mod tests {
         assert_eq!(diagnostics.len(), 1);
     }
 
+    fn run_documented(source: &str) -> Vec<stiles_types::Diagnostic> {
+        let tree = stiles_testing::parse(source, stiles_types::Language::Rust);
+        stiles_testing::execute(
+            &tree,
+            &mut [Box::new(stiles_rust::RustLintPassAdapter::new(
+                TerminalOutput,
+            ))],
+        )
+    }
+
+    #[test]
+    fn documented_example_is_flagged() {
+        let pair = example_pair::ExamplePair::read(include_str!("lib.rs"));
+
+        let diagnostics = run_documented(pair.example());
+
+        assert!(!diagnostics.is_empty());
+    }
+
+    #[test]
+    fn documented_fix_is_not_flagged() {
+        let pair = example_pair::ExamplePair::read(include_str!("lib.rs"));
+
+        let diagnostics = run_documented(pair.fix());
+
+        stiles_testing::assert_no_diagnostics(&diagnostics);
+    }
     #[test]
     fn example_file_is_not_flagged() {
         let source = "fn main() { run(); }\nfn run() { println!(\"x\"); }";

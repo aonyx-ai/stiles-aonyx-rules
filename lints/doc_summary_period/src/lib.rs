@@ -48,6 +48,16 @@ const ATTACHED_KINDS: &[&str] = &[
 ///
 /// # Examples
 ///
+/// ```text
+/// // DON'T
+/// /// Returns the number of open connections.
+/// fn open_connections(pool: &Pool) -> usize { pool.open.len() }
+///
+/// // DO
+/// /// Returns the number of open connections
+/// fn open_connections(pool: &Pool) -> usize { pool.open.len() }
+/// ```
+///
 /// ```
 /// use doc_summary_period::DocSummaryPeriod;
 /// use stiles_rust::RustLintPassAdapter;
@@ -522,6 +532,33 @@ mod tests {
         assert!(source[period + 1..].starts_with("\n    A"));
     }
 
+    fn run_documented(source: &str) -> Vec<stiles_types::Diagnostic> {
+        let tree = stiles_testing::parse(source, stiles_types::Language::Rust);
+        stiles_testing::execute(
+            &tree,
+            &mut [Box::new(stiles_rust::RustLintPassAdapter::new(
+                DocSummaryPeriod,
+            ))],
+        )
+    }
+
+    #[test]
+    fn documented_example_is_flagged() {
+        let pair = example_pair::ExamplePair::read(include_str!("lib.rs"));
+
+        let diagnostics = run_documented(pair.example());
+
+        assert!(!diagnostics.is_empty());
+    }
+
+    #[test]
+    fn documented_fix_is_not_flagged() {
+        let pair = example_pair::ExamplePair::read(include_str!("lib.rs"));
+
+        let diagnostics = run_documented(pair.fix());
+
+        stiles_testing::assert_no_diagnostics(&diagnostics);
+    }
     #[test]
     fn ellipsis_is_not_flagged() {
         let diagnostics = check("/// Waits for the host to connect, ...\nfn f() {}");

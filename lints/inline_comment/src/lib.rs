@@ -63,6 +63,20 @@ const TOOL_DIRECTIVES: &[&str] = &[
 ///
 /// # Examples
 ///
+/// ```text
+/// // DON'T
+/// fn retry_delay(attempt: u32) -> Duration {
+///     // double the wait after each failed attempt
+///     Duration::from_millis(100 * 2u64.pow(attempt))
+/// }
+///
+/// // DO
+/// /// Returns the wait before a retry, which doubles after each failed attempt
+/// fn retry_delay(attempt: u32) -> Duration {
+///     Duration::from_millis(100 * 2u64.pow(attempt))
+/// }
+/// ```
+///
 /// ```
 /// use inline_comment::InlineComment;
 /// use stiles_rust::RustLintPassAdapter;
@@ -586,6 +600,33 @@ mod tests {
         assert_no_diagnostics(&diagnostics);
     }
 
+    fn run_documented(source: &str) -> Vec<stiles_types::Diagnostic> {
+        let tree = stiles_testing::parse(source, stiles_types::Language::Rust);
+        stiles_testing::execute(
+            &tree,
+            &mut [Box::new(stiles_rust::RustLintPassAdapter::new(
+                InlineComment,
+            ))],
+        )
+    }
+
+    #[test]
+    fn documented_example_is_flagged() {
+        let pair = example_pair::ExamplePair::read(include_str!("lib.rs"));
+
+        let diagnostics = run_documented(pair.example());
+
+        assert!(!diagnostics.is_empty());
+    }
+
+    #[test]
+    fn documented_fix_is_not_flagged() {
+        let pair = example_pair::ExamplePair::read(include_str!("lib.rs"));
+
+        let diagnostics = run_documented(pair.fix());
+
+        stiles_testing::assert_no_diagnostics(&diagnostics);
+    }
     #[test]
     fn empty_outer_doc_comment_is_not_flagged() {
         let diagnostics = run("///\nfn f() {}");

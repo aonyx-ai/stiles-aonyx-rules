@@ -15,6 +15,7 @@ dependencies = [
 name = "anyhow_missing_context"
 version = "0.3.0"
 dependencies = [
+ "example_pair",
  "stiles-plugin",
  "stiles-rust",
  "stiles-testing",
@@ -88,6 +89,7 @@ name = "bool_param"
 version = "0.3.0"
 dependencies = [
  "boundary",
+ "example_pair",
  "stiles-plugin",
  "stiles-rust",
  "stiles-testing",
@@ -170,6 +172,7 @@ dependencies = [
 name = "commented_out_code"
 version = "0.3.0"
 dependencies = [
+ "example_pair",
  "proptest",
  "stiles-plugin",
  "stiles-rust",
@@ -231,6 +234,7 @@ dependencies = [
 name = "derive_order"
 version = "0.3.0"
 dependencies = [
+ "example_pair",
  "stiles-plugin",
  "stiles-rust",
  "stiles-testing",
@@ -251,6 +255,7 @@ name = "doc_summary_period"
 version = "0.3.0"
 dependencies = [
  "doc_comment",
+ "example_pair",
  "stiles-plugin",
  "stiles-rust",
  "stiles-testing",
@@ -262,6 +267,7 @@ name = "doc_summary_person"
 version = "0.3.0"
 dependencies = [
  "doc_comment",
+ "example_pair",
  "stiles-plugin",
  "stiles-rust",
  "stiles-testing",
@@ -273,6 +279,7 @@ name = "em_dash_aside"
 version = "0.3.0"
 dependencies = [
  "doc_comment",
+ "example_pair",
  "stiles-plugin",
  "stiles-rust",
  "stiles-testing",
@@ -300,6 +307,7 @@ dependencies = [
 name = "error_enum_shape"
 version = "0.3.0"
 dependencies = [
+ "example_pair",
  "stiles-plugin",
  "stiles-rust",
  "stiles-testing",
@@ -307,9 +315,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "example_pair"
+version = "0.3.0"
+
+[[package]]
 name = "external_type_in_port"
 version = "0.3.0"
 dependencies = [
+ "example_pair",
  "stiles-plugin",
  "stiles-rust",
  "stiles-testing",
@@ -321,6 +334,7 @@ dependencies = [
 name = "facade_bypass_import"
 version = "0.3.0"
 dependencies = [
+ "example_pair",
  "stiles-plugin",
  "stiles-rust",
  "stiles-testing",
@@ -349,6 +363,7 @@ checksum = "3f9eec918d3f24069decb9af1554cad7c880e2da24a9afd88aca000531ab82c1"
 name = "function_scoped_import"
 version = "0.3.0"
 dependencies = [
+ "example_pair",
  "stiles-plugin",
  "stiles-rust",
  "stiles-testing",
@@ -383,6 +398,7 @@ checksum = "b9e0384b61958566e926dc50660321d12159025e767c18e043daf26b70104c39"
 name = "if_let_with_else"
 version = "0.3.0"
 dependencies = [
+ "example_pair",
  "stiles-plugin",
  "stiles-rust",
  "stiles-testing",
@@ -403,6 +419,7 @@ dependencies = [
 name = "inline_comment"
 version = "0.3.0"
 dependencies = [
+ "example_pair",
  "stiles-plugin",
  "stiles-rust",
  "stiles-testing",
@@ -417,6 +434,7 @@ version = "0.3.0"
 dependencies = [
  "bon",
  "doc_comment",
+ "example_pair",
  "stiles-plugin",
  "stiles-rust",
  "stiles-testing",
@@ -428,6 +446,7 @@ dependencies = [
 name = "io_in_pure_function"
 version = "0.3.0"
 dependencies = [
+ "example_pair",
  "stiles-plugin",
  "stiles-rust",
  "stiles-testing",
@@ -458,6 +477,7 @@ version = "0.3.0"
 dependencies = [
  "bon",
  "doc_comment",
+ "example_pair",
  "stiles-plugin",
  "stiles-rust",
  "stiles-testing",
@@ -469,6 +489,7 @@ dependencies = [
 name = "matches_macro"
 version = "0.3.0"
 dependencies = [
+ "example_pair",
  "stiles-plugin",
  "stiles-rust",
  "stiles-testing",
@@ -485,6 +506,7 @@ checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
 name = "missing_examples_doc"
 version = "0.3.0"
 dependencies = [
+ "example_pair",
  "stiles-plugin",
  "stiles-rust",
  "stiles-testing",
@@ -495,6 +517,7 @@ dependencies = [
 name = "missing_trait_tests"
 version = "0.3.0"
 dependencies = [
+ "example_pair",
  "stiles-plugin",
  "stiles-rust",
  "stiles-testing",
@@ -505,6 +528,7 @@ dependencies = [
 name = "multi_assert_test"
 version = "0.3.0"
 dependencies = [
+ "example_pair",
  "stiles-plugin",
  "stiles-rust",
  "stiles-testing",
@@ -516,6 +540,7 @@ name = "multi_param_constructor"
 version = "0.3.0"
 dependencies = [
  "attribute",
+ "example_pair",
  "stiles-plugin",
  "stiles-rust",
  "stiles-testing",
@@ -542,6 +567,7 @@ checksum = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
 name = "open_vocabulary"
 version = "0.3.0"
 dependencies = [
+ "example_pair",
  "stiles-plugin",
  "stiles-rust",
  "stiles-testing",
@@ -552,6 +578,7 @@ dependencies = [
 name = "outer_module_doc"
 version = "0.3.0"
 dependencies = [
+ "example_pair",
  "stiles-plugin",
  "stiles-rust",
  "stiles-testing",
@@ -610,6 +637,7 @@ dependencies = [
 name = "pub_anyhow_result"
 version = "0.3.0"
 dependencies = [
+ "example_pair",
  "stiles-plugin",
  "stiles-rust",
  "stiles-testing",
@@ -622,6 +650,7 @@ name = "pub_field"
 version = "0.3.0"
 dependencies = [
  "attribute",
+ "example_pair",
  "stiles-plugin",
  "stiles-rust",
  "stiles-testing",
@@ -707,6 +736,7 @@ checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 name = "repeated_field_access"
 version = "0.3.0"
 dependencies = [
+ "example_pair",
  "stiles-plugin",
  "stiles-rust",
  "stiles-testing",
@@ -719,6 +749,7 @@ version = "0.3.0"
 dependencies = [
  "attribute",
  "boundary",
+ "example_pair",
  "stiles-plugin",
  "stiles-rust",
  "stiles-testing",
@@ -835,6 +866,7 @@ checksum = "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba"
 name = "split_binding"
 version = "0.3.0"
 dependencies = [
+ "example_pair",
  "stiles-plugin",
  "stiles-rust",
  "stiles-testing",
@@ -1066,6 +1098,7 @@ dependencies = [
 name = "terminal_output"
 version = "0.3.0"
 dependencies = [
+ "example_pair",
  "stiles-plugin",
  "stiles-rust",
  "stiles-testing",
@@ -1097,6 +1130,7 @@ dependencies = [
 name = "todo_comment"
 version = "0.3.0"
 dependencies = [
+ "example_pair",
  "stiles-plugin",
  "stiles-rust",
  "stiles-testing",
@@ -1189,6 +1223,7 @@ checksum = "e6e4313cd5fcd3dad5cafa179702e2b244f760991f45397d14d4ebf38247da75"
 name = "unprefixed_submodule_path"
 version = "0.3.0"
 dependencies = [
+ "example_pair",
  "stiles-plugin",
  "stiles-rust",
  "stiles-testing",
@@ -1199,6 +1234,7 @@ dependencies = [
 name = "unseparated_test_body"
 version = "0.3.0"
 dependencies = [
+ "example_pair",
  "stiles-plugin",
  "stiles-rust",
  "stiles-testing",
@@ -1209,6 +1245,7 @@ dependencies = [
 name = "unsorted_test"
 version = "0.3.0"
 dependencies = [
+ "example_pair",
  "stiles-plugin",
  "stiles-rust",
  "stiles-testing",
@@ -1228,6 +1265,7 @@ dependencies = [
 name = "wildcard_match_arm"
 version = "0.3.0"
 dependencies = [
+ "example_pair",
  "stiles-plugin",
  "stiles-rust",
  "stiles-testing",

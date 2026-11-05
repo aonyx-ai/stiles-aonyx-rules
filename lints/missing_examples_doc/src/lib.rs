@@ -34,6 +34,22 @@ const UNCHECKED_SCOPES: &[&str] = &["block", "trait_item"];
 ///
 /// # Examples
 ///
+/// ```text
+/// // DON'T
+/// /// A point on a plane
+/// pub struct Point { pub x: i32, pub y: i32 }
+///
+/// // DO
+/// /// A point on a plane
+/// ///
+/// /// # Examples
+/// ///
+/// /// ~~~
+/// /// let origin = geometry::Point { x: 0, y: 0 };
+/// /// ~~~
+/// pub struct Point { pub x: i32, pub y: i32 }
+/// ```
+///
 /// ```
 /// use missing_examples_doc::MissingExamplesDoc;
 /// use stiles_testing::{execute, parse};
@@ -481,6 +497,28 @@ mod tests {
         assert_no_diagnostics(&diagnostics);
     }
 
+    fn run_documented(source: &str) -> Vec<stiles_types::Diagnostic> {
+        let tree = stiles_testing::parse(source, stiles_types::Language::Rust);
+        stiles_testing::execute(&tree, &mut [MissingExamplesDoc::into_lint_pass()])
+    }
+
+    #[test]
+    fn documented_example_is_flagged() {
+        let pair = example_pair::ExamplePair::read(include_str!("lib.rs"));
+
+        let diagnostics = run_documented(pair.example());
+
+        assert!(!diagnostics.is_empty());
+    }
+
+    #[test]
+    fn documented_fix_is_not_flagged() {
+        let pair = example_pair::ExamplePair::read(include_str!("lib.rs"));
+
+        let diagnostics = run_documented(pair.fix());
+
+        stiles_testing::assert_no_diagnostics(&diagnostics);
+    }
     #[test]
     fn enum_without_examples_is_flagged_once() {
         let diagnostics = run("/// Docs\npub enum Color {\n    Red,\n}");

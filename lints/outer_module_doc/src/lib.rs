@@ -34,6 +34,18 @@ pub const RULE_ID: RuleId = RuleId::new("lint.outer-module-doc");
 ///
 /// # Examples
 ///
+/// ```text
+/// // DON'T
+/// /// What the manifests declare
+/// mod manifests;
+///
+/// // DO
+/// mod manifests;
+///
+/// // src/manifests.rs
+/// //! What the manifests declare
+/// ```
+///
 /// ```
 /// use outer_module_doc::OuterModuleDoc;
 /// use stiles_rust::RustLintPassAdapter;
@@ -533,6 +545,33 @@ mod tests {
         assert_diagnostic(&diagnostics[0]).message_contains("`mod manifests;`");
     }
 
+    fn run_documented(source: &str) -> Vec<stiles_types::Diagnostic> {
+        let tree = stiles_testing::parse(source, stiles_types::Language::Rust);
+        stiles_testing::execute(
+            &tree,
+            &mut [Box::new(stiles_rust::RustLintPassAdapter::new(
+                OuterModuleDoc,
+            ))],
+        )
+    }
+
+    #[test]
+    fn documented_example_is_flagged() {
+        let pair = example_pair::ExamplePair::read(include_str!("lib.rs"));
+
+        let diagnostics = run_documented(pair.example());
+
+        assert!(!diagnostics.is_empty());
+    }
+
+    #[test]
+    fn documented_fix_is_not_flagged() {
+        let pair = example_pair::ExamplePair::read(include_str!("lib.rs"));
+
+        let diagnostics = run_documented(pair.fix());
+
+        stiles_testing::assert_no_diagnostics(&diagnostics);
+    }
     #[test]
     fn empty_block_comment_is_not_flagged() {
         let source = "/**/\nmod manifests;\n/***/\nmod next_action;";

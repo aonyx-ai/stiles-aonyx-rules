@@ -34,6 +34,26 @@ const MIN_STATEMENTS: usize = 3;
 ///
 /// # Examples
 ///
+/// ```text
+/// // DON'T
+/// #[test]
+/// fn parse_with_valid_input_returns_value() {
+///     let input = "42";
+///     let result = parse(input).expect("should succeed");
+///     assert_eq!(result, 42);
+/// }
+///
+/// // DO
+/// #[test]
+/// fn parse_with_valid_input_returns_value() {
+///     let input = "42";
+///
+///     let result = parse(input).expect("should succeed");
+///
+///     assert_eq!(result, 42);
+/// }
+/// ```
+///
 /// ```ignore
 /// #[test]
 /// fn parse_with_valid_input_returns_value() {
@@ -365,6 +385,33 @@ mod tests {
         assert_eq!(diagnostics.len(), 1);
     }
 
+    fn run_documented(source: &str) -> Vec<stiles_types::Diagnostic> {
+        let tree = stiles_testing::parse(source, stiles_types::Language::Rust);
+        stiles_testing::execute(
+            &tree,
+            &mut [Box::new(stiles_rust::RustLintPassAdapter::new(
+                UnseparatedTestBody,
+            ))],
+        )
+    }
+
+    #[test]
+    fn documented_example_is_flagged() {
+        let pair = example_pair::ExamplePair::read(include_str!("lib.rs"));
+
+        let diagnostics = run_documented(pair.example());
+
+        assert!(!diagnostics.is_empty());
+    }
+
+    #[test]
+    fn documented_fix_is_not_flagged() {
+        let pair = example_pair::ExamplePair::read(include_str!("lib.rs"));
+
+        let diagnostics = run_documented(pair.fix());
+
+        stiles_testing::assert_no_diagnostics(&diagnostics);
+    }
     #[test]
     fn empty_test_is_not_flagged() {
         let source = "#[test]\nfn t() {}";

@@ -54,6 +54,18 @@ const TYPE_NAMESPACE_ITEMS: [&str; 6] = [
 ///
 /// # Examples
 ///
+/// ```text
+/// // DON'T
+/// mod error;
+///
+/// pub use error::ParseNameError;
+///
+/// // DO
+/// mod error;
+///
+/// pub use self::error::ParseNameError;
+/// ```
+///
 /// ```ignore
 /// mod error;
 ///
@@ -552,6 +564,28 @@ mod tests {
             .message_contains("write `self::error`");
     }
 
+    fn run_documented(source: &str) -> Vec<stiles_types::Diagnostic> {
+        let tree = stiles_testing::parse(source, stiles_types::Language::Rust);
+        stiles_testing::execute(&tree, &mut [UnprefixedSubmodulePath::into_lint_pass()])
+    }
+
+    #[test]
+    fn documented_example_is_flagged() {
+        let pair = example_pair::ExamplePair::read(include_str!("lib.rs"));
+
+        let diagnostics = run_documented(pair.example());
+
+        assert!(!diagnostics.is_empty());
+    }
+
+    #[test]
+    fn documented_fix_is_not_flagged() {
+        let pair = example_pair::ExamplePair::read(include_str!("lib.rs"));
+
+        let diagnostics = run_documented(pair.fix());
+
+        stiles_testing::assert_no_diagnostics(&diagnostics);
+    }
     #[test]
     fn enum_variant_pattern_is_flagged() {
         let source = "mod error;\nfn f(k: K) { match k { error::Kind::A => {} _ => {} } }";
