@@ -9,7 +9,16 @@ use stiles_typescript::TypeScriptLintPass;
 use self::doc_block::DocBlock;
 use self::inline_link::InlineLink;
 
-const RULE_ID: RuleId = RuleId::new("lint.inline-doc-link");
+/// The id that every diagnostic of this rule carries
+///
+/// A project names the rule by this id when it configures the rule.
+///
+/// # Examples
+///
+/// ```
+/// assert_eq!(inline_doc_link::RULE_ID.as_str(), "lint.inline-doc-link");
+/// ```
+pub const RULE_ID: RuleId = RuleId::new("lint.inline-doc-link");
 
 /// Flags inline Markdown links in doc comments
 ///
@@ -102,6 +111,7 @@ impl stiles_plugin::DeclaresRules for InlineDocLink {
     }
 }
 
+#[cfg(feature = "plugin")]
 stiles_plugin::export_lints![rust: [InlineDocLink], typescript: [InlineDocLink]];
 
 #[cfg(test)]

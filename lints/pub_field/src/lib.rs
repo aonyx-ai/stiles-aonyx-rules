@@ -1,7 +1,16 @@
 use stiles_rust::{RuleId, RustLintPass, RustLintPassAdapter};
 use stiles_types::{DecoratedNode, Diagnostic, LintPass, Severity};
 
-const RULE_ID: RuleId = RuleId::new("lint.pub-field");
+/// The id that every diagnostic of this rule carries
+///
+/// A project names the rule by this id when it configures the rule.
+///
+/// # Examples
+///
+/// ```
+/// assert_eq!(pub_field::RULE_ID.as_str(), "lint.pub-field");
+/// ```
+pub const RULE_ID: RuleId = RuleId::new("lint.pub-field");
 
 /// Flags `pub` fields on struct definitions
 ///
@@ -163,6 +172,7 @@ impl stiles_plugin::DeclaresRules for PubField {
     }
 }
 
+#[cfg(feature = "plugin")]
 stiles_plugin::export_lints![rust: [PubField]];
 
 #[cfg(test)]

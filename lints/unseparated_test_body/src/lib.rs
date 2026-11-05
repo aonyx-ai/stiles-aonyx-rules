@@ -1,7 +1,16 @@
 use stiles_rust::{RuleId, RustLintPass};
 use stiles_types::{DecoratedNode, Diagnostic, Severity};
 
-const RULE_ID: RuleId = RuleId::new("lint.unseparated-test-body");
+/// The id that every diagnostic of this rule carries
+///
+/// A project names the rule by this id when it configures the rule.
+///
+/// # Examples
+///
+/// ```
+/// assert_eq!(unseparated_test_body::RULE_ID.as_str(), "lint.unseparated-test-body");
+/// ```
+pub const RULE_ID: RuleId = RuleId::new("lint.unseparated-test-body");
 
 /// The fewest statements a body needs before the rule reports it
 ///
@@ -183,6 +192,7 @@ impl stiles_plugin::DeclaresRules for UnseparatedTestBody {
     }
 }
 
+#[cfg(feature = "plugin")]
 stiles_plugin::export_lints![rust: [UnseparatedTestBody]];
 
 #[cfg(test)]

@@ -1,7 +1,16 @@
 use stiles_rust::{RuleId, RustLintPass, RustLintPassAdapter};
 use stiles_types::{DecoratedNode, Diagnostic, LintPass, Severity};
 
-const RULE_ID: RuleId = RuleId::new("lint.missing-examples-doc");
+/// The id that every diagnostic of this rule carries
+///
+/// A project names the rule by this id when it configures the rule.
+///
+/// # Examples
+///
+/// ```
+/// assert_eq!(missing_examples_doc::RULE_ID.as_str(), "lint.missing-examples-doc");
+/// ```
+pub const RULE_ID: RuleId = RuleId::new("lint.missing-examples-doc");
 
 /// Ancestors that end the search for a public path to an item
 ///
@@ -400,6 +409,7 @@ impl stiles_plugin::DeclaresRules for MissingExamplesDoc {
     }
 }
 
+#[cfg(feature = "plugin")]
 stiles_plugin::export_lints![rust: [MissingExamplesDoc]];
 
 #[cfg(test)]

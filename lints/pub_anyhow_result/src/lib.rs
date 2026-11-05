@@ -4,7 +4,16 @@ use stiles_rust::decorations::{FnSignature, TypePathRef};
 use stiles_rust::{RuleId, RustLintPass, RustLintPassAdapter};
 use stiles_types::{DecoratedNode, Diagnostic, LintPass, Severity};
 
-const RULE_ID: RuleId = RuleId::new("lint.pub-anyhow-result");
+/// The id that every diagnostic of this rule carries
+///
+/// A project names the rule by this id when it configures the rule.
+///
+/// # Examples
+///
+/// ```
+/// assert_eq!(pub_anyhow_result::RULE_ID.as_str(), "lint.pub-anyhow-result");
+/// ```
+pub const RULE_ID: RuleId = RuleId::new("lint.pub-anyhow-result");
 
 /// The definition path of `anyhow::Error`
 ///
@@ -363,6 +372,7 @@ impl stiles_plugin::DeclaresRules for PubAnyhowResult {
     }
 }
 
+#[cfg(feature = "plugin")]
 stiles_plugin::export_lints![rust: [PubAnyhowResult]];
 
 #[cfg(test)]

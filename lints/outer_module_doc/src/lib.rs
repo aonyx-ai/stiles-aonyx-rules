@@ -1,7 +1,16 @@
 use stiles_rust::{RuleId, RustLintPass};
 use stiles_types::{DecoratedNode, Diagnostic, Severity, Span};
 
-const RULE_ID: RuleId = RuleId::new("lint.outer-module-doc");
+/// The id that every diagnostic of this rule carries
+///
+/// A project names the rule by this id when it configures the rule.
+///
+/// # Examples
+///
+/// ```
+/// assert_eq!(outer_module_doc::RULE_ID.as_str(), "lint.outer-module-doc");
+/// ```
+pub const RULE_ID: RuleId = RuleId::new("lint.outer-module-doc");
 
 /// Flags documentation on a `mod` declaration that ends in a semicolon
 ///
@@ -194,6 +203,7 @@ impl stiles_plugin::DeclaresRules for OuterModuleDoc {
     }
 }
 
+#[cfg(feature = "plugin")]
 stiles_plugin::export_lints![rust: [OuterModuleDoc]];
 
 #[cfg(test)]

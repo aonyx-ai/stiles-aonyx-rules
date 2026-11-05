@@ -1,7 +1,16 @@
 use stiles_rust::{RuleId, RustLintPass, RustLintPassAdapter};
 use stiles_types::{DecoratedNode, Diagnostic, LintPass, RuleOptions, Severity};
 
-const RULE_ID: RuleId = RuleId::new("lint.bool-param");
+/// The id that every diagnostic of this rule carries
+///
+/// A project names the rule by this id when it configures the rule.
+///
+/// # Examples
+///
+/// ```
+/// assert_eq!(bool_param::RULE_ID.as_str(), "lint.bool-param");
+/// ```
+pub const RULE_ID: RuleId = RuleId::new("lint.bool-param");
 
 /// Flags `bool` parameters in function signatures and `bool` fields in
 /// struct definitions
@@ -161,6 +170,7 @@ impl stiles_plugin::DeclaresRules for BoolParam {
     }
 }
 
+#[cfg(feature = "plugin")]
 stiles_plugin::export_lints![rust: [BoolParam::default()]];
 
 #[cfg(test)]

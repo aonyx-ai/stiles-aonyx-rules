@@ -878,6 +878,42 @@ dependencies = [
 [[package]]
 name = "stiles-aonyx-rules"
 version = "0.3.0"
+dependencies = [
+ "anyhow_missing_context",
+ "bool_param",
+ "commented_out_code",
+ "derive_order",
+ "doc_summary_period",
+ "doc_summary_person",
+ "em_dash_aside",
+ "error_enum_shape",
+ "external_type_in_port",
+ "facade_bypass_import",
+ "function_scoped_import",
+ "if_let_with_else",
+ "inline_comment",
+ "inline_doc_link",
+ "io_in_pure_function",
+ "long_doc_sentence",
+ "matches_macro",
+ "missing_examples_doc",
+ "missing_trait_tests",
+ "multi_assert_test",
+ "multi_param_constructor",
+ "open_vocabulary",
+ "outer_module_doc",
+ "pub_anyhow_result",
+ "pub_field",
+ "repeated_field_access",
+ "repeated_primitive_params",
+ "split_binding",
+ "terminal_output",
+ "todo_comment",
+ "unprefixed_submodule_path",
+ "unseparated_test_body",
+ "unsorted_test",
+ "wildcard_match_arm",
+]
 
 [[package]]
 name = "stiles-codegen"

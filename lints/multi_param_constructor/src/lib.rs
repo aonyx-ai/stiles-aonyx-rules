@@ -6,7 +6,16 @@ use stiles_types::{DecoratedNode, Diagnostic, LintPass, Severity};
 
 use crate::test_code::is_test_code;
 
-const RULE_ID: RuleId = RuleId::new("lint.multi-param-constructor");
+/// The id that every diagnostic of this rule carries
+///
+/// A project names the rule by this id when it configures the rule.
+///
+/// # Examples
+///
+/// ```
+/// assert_eq!(multi_param_constructor::RULE_ID.as_str(), "lint.multi-param-constructor");
+/// ```
+pub const RULE_ID: RuleId = RuleId::new("lint.multi-param-constructor");
 
 /// The last path segments of the wrappers a fallible constructor returns
 const WRAPPERS: [&str; 2] = ["Result", "Option"];
@@ -209,6 +218,7 @@ impl stiles_plugin::DeclaresRules for MultiParamConstructor {
     }
 }
 
+#[cfg(feature = "plugin")]
 stiles_plugin::export_lints![rust: [MultiParamConstructor]];
 
 #[cfg(test)]

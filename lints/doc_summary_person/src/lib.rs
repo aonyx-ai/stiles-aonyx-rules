@@ -3,7 +3,16 @@ use std::path::Path;
 use stiles_rust::{RuleId, RustLintPass};
 use stiles_types::{DecoratedNode, Diagnostic, Severity, Span};
 
-const RULE_ID: RuleId = RuleId::new("lint.doc-summary-person");
+/// The id that every diagnostic of this rule carries
+///
+/// A project names the rule by this id when it configures the rule.
+///
+/// # Examples
+///
+/// ```
+/// assert_eq!(doc_summary_person::RULE_ID.as_str(), "lint.doc-summary-person");
+/// ```
+pub const RULE_ID: RuleId = RuleId::new("lint.doc-summary-person");
 
 /// Verbs that end in `-ly`, in alphabetical order
 ///
@@ -507,6 +516,7 @@ impl stiles_plugin::DeclaresRules for DocSummaryPerson {
     }
 }
 
+#[cfg(feature = "plugin")]
 stiles_plugin::export_lints![rust: [DocSummaryPerson]];
 
 #[cfg(test)]

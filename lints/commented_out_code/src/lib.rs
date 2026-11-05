@@ -2,6 +2,17 @@ use stiles_rust::{RuleId, RustLintPass, language};
 use stiles_types::{DecoratedNode, Diagnostic, Severity, Span};
 use tree_sitter::{Node, Parser};
 
+/// The id that every diagnostic of this rule carries
+///
+/// A project names the rule by this id when it configures the rule.
+///
+/// # Examples
+///
+/// ```
+/// assert_eq!(commented_out_code::RULE_ID.as_str(), "lint.commented-out-code");
+/// ```
+pub const RULE_ID: RuleId = RuleId::new("lint.commented-out-code");
+
 /// Node kinds that a prose comment does not produce by accident
 ///
 /// A fragment that parses as Rust proves little on its own. English is full
@@ -111,7 +122,7 @@ impl CommentedOutCode {
         match classify(&mut self.parser, body) {
             Fragment::Code => vec![
                 Diagnostic::builder()
-                    .rule_id(RuleId::new("lint.commented-out-code"))
+                    .rule_id(RULE_ID)
                     .severity(Severity::Error)
                     .message("remove this commented-out code; version control keeps the history")
                     .span(span)
@@ -381,10 +392,11 @@ fn is_terminated_statement(node: Node<'_>) -> bool {
 #[cfg(feature = "plugin")]
 impl stiles_plugin::DeclaresRules for CommentedOutCode {
     fn rules(&self) -> Vec<RuleId> {
-        vec![RuleId::new("lint.commented-out-code")]
+        vec![RULE_ID]
     }
 }
 
+#[cfg(feature = "plugin")]
 stiles_plugin::export_lints![rust: [CommentedOutCode::new()]];
 
 #[cfg(test)]

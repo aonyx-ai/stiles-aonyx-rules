@@ -1,6 +1,17 @@
 use stiles_rust::{RuleId, RustLintPass};
 use stiles_types::{DecoratedNode, Diagnostic, Severity};
 
+/// The id that every diagnostic of this rule carries
+///
+/// A project names the rule by this id when it configures the rule.
+///
+/// # Examples
+///
+/// ```
+/// assert_eq!(matches_macro::RULE_ID.as_str(), "lint.matches-macro");
+/// ```
+pub const RULE_ID: RuleId = RuleId::new("lint.matches-macro");
+
 /// The advice for a `matches!` whose `bool` is the value the code wants
 const VALUE_MESSAGE: &str = "use a full `match` expression instead of `matches!`";
 
@@ -73,7 +84,7 @@ impl RustLintPass for MatchesMacro {
 
         vec![
             Diagnostic::builder()
-                .rule_id(RuleId::new("lint.matches-macro"))
+                .rule_id(RULE_ID)
                 .severity(Severity::Error)
                 .message(message)
                 .span(node.span())
@@ -85,10 +96,11 @@ impl RustLintPass for MatchesMacro {
 #[cfg(feature = "plugin")]
 impl stiles_plugin::DeclaresRules for MatchesMacro {
     fn rules(&self) -> Vec<RuleId> {
-        vec![RuleId::new("lint.matches-macro")]
+        vec![RULE_ID]
     }
 }
 
+#[cfg(feature = "plugin")]
 stiles_plugin::export_lints![rust: [MatchesMacro]];
 
 /// Where a `matches!` call sits, which decides the rewrite its finding asks for

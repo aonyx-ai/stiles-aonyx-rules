@@ -2,7 +2,16 @@ use doc_comment::DocLine;
 use stiles_rust::{RuleId, RustLintPass};
 use stiles_types::{DecoratedNode, Diagnostic, Severity, Span};
 
-const RULE_ID: RuleId = RuleId::new("lint.doc-summary-period");
+/// The id that every diagnostic of this rule carries
+///
+/// A project names the rule by this id when it configures the rule.
+///
+/// # Examples
+///
+/// ```
+/// assert_eq!(doc_summary_period::RULE_ID.as_str(), "lint.doc-summary-period");
+/// ```
+pub const RULE_ID: RuleId = RuleId::new("lint.doc-summary-period");
 
 /// The node kinds that can sit between the pieces of one item's docs
 ///
@@ -305,6 +314,7 @@ impl stiles_plugin::DeclaresRules for DocSummaryPeriod {
     }
 }
 
+#[cfg(feature = "plugin")]
 stiles_plugin::export_lints![rust: [DocSummaryPeriod]];
 
 #[cfg(test)]

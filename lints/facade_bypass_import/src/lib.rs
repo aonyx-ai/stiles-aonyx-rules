@@ -5,7 +5,16 @@ use stiles_rust::decorations::{PublicPath, Reexports};
 use stiles_rust::{RuleId, RustLintPass};
 use stiles_types::{DecoratedNode, Diagnostic, Severity};
 
-const RULE_ID: RuleId = RuleId::new("lint.facade-bypass-import");
+/// The id that every diagnostic of this rule carries
+///
+/// A project names the rule by this id when it configures the rule.
+///
+/// # Examples
+///
+/// ```
+/// assert_eq!(facade_bypass_import::RULE_ID.as_str(), "lint.facade-bypass-import");
+/// ```
+pub const RULE_ID: RuleId = RuleId::new("lint.facade-bypass-import");
 
 /// The sysroot crates, which are never a facade and never bypass one
 ///
@@ -417,6 +426,7 @@ impl stiles_plugin::DeclaresRules for FacadeBypassImport {
     }
 }
 
+#[cfg(feature = "plugin")]
 stiles_plugin::export_lints![rust: [FacadeBypassImport]];
 
 #[cfg(test)]

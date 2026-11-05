@@ -13,5 +13,45 @@ license.workspace = true
 repository.workspace = true
 publish = false
 
+# The facade re-exports every rule, so its docs show all of them in one
+# place. Each rule's `plugin` feature stays off here. A plugin declaration
+# is a `no_mangle` static, and two of them in one library would collide.
+[dependencies]
+anyhow_missing_context = { path = "../../lints/anyhow_missing_context", default-features = false }
+bool_param = { path = "../../lints/bool_param", default-features = false }
+commented_out_code = { path = "../../lints/commented_out_code", default-features = false }
+derive_order = { path = "../../lints/derive_order", default-features = false }
+doc_summary_period = { path = "../../lints/doc_summary_period", default-features = false }
+doc_summary_person = { path = "../../lints/doc_summary_person", default-features = false }
+em_dash_aside = { path = "../../lints/em_dash_aside", default-features = false }
+error_enum_shape = { path = "../../lints/error_enum_shape", default-features = false }
+external_type_in_port = { path = "../../lints/external_type_in_port", default-features = false }
+facade_bypass_import = { path = "../../lints/facade_bypass_import", default-features = false }
+function_scoped_import = { path = "../../lints/function_scoped_import", default-features = false }
+if_let_with_else = { path = "../../lints/if_let_with_else", default-features = false }
+inline_comment = { path = "../../lints/inline_comment", default-features = false }
+inline_doc_link = { path = "../../lints/inline_doc_link", default-features = false }
+io_in_pure_function = { path = "../../lints/io_in_pure_function", default-features = false }
+long_doc_sentence = { path = "../../lints/long_doc_sentence", default-features = false }
+matches_macro = { path = "../../lints/matches_macro", default-features = false }
+missing_examples_doc = { path = "../../lints/missing_examples_doc", default-features = false }
+missing_trait_tests = { path = "../../lints/missing_trait_tests", default-features = false }
+multi_assert_test = { path = "../../lints/multi_assert_test", default-features = false }
+multi_param_constructor = { path = "../../lints/multi_param_constructor", default-features = false }
+open_vocabulary = { path = "../../lints/open_vocabulary", default-features = false }
+outer_module_doc = { path = "../../lints/outer_module_doc", default-features = false }
+pub_anyhow_result = { path = "../../lints/pub_anyhow_result", default-features = false }
+pub_field = { path = "../../lints/pub_field", default-features = false }
+repeated_field_access = { path = "../../lints/repeated_field_access", default-features = false }
+repeated_primitive_params = { path = "../../lints/repeated_primitive_params", default-features = false }
+split_binding = { path = "../../lints/split_binding", default-features = false }
+terminal_output = { path = "../../lints/terminal_output", default-features = false }
+todo_comment = { path = "../../lints/todo_comment", default-features = false }
+unprefixed_submodule_path = { path = "../../lints/unprefixed_submodule_path", default-features = false }
+unseparated_test_body = { path = "../../lints/unseparated_test_body", default-features = false }
+unsorted_test = { path = "../../lints/unsorted_test", default-features = false }
+wildcard_match_arm = { path = "../../lints/wildcard_match_arm", default-features = false }
+
 [lints]
 workspace = true
+
