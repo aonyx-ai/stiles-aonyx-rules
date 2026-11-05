@@ -47,6 +47,20 @@ const CATCH_ALL_NAMES: &[&str] = &["Other", "Custom", "Unknown", "Extension", "U
 ///
 /// # Examples
 ///
+/// ```text
+/// // DON'T
+/// pub enum Shape {
+///     Circle { radius: f64 },
+///     Other(String),
+/// }
+///
+/// // DO
+/// pub enum Shape {
+///     Circle { radius: f64 },
+///     Square { side: f64 },
+/// }
+/// ```
+///
 /// ```ignore
 /// pub enum CheckEvent {
 ///     FileChecked { file: PathBuf, diagnostics: usize },
@@ -826,6 +840,28 @@ mod tests {
         assert_no_diagnostics(&diagnostics);
     }
 
+    fn run_documented(source: &str) -> Vec<stiles_types::Diagnostic> {
+        let tree = stiles_testing::parse(source, stiles_types::Language::Rust);
+        stiles_testing::execute(&tree, &mut [OpenVocabulary::into_lint_pass()])
+    }
+
+    #[test]
+    fn documented_example_is_flagged() {
+        let pair = example_pair::ExamplePair::read(include_str!("lib.rs"));
+
+        let diagnostics = run_documented(pair.example());
+
+        assert!(!diagnostics.is_empty());
+    }
+
+    #[test]
+    fn documented_fix_is_not_flagged() {
+        let pair = example_pair::ExamplePair::read(include_str!("lib.rs"));
+
+        let diagnostics = run_documented(pair.fix());
+
+        stiles_testing::assert_no_diagnostics(&diagnostics);
+    }
     #[test]
     fn empty_catch_all_payload_not_flagged() {
         let diagnostics = run("pub enum Kind { Other(), Unknown {} }");

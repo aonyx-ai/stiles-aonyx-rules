@@ -25,6 +25,22 @@ pub const RULE_ID: RuleId = RuleId::new("lint.split-binding");
 ///
 /// # Examples
 ///
+/// ```text
+/// // DON'T
+/// fn run() {
+///     let raw_input = read_input();
+///     let trimmed_input = raw_input.trim();
+///     handle(trimmed_input);
+/// }
+///
+/// // DO
+/// fn run() {
+///     let input = read_input();
+///     let input = input.trim();
+///     handle(input);
+/// }
+/// ```
+///
 /// ```
 /// use split_binding::SplitBinding;
 /// use stiles_rust::RustLintPassAdapter;
@@ -563,6 +579,33 @@ mod tests {
         assert_diagnostic(&diagnostics[0]).message_contains("use `input` for both and shadow");
     }
 
+    fn run_documented(source: &str) -> Vec<stiles_types::Diagnostic> {
+        let tree = stiles_testing::parse(source, stiles_types::Language::Rust);
+        stiles_testing::execute(
+            &tree,
+            &mut [Box::new(stiles_rust::RustLintPassAdapter::new(
+                SplitBinding,
+            ))],
+        )
+    }
+
+    #[test]
+    fn documented_example_is_flagged() {
+        let pair = example_pair::ExamplePair::read(include_str!("lib.rs"));
+
+        let diagnostics = run_documented(pair.example());
+
+        assert!(!diagnostics.is_empty());
+    }
+
+    #[test]
+    fn documented_fix_is_not_flagged() {
+        let pair = example_pair::ExamplePair::read(include_str!("lib.rs"));
+
+        let diagnostics = run_documented(pair.fix());
+
+        stiles_testing::assert_no_diagnostics(&diagnostics);
+    }
     #[test]
     fn head_with_single_word_returns_the_whole_name() {
         assert_eq!(head("input"), "input");

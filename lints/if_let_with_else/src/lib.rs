@@ -24,6 +24,25 @@ pub const RULE_ID: RuleId = RuleId::new("lint.if-let-with-else");
 ///
 /// # Examples
 ///
+/// ```text
+/// // DON'T
+/// fn greeting(name: Option<&str>) -> String {
+///     if let Some(name) = name {
+///         format!("Hello, {name}")
+///     } else {
+///         String::from("Hello")
+///     }
+/// }
+///
+/// // DO
+/// fn greeting(name: Option<&str>) -> String {
+///     match name {
+///         Some(name) => format!("Hello, {name}"),
+///         None => String::from("Hello"),
+///     }
+/// }
+/// ```
+///
 /// ```
 /// use if_let_with_else::IfLetWithElse;
 /// use stiles_rust::RustLintPassAdapter;
@@ -162,6 +181,33 @@ mod tests {
         vec![Box::new(RustLintPassAdapter::new(IfLetWithElse))]
     }
 
+    fn run_documented(source: &str) -> Vec<stiles_types::Diagnostic> {
+        let tree = stiles_testing::parse(source, stiles_types::Language::Rust);
+        stiles_testing::execute(
+            &tree,
+            &mut [Box::new(stiles_rust::RustLintPassAdapter::new(
+                IfLetWithElse,
+            ))],
+        )
+    }
+
+    #[test]
+    fn documented_example_is_flagged() {
+        let pair = example_pair::ExamplePair::read(include_str!("lib.rs"));
+
+        let diagnostics = run_documented(pair.example());
+
+        assert!(!diagnostics.is_empty());
+    }
+
+    #[test]
+    fn documented_fix_is_not_flagged() {
+        let pair = example_pair::ExamplePair::read(include_str!("lib.rs"));
+
+        let diagnostics = run_documented(pair.fix());
+
+        stiles_testing::assert_no_diagnostics(&diagnostics);
+    }
     #[test]
     fn if_let_with_break_in_else_is_not_flagged() {
         let source = r#"

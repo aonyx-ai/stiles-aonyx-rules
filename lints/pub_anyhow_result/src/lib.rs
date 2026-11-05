@@ -56,6 +56,24 @@ const ANYHOW_ERROR: TypePathRef<'static> = TypePathRef::builder()
 ///
 /// # Examples
 ///
+/// ```text
+/// // DON'T
+/// pub fn load_config(path: &Path) -> anyhow::Result<Config> {
+///     todo!()
+/// }
+///
+/// // DO
+/// #[derive(Debug, thiserror::Error)]
+/// pub enum LoadConfigError {
+///     #[error("failed to read {}", path.display())]
+///     Unreadable { path: PathBuf, source: io::Error },
+/// }
+///
+/// pub fn load_config(path: &Path) -> Result<Config, LoadConfigError> {
+///     todo!()
+/// }
+/// ```
+///
 /// The rule reads the signature the Rust provider attaches as a decoration.
 /// This example attaches it by hand.
 ///
@@ -683,6 +701,60 @@ mod tests {
         assert_diagnostic(&diagnostics[0]).has_span("<test>", 14..24);
     }
 
+    fn run_documented(source: &str) -> Vec<stiles_types::Diagnostic> {
+        let mut tree = stiles_testing::parse(source, stiles_types::Language::Rust);
+        let decorations = documented_decorations(&tree);
+        stiles_testing::decorate(&mut tree, decorations);
+        stiles_testing::execute(&tree, &mut [PubAnyhowResult::into_lint_pass()])
+    }
+
+    fn documented_decorations(tree: &stiles_types::DecoratedTree) -> stiles_types::DecorationMap {
+        let mut decorations = stiles_types::DecorationMap::new();
+        for function in documented_nodes(tree, "function_item") {
+            let returned = function
+                .child_by_field_name("return_type")
+                .expect("the function should return");
+            let signature = match returned.text().starts_with("anyhow::") {
+                true => anyhow_signature(),
+                false => local_error_signature(),
+            };
+            decorations.insert(function.id(), signature);
+        }
+        decorations
+    }
+
+    fn documented_nodes<'a>(
+        tree: &'a stiles_types::DecoratedTree,
+        kind: &str,
+    ) -> Vec<stiles_types::DecoratedNode<'a>> {
+        let mut pending = vec![tree.root_node()];
+        let mut found = Vec::new();
+        while let Some(node) = pending.pop() {
+            if node.kind() == kind {
+                found.push(node);
+            }
+            pending.extend(node.named_children());
+        }
+        found
+    }
+
+    #[test]
+    fn documented_example_is_flagged() {
+        let pair = example_pair::ExamplePair::read(include_str!("lib.rs"));
+
+        let diagnostics = run_documented(pair.example());
+
+        assert!(!diagnostics.is_empty());
+    }
+
+    #[test]
+    fn documented_fix_is_not_flagged() {
+        let pair = example_pair::ExamplePair::read(include_str!("lib.rs"));
+
+        let diagnostics = run_documented(pair.fix());
+
+        stiles_testing::assert_no_diagnostics(&diagnostics);
+    }
     /// Only the crate root's `Error` is `anyhow::Error`
     #[test]
     fn error_in_anyhow_submodule_not_flagged() {

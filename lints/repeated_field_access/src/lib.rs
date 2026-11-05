@@ -32,6 +32,19 @@ const FIELD_THRESHOLD: usize = 2;
 ///
 /// # Examples
 ///
+/// ```text
+/// // DON'T
+/// fn area(rect: &Rect) -> u32 {
+///     rect.width * rect.height
+/// }
+///
+/// // DO
+/// fn area(rect: &Rect) -> u32 {
+///     let Rect { width, height } = rect;
+///     width * height
+/// }
+/// ```
+///
 /// ```
 /// use repeated_field_access::RepeatedFieldAccess;
 /// use stiles_rust::RustLintPassAdapter;
@@ -389,6 +402,33 @@ mod tests {
         assert_no_diagnostics(&diagnostics);
     }
 
+    fn run_documented(source: &str) -> Vec<stiles_types::Diagnostic> {
+        let tree = stiles_testing::parse(source, stiles_types::Language::Rust);
+        stiles_testing::execute(
+            &tree,
+            &mut [Box::new(stiles_rust::RustLintPassAdapter::new(
+                RepeatedFieldAccess,
+            ))],
+        )
+    }
+
+    #[test]
+    fn documented_example_is_flagged() {
+        let pair = example_pair::ExamplePair::read(include_str!("lib.rs"));
+
+        let diagnostics = run_documented(pair.example());
+
+        assert!(!diagnostics.is_empty());
+    }
+
+    #[test]
+    fn documented_fix_is_not_flagged() {
+        let pair = example_pair::ExamplePair::read(include_str!("lib.rs"));
+
+        let diagnostics = run_documented(pair.fix());
+
+        stiles_testing::assert_no_diagnostics(&diagnostics);
+    }
     #[test]
     fn field_read_twice_is_not_flagged() {
         let diagnostics = run("fn f() { g(u.a, u.a); }");

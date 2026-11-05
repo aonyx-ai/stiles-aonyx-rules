@@ -22,6 +22,24 @@ pub const RULE_ID: RuleId = RuleId::new("lint.wildcard-match-arm");
 ///
 /// # Examples
 ///
+/// ```text
+/// // DON'T
+/// fn step(direction: Direction) {
+///     match direction {
+///         Direction::North => climb(),
+///         _ => wait(),
+///     }
+/// }
+///
+/// // DO
+/// fn step(direction: Direction) {
+///     match direction {
+///         Direction::North => climb(),
+///         Direction::East | Direction::South | Direction::West => wait(),
+///     }
+/// }
+/// ```
+///
 /// The rule reads the type of the scrutinee, which the Rust provider attaches
 /// as a decoration. This example attaches it by hand.
 ///
@@ -201,6 +219,63 @@ mod tests {
         assert_no_diagnostics(&diagnostics);
     }
 
+    fn run_documented(source: &str) -> Vec<stiles_types::Diagnostic> {
+        let mut tree = stiles_testing::parse(source, stiles_types::Language::Rust);
+        let decorations = documented_decorations(&tree);
+        stiles_testing::decorate(&mut tree, decorations);
+        stiles_testing::execute(
+            &tree,
+            &mut [Box::new(stiles_rust::RustLintPassAdapter::new(
+                WildcardMatchArm,
+            ))],
+        )
+    }
+
+    fn documented_decorations(tree: &stiles_types::DecoratedTree) -> stiles_types::DecorationMap {
+        let mut decorations = stiles_types::DecorationMap::new();
+        for expression in documented_nodes(tree, "match_expression") {
+            let scrutinee = expression
+                .child_by_field_name("value")
+                .expect("`match` should have a scrutinee");
+            let direction = stiles_rust::decorations::ResolvedType::new("Direction".into())
+                .with_adt_kind(stiles_rust::decorations::AdtKind::Enum);
+            decorations.insert(scrutinee.id(), direction);
+        }
+        decorations
+    }
+
+    fn documented_nodes<'a>(
+        tree: &'a stiles_types::DecoratedTree,
+        kind: &str,
+    ) -> Vec<stiles_types::DecoratedNode<'a>> {
+        let mut pending = vec![tree.root_node()];
+        let mut found = Vec::new();
+        while let Some(node) = pending.pop() {
+            if node.kind() == kind {
+                found.push(node);
+            }
+            pending.extend(node.named_children());
+        }
+        found
+    }
+
+    #[test]
+    fn documented_example_is_flagged() {
+        let pair = example_pair::ExamplePair::read(include_str!("lib.rs"));
+
+        let diagnostics = run_documented(pair.example());
+
+        assert!(!diagnostics.is_empty());
+    }
+
+    #[test]
+    fn documented_fix_is_not_flagged() {
+        let pair = example_pair::ExamplePair::read(include_str!("lib.rs"));
+
+        let diagnostics = run_documented(pair.fix());
+
+        stiles_testing::assert_no_diagnostics(&diagnostics);
+    }
     #[test]
     fn if_let_does_not_trigger_lint() {
         let source = "fn f() { if let Some(x) = opt { x } else { 0 } }";

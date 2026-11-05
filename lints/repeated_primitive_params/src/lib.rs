@@ -34,6 +34,17 @@ pub const RULE_ID: RuleId = RuleId::new("lint.repeated-primitive-params");
 ///
 /// # Examples
 ///
+/// ```text
+/// // DON'T
+/// fn resize(width: u32, height: u32) {}
+///
+/// // DO
+/// struct Width(u32);
+/// struct Height(u32);
+///
+/// fn resize(width: Width, height: Height) {}
+/// ```
+///
 /// ```
 /// use repeated_primitive_params::RepeatedPrimitiveParams;
 /// use stiles_testing::{execute, parse};
@@ -530,6 +541,28 @@ mod tests {
         assert_eq!(diagnostics.len(), 1);
     }
 
+    fn run_documented(source: &str) -> Vec<stiles_types::Diagnostic> {
+        let tree = stiles_testing::parse(source, stiles_types::Language::Rust);
+        stiles_testing::execute(&tree, &mut [RepeatedPrimitiveParams::into_lint_pass()])
+    }
+
+    #[test]
+    fn documented_example_is_flagged() {
+        let pair = example_pair::ExamplePair::read(include_str!("lib.rs"));
+
+        let diagnostics = run_documented(pair.example());
+
+        assert!(!diagnostics.is_empty());
+    }
+
+    #[test]
+    fn documented_fix_is_not_flagged() {
+        let pair = example_pair::ExamplePair::read(include_str!("lib.rs"));
+
+        let diagnostics = run_documented(pair.fix());
+
+        stiles_testing::assert_no_diagnostics(&diagnostics);
+    }
     /// Pins that this rule ignores every signature the shared corpus holds
     ///
     /// The corpus is what stops two rules reading one option from drifting

@@ -32,6 +32,16 @@ const STD_DERIVES: &[&str] = &[
 ///
 /// # Examples
 ///
+/// ```text
+/// // DON'T
+/// #[derive(Debug, Serialize, Clone, PartialEq)]
+/// struct Point { x: i32, y: i32 }
+///
+/// // DO
+/// #[derive(Clone, PartialEq, Debug, Serialize)]
+/// struct Point { x: i32, y: i32 }
+/// ```
+///
 /// ```
 /// use derive_order::DeriveOrder;
 /// use stiles_testing::{execute, parse};
@@ -204,6 +214,28 @@ mod tests {
         assert_no_diagnostics(&diagnostics);
     }
 
+    fn run_documented(source: &str) -> Vec<stiles_types::Diagnostic> {
+        let tree = stiles_testing::parse(source, stiles_types::Language::Rust);
+        stiles_testing::execute(&tree, &mut [DeriveOrder::into_lint_pass()])
+    }
+
+    #[test]
+    fn documented_example_is_flagged() {
+        let pair = example_pair::ExamplePair::read(include_str!("lib.rs"));
+
+        let diagnostics = run_documented(pair.example());
+
+        assert!(!diagnostics.is_empty());
+    }
+
+    #[test]
+    fn documented_fix_is_not_flagged() {
+        let pair = example_pair::ExamplePair::read(include_str!("lib.rs"));
+
+        let diagnostics = run_documented(pair.fix());
+
+        stiles_testing::assert_no_diagnostics(&diagnostics);
+    }
     #[test]
     fn empty_derive_not_flagged() {
         let diagnostics = run("#[derive()]\nstruct Foo;");

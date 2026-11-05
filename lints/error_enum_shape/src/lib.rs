@@ -51,6 +51,22 @@ const FAILED_TO: &str = "failed to";
 ///
 /// # Examples
 ///
+/// ```text
+/// // DON'T
+/// #[derive(Debug, Error)]
+/// pub enum LoadConfigError {
+///     #[error("could not read the config")]
+///     Io(#[from] io::Error),
+/// }
+///
+/// // DO
+/// #[derive(Debug, Error)]
+/// pub enum LoadConfigError {
+///     #[error("failed to read {}", path.display())]
+///     Unreadable { path: PathBuf, source: io::Error },
+/// }
+/// ```
+///
 /// An enum in the shape the rule asks for:
 ///
 /// ```ignore
@@ -521,6 +537,28 @@ mod tests {
         assert_eq!(diagnostics.len(), 1);
     }
 
+    fn run_documented(source: &str) -> Vec<stiles_types::Diagnostic> {
+        let tree = stiles_testing::parse(source, stiles_types::Language::Rust);
+        stiles_testing::execute(&tree, &mut [ErrorEnumShape::into_lint_pass()])
+    }
+
+    #[test]
+    fn documented_example_is_flagged() {
+        let pair = example_pair::ExamplePair::read(include_str!("lib.rs"));
+
+        let diagnostics = run_documented(pair.example());
+
+        assert!(!diagnostics.is_empty());
+    }
+
+    #[test]
+    fn documented_fix_is_not_flagged() {
+        let pair = example_pair::ExamplePair::read(include_str!("lib.rs"));
+
+        let diagnostics = run_documented(pair.fix());
+
+        stiles_testing::assert_no_diagnostics(&diagnostics);
+    }
     #[test]
     fn enum_name_diagnostic_reported_once() {
         let diagnostics = run("#[derive(Error)]\nenum Plugin { A }");

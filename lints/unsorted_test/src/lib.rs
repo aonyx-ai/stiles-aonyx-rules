@@ -38,6 +38,22 @@ const TEST_ATTRIBUTES: &[&str] = &["rstest", "test", "test_case"];
 ///
 /// # Examples
 ///
+/// ```text
+/// // DON'T
+/// #[test]
+/// fn parse_with_valid_input_returns_value() {}
+///
+/// #[test]
+/// fn parse_with_empty_input_returns_error() {}
+///
+/// // DO
+/// #[test]
+/// fn parse_with_empty_input_returns_error() {}
+///
+/// #[test]
+/// fn parse_with_valid_input_returns_value() {}
+/// ```
+///
 /// ```ignore
 /// #[test]
 /// fn parse_with_valid_input_returns_value() {}
@@ -235,6 +251,33 @@ mod tests {
         assert_eq!(flagged(source), ["a"]);
     }
 
+    fn run_documented(source: &str) -> Vec<stiles_types::Diagnostic> {
+        let tree = stiles_testing::parse(source, stiles_types::Language::Rust);
+        stiles_testing::execute(
+            &tree,
+            &mut [Box::new(stiles_rust::RustLintPassAdapter::new(
+                UnsortedTest,
+            ))],
+        )
+    }
+
+    #[test]
+    fn documented_example_is_flagged() {
+        let pair = example_pair::ExamplePair::read(include_str!("lib.rs"));
+
+        let diagnostics = run_documented(pair.example());
+
+        assert!(!diagnostics.is_empty());
+    }
+
+    #[test]
+    fn documented_fix_is_not_flagged() {
+        let pair = example_pair::ExamplePair::read(include_str!("lib.rs"));
+
+        let diagnostics = run_documented(pair.fix());
+
+        stiles_testing::assert_no_diagnostics(&diagnostics);
+    }
     #[test]
     fn duplicate_names_are_not_flagged() {
         let source = "#[cfg(unix)]\n#[test]\nfn a() {}\n#[cfg(windows)]\n#[test]\nfn a() {}";

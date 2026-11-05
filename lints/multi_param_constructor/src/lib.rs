@@ -51,6 +51,21 @@ const WRAPPERS: [&str; 2] = ["Result", "Option"];
 ///
 /// # Examples
 ///
+/// ```text
+/// // DON'T
+/// pub struct Point { x: i32, y: i32 }
+///
+/// impl Point {
+///     pub fn new(x: i32, y: i32) -> Self {
+///         Self { x, y }
+///     }
+/// }
+///
+/// // DO
+/// #[derive(bon::Builder)]
+/// pub struct Point { x: i32, y: i32 }
+/// ```
+///
 /// ```ignore
 /// impl Field {
 ///     pub const fn new(name: FieldName, presence: Presence) -> Self {
@@ -587,6 +602,28 @@ mod tests {
         assert_eq!(diagnostics[0].span().start(), start);
     }
 
+    fn run_documented(source: &str) -> Vec<stiles_types::Diagnostic> {
+        let tree = stiles_testing::parse(source, stiles_types::Language::Rust);
+        stiles_testing::execute(&tree, &mut [MultiParamConstructor::into_lint_pass()])
+    }
+
+    #[test]
+    fn documented_example_is_flagged() {
+        let pair = example_pair::ExamplePair::read(include_str!("lib.rs"));
+
+        let diagnostics = run_documented(pair.example());
+
+        assert!(!diagnostics.is_empty());
+    }
+
+    #[test]
+    fn documented_fix_is_not_flagged() {
+        let pair = example_pair::ExamplePair::read(include_str!("lib.rs"));
+
+        let diagnostics = run_documented(pair.fix());
+
+        stiles_testing::assert_no_diagnostics(&diagnostics);
+    }
     #[test]
     fn free_function_returning_a_type_not_flagged() {
         let diagnostics = run("fn make(a: u8, b: u8) -> Foo { todo!() }");

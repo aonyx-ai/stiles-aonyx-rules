@@ -61,6 +61,18 @@ const MAX_IMPORT_HOPS: usize = 16;
 ///
 /// # Examples
 ///
+/// ```text
+/// // DON'T
+/// pub trait DecorationProvider {
+///     fn decorate(&self, tree: &DecoratedTree) -> anyhow::Result<Coverage>;
+/// }
+///
+/// // DO
+/// pub trait DecorationProvider {
+///     fn decorate(&self, tree: &DecoratedTree) -> Result<Coverage, DecorateError>;
+/// }
+/// ```
+///
 /// ```ignore
 /// pub trait DecorationProvider {
 ///     fn decorate(&self, tree: &DecoratedTree) -> anyhow::Result<Coverage>;
@@ -967,6 +979,33 @@ pub trait Port {
         assert_eq!(diagnostics.len(), 1);
     }
 
+    fn run_documented(source: &str) -> Vec<stiles_types::Diagnostic> {
+        let tree = stiles_testing::parse(source, stiles_types::Language::Rust);
+        stiles_testing::execute(
+            &tree,
+            &mut [Box::new(stiles_rust::RustLintPassAdapter::new(
+                ExternalTypeInPort,
+            ))],
+        )
+    }
+
+    #[test]
+    fn documented_example_is_flagged() {
+        let pair = example_pair::ExamplePair::read(include_str!("lib.rs"));
+
+        let diagnostics = run_documented(pair.example());
+
+        assert!(!diagnostics.is_empty());
+    }
+
+    #[test]
+    fn documented_fix_is_not_flagged() {
+        let pair = example_pair::ExamplePair::read(include_str!("lib.rs"));
+
+        let diagnostics = run_documented(pair.fix());
+
+        stiles_testing::assert_no_diagnostics(&diagnostics);
+    }
     #[test]
     fn dyn_and_impl_trait_bounds_are_flagged_twice() {
         let source = r#"

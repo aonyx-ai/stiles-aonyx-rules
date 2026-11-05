@@ -33,6 +33,7 @@ stiles-rust = { workspace = true }
 stiles-types = { workspace = true }
 
 [dev-dependencies]
+example_pair = { workspace = true }
 proptest = { workspace = true }
 stiles-testing = { workspace = true }
 

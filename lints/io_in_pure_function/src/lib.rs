@@ -88,6 +88,28 @@ const IO_FUNCTIONS: [&[&str]; 8] = [
 ///
 /// # Examples
 ///
+/// ```text
+/// // DON'T
+/// use std::fs;
+///
+/// fn parse_config(path: &str) -> io::Result<Config> {
+///     let text = fs::read_to_string(path)?;
+///     Ok(Config::from_toml(&text))
+/// }
+///
+/// // DO
+/// use std::fs;
+///
+/// fn load_config(path: &str) -> io::Result<Config> {
+///     let text = fs::read_to_string(path)?;
+///     Ok(parse_config(&text))
+/// }
+///
+/// fn parse_config(text: &str) -> Config {
+///     Config::from_toml(text)
+/// }
+/// ```
+///
 /// ```
 /// use io_in_pure_function::IoInPureFunction;
 /// use stiles_testing::{execute, parse};
@@ -455,6 +477,28 @@ mod tests {
         assert_eq!(diagnostics.len(), 1);
     }
 
+    fn run_documented(source: &str) -> Vec<stiles_types::Diagnostic> {
+        let tree = stiles_testing::parse(source, stiles_types::Language::Rust);
+        stiles_testing::execute(&tree, &mut [IoInPureFunction::into_lint_pass()])
+    }
+
+    #[test]
+    fn documented_example_is_flagged() {
+        let pair = example_pair::ExamplePair::read(include_str!("lib.rs"));
+
+        let diagnostics = run_documented(pair.example());
+
+        assert!(!diagnostics.is_empty());
+    }
+
+    #[test]
+    fn documented_fix_is_not_flagged() {
+        let pair = example_pair::ExamplePair::read(include_str!("lib.rs"));
+
+        let diagnostics = run_documented(pair.fix());
+
+        stiles_testing::assert_no_diagnostics(&diagnostics);
+    }
     #[test]
     fn environment_variable_read_is_not_flagged() {
         let diagnostics = run("fn new() { std::env::var(\"HOME\"); std::env::vars(); }");

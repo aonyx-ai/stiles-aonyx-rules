@@ -40,6 +40,23 @@ pub const RULE_ID: RuleId = RuleId::new("lint.multi-assert-test");
 ///
 /// # Examples
 ///
+/// ```text
+/// // DON'T
+/// #[test]
+/// fn parse_with_valid_input_returns_value() {
+///     let result = parse("42");
+///     assert!(result.is_ok());
+///     assert_eq!(result.unwrap(), 42);
+/// }
+///
+/// // DO
+/// #[test]
+/// fn parse_with_valid_input_returns_value() {
+///     let value = parse("42").expect("valid input should parse");
+///     assert_eq!(value, 42);
+/// }
+/// ```
+///
 /// ```ignore
 /// #[test]
 /// fn parse_with_valid_input_returns_value() {
@@ -322,6 +339,33 @@ mod tests {
             .message_contains("test `parses` makes 2 assertions");
     }
 
+    fn run_documented(source: &str) -> Vec<stiles_types::Diagnostic> {
+        let tree = stiles_testing::parse(source, stiles_types::Language::Rust);
+        stiles_testing::execute(
+            &tree,
+            &mut [Box::new(stiles_rust::RustLintPassAdapter::new(
+                MultiAssertTest,
+            ))],
+        )
+    }
+
+    #[test]
+    fn documented_example_is_flagged() {
+        let pair = example_pair::ExamplePair::read(include_str!("lib.rs"));
+
+        let diagnostics = run_documented(pair.example());
+
+        assert!(!diagnostics.is_empty());
+    }
+
+    #[test]
+    fn documented_fix_is_not_flagged() {
+        let pair = example_pair::ExamplePair::read(include_str!("lib.rs"));
+
+        let diagnostics = run_documented(pair.fix());
+
+        stiles_testing::assert_no_diagnostics(&diagnostics);
+    }
     #[test]
     fn function_without_test_attribute_is_not_flagged() {
         let source = "fn helper() {\n    assert!(a);\n    assert!(b);\n}";

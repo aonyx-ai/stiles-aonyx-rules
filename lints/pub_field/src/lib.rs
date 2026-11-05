@@ -30,6 +30,20 @@ pub const RULE_ID: RuleId = RuleId::new("lint.pub-field");
 ///
 /// # Examples
 ///
+/// ```text
+/// // DON'T
+/// pub struct User {
+///     pub name: String,
+/// }
+///
+/// // DO
+/// #[derive(getset::Getters)]
+/// pub struct User {
+///     #[getset(get = "pub")]
+///     name: String,
+/// }
+/// ```
+///
 /// ```
 /// use pub_field::PubField;
 /// use stiles_testing::{execute, parse};
@@ -199,6 +213,28 @@ mod tests {
         assert_eq!(diagnostics.len(), 1);
     }
 
+    fn run_documented(source: &str) -> Vec<stiles_types::Diagnostic> {
+        let tree = stiles_testing::parse(source, stiles_types::Language::Rust);
+        stiles_testing::execute(&tree, &mut [PubField::into_lint_pass()])
+    }
+
+    #[test]
+    fn documented_example_is_flagged() {
+        let pair = example_pair::ExamplePair::read(include_str!("lib.rs"));
+
+        let diagnostics = run_documented(pair.example());
+
+        assert!(!diagnostics.is_empty());
+    }
+
+    #[test]
+    fn documented_fix_is_not_flagged() {
+        let pair = example_pair::ExamplePair::read(include_str!("lib.rs"));
+
+        let diagnostics = run_documented(pair.fix());
+
+        stiles_testing::assert_no_diagnostics(&diagnostics);
+    }
     #[test]
     fn enum_variant_fields_not_flagged() {
         let diagnostics = run("pub enum Gap { Outside { pub root: u32 }, Unreachable(pub u32) }");
