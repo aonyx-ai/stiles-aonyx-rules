@@ -1,7 +1,14 @@
-# Stiles reads this file when `stiles check` runs against this repository,
-# and the rules it names are the ones in this repository. Every rule is a
-# workspace member, so a single entry pointing at the root builds all of them
-# and checks this repository with itself. A rule that would fire on its own
-# source is a rule worth reconsidering.
+# Stiles reads this file when `stiles check` runs against this repository.
+# The first entry builds every rule in this repository, because each one is
+# a workspace member, and checks this repository with itself. A rule that
+# would fire on its own source is a rule worth reconsidering.
 [[lints]]
 path = "."
+
+# The rules for crates of rules check that each pass here documents its rule,
+# names its options, and declares its rule ids. The pin builds against the
+# same stiles release as the rules here. Bumping it is how this repository
+# adopts a new or changed rule from there.
+[[lints]]
+git = "https://github.com/aonyx-ai/stiles-lint-rules"
+rev = "9a40ddebe60235cd91a7202764c65a2edbc06c5d"
