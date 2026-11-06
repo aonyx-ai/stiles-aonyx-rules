@@ -96,7 +96,8 @@ jobs:
     name: All checks succeeded
     runs-on: ubuntu-latest
 
-    permissions: {}
+    permissions:
+      pull-requests: read # Required to find an open release pull request
 
     needs: [checks, dogfood]
     if: always()
@@ -104,3 +105,26 @@ jobs:
     steps:
       - name: Check if all checks succeeded
         run: jq --exit-status 'all(.result == "success")' <<< '${{ toJson(needs) }}'
+
+      # Otto refuses to merge a release when main moved after it cut the
+      # release branch. Renovate automerges a pull request as soon as this
+      # check passes, so its pull requests wait while a release is open. The
+      # release moves main when it merges, Renovate rebases, and this check
+      # runs again. The step runs last, so it sees a release that opened
+      # while the other checks ran.
+      - name: Hold Renovate while a release is open
+        if: github.event_name == 'pull_request'
+        env:
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          if [ "${AUTHOR}" != "renovate[bot]" ]; then
+            exit 0
+          fi
+          releases="$(gh pr list --repo "${REPOSITORY}" --state open --json headRefName \
+            --jq '[.[] | select(.headRefName | startswith("release/"))] | length')"
+          if [ "${releases}" -gt 0 ]; then
+            echo "::error::a release pull request is open, so this pull request waits for it to merge"
+            exit 1
+          fi
