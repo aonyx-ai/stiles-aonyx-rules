@@ -8,6 +8,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-11-06
+
+### Added
+
+- The `stiles-aonyx-rules` crate re-exports every rule, so its docs show all of them in one place ([#130])
+- The docs of every rule show code that the rule reports and its fix ([#131])
+
+### Changed
+
+- The rules build against stiles 0.4.0 from crates.io. The prebuilt rules need plugin ABI 0.8 ([#143])
+
+### Fixed
+
+- A rule builds as a plain library when its `plugin` feature is off ([#130])
+
 ## [0.3.0] - 2026-11-04
 
 ### Changed
@@ -114,3 +129,7 @@ and this project adheres to
 [#112]: https://github.com/aonyx-ai/stiles-aonyx-rules/pull/112
 [#111]: https://github.com/aonyx-ai/stiles-aonyx-rules/pull/111
 [#116]: https://github.com/aonyx-ai/stiles-aonyx-rules/pull/116
+[0.4.0]: https://github.com/aonyx-ai/stiles-aonyx-rules/releases/tag/stiles-aonyx-rules@0.4.0
+[#130]: https://github.com/aonyx-ai/stiles-aonyx-rules/pull/130
+[#131]: https://github.com/aonyx-ai/stiles-aonyx-rules/pull/131
+[#143]: https://github.com/aonyx-ai/stiles-aonyx-rules/pull/143
