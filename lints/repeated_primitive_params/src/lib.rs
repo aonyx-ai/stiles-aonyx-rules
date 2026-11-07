@@ -26,6 +26,11 @@ pub const RULE_ID: RuleId = RuleId::new("lint.repeated-primitive-params");
 /// The `boundary-attributes` option names the attribute macros that fix a
 /// signature the way `extern` does. See [`boundary::crosses_a_boundary`].
 ///
+/// The rule skips a method in a trait impl, because the trait owns its
+/// signature. The rule reports the trait's own declaration instead, when the
+/// trait is in the project. A trait from another crate fixes the signature
+/// the way a boundary does.
+///
 /// The rule skips a function under `#[builder]`, because `bon` then hides
 /// the function behind a builder that names each argument at the call site.
 /// A `#[builder]` that names a `start_fn` keeps the function callable by
@@ -133,13 +138,34 @@ fn join_names(names: &[&str]) -> String {
     }
 }
 
+/// Returns whether `function` sits directly in an `impl Trait for Type`
+///
+/// A trait impl has a `trait` field. A function in an inherent impl, a
+/// trait, a module, or a function body has none.
+fn implements_a_trait(function: &DecoratedNode<'_>) -> bool {
+    let Some(body) = function.parent() else {
+        return false;
+    };
+    let Some(item) = body.parent() else {
+        return false;
+    };
+
+    body.kind() == "declaration_list"
+        && item.kind() == "impl_item"
+        && item.child_by_field_name("trait").is_some()
+}
+
 /// Reports every primitive type that the signature uses more than once
 ///
-/// The rule skips a signature on a boundary, and one that `#[builder]` hides.
+/// The rule skips a signature on a boundary, a method in a trait impl, and a
+/// signature that `#[builder]` hides.
 /// The diagnostic points at the type of the first parameter in the group, so
 /// two repeated types give two diagnostics at two places.
 fn check_signature(node: &DecoratedNode<'_>, boundary: &[String]) -> Vec<Diagnostic> {
     if boundary::crosses_a_boundary(node, boundary) {
+        return Vec::new();
+    }
+    if implements_a_trait(node) {
         return Vec::new();
     }
     if attribute::builder(node) == Builder::Hidden {
@@ -467,6 +493,20 @@ mod tests {
         let diagnostics = run(source);
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn check_signature_with_repeated_type_in_a_trait_impl_method_body_reports_one_diagnostic() {
+        let diagnostics = run("impl T for S { fn f() { fn g(a: usize, b: usize) {} } }");
+
+        assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn check_signature_with_repeated_type_on_a_trait_impl_method_reports_nothing() {
+        let diagnostics = run("impl T for S { fn f(&self, a: usize, b: usize) {} }");
+
+        assert_no_diagnostics(&diagnostics);
     }
 
     #[test]
