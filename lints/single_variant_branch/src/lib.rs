@@ -311,9 +311,31 @@ fn binds_everything(pattern: &DecoratedNode<'_>) -> bool {
         "mut_pattern" | "ref_pattern" | "tuple_pattern" => {
             pattern.named_children().iter().all(binds_everything)
         }
-        "remaining_field_pattern" => true,
+        "mutable_specifier" | "remaining_field_pattern" => true,
+        "struct_pattern" => is_plain_struct_binding(pattern),
         _ => false,
     }
+}
+
+/// Returns whether a struct pattern names a plain type and binds its fields
+///
+/// A path such as `Kind::Alpha { .. }` names a variant of an enum, which can
+/// fail. A plain name is a struct, which cannot.
+fn is_plain_struct_binding(pattern: &DecoratedNode<'_>) -> bool {
+    let plain = pattern
+        .child_by_field_name("type")
+        .is_some_and(|name| name.kind() == "type_identifier");
+
+    plain
+        && pattern
+            .named_children()
+            .iter()
+            .filter(|child| child.kind() == "field_pattern")
+            .all(|field| {
+                field
+                    .child_by_field_name("pattern")
+                    .is_none_or(|inner| binds_everything(&inner))
+            })
 }
 
 /// Returns the enum that an `is_` predicate of a variant tests
@@ -609,6 +631,30 @@ mod tests {
     }
 
     #[test]
+    fn option_pattern_binding_a_plain_struct_is_not_flagged() {
+        let source = "fn f() { let Some(Point { x, .. }) = k else { return; }; a(x); }";
+
+        assert_no_diagnostics(&run_with(source, option(), Exhaustiveness::Exhaustive));
+    }
+
+    #[test]
+    fn option_pattern_binding_mutably_is_not_flagged() {
+        let source = "fn f() { let Some(mut x) = k else { return; }; a(x); }";
+
+        assert_no_diagnostics(&run_with(source, option(), Exhaustiveness::Exhaustive));
+    }
+
+    #[test]
+    fn option_pattern_naming_a_struct_variant_is_flagged() {
+        let source = "fn f() { let Some(Kind::Alpha { x }) = k else { return; }; a(x); }";
+
+        assert_eq!(
+            run_with(source, option(), Exhaustiveness::Exhaustive).len(),
+            1
+        );
+    }
+
+    #[test]
     fn option_pattern_that_takes_the_variant_whole_is_not_flagged() {
         let source = "fn f() { if let Some(x) = k { a(x) } else { b() } }";
 
@@ -692,5 +738,61 @@ mod tests {
         fn assert_send<T: Send>() {}
 
         assert_send::<Whole>();
+    }
+
+    #[test]
+    fn trait_sync_growth() {
+        fn assert_sync<T: Sync>() {}
+
+        assert_sync::<Growth>();
+    }
+
+    #[test]
+    fn trait_sync_single_variant_branch() {
+        fn assert_sync<T: Sync>() {}
+
+        assert_sync::<SingleVariantBranch>();
+    }
+
+    #[test]
+    fn trait_sync_tested_enum() {
+        fn assert_sync<T: Sync>() {}
+
+        assert_sync::<TestedEnum>();
+    }
+
+    #[test]
+    fn trait_sync_whole() {
+        fn assert_sync<T: Sync>() {}
+
+        assert_sync::<Whole>();
+    }
+
+    #[test]
+    fn trait_unpin_growth() {
+        fn assert_unpin<T: Unpin>() {}
+
+        assert_unpin::<Growth>();
+    }
+
+    #[test]
+    fn trait_unpin_single_variant_branch() {
+        fn assert_unpin<T: Unpin>() {}
+
+        assert_unpin::<SingleVariantBranch>();
+    }
+
+    #[test]
+    fn trait_unpin_tested_enum() {
+        fn assert_unpin<T: Unpin>() {}
+
+        assert_unpin::<TestedEnum>();
+    }
+
+    #[test]
+    fn trait_unpin_whole() {
+        fn assert_unpin<T: Unpin>() {}
+
+        assert_unpin::<Whole>();
     }
 }

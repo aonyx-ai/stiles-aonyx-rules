@@ -403,10 +403,10 @@ impl<'a> Scope<'a> {
                 None => {}
             }
 
-            if self.glob == Glob::Present {
-                return None;
-            }
-            return Some(name);
+            return match self.glob {
+                Glob::Present => None,
+                Glob::Absent => Some(name),
+            };
         }
 
         None
@@ -560,10 +560,9 @@ impl<'a> Signature<'_, 'a> {
         let Some(root) = path_root(node) else {
             return;
         };
-        if let Root::Name(name) = root
-            && self.is_parameter(name)
-        {
-            return;
+        match root {
+            Root::Name(name) if self.is_parameter(name) => return,
+            Root::Local | Root::Crate(_) | Root::Name(_) => {}
         }
         self.report_if_external(node, root, diagnostics);
     }
