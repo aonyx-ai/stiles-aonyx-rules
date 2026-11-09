@@ -3,7 +3,7 @@
 # named once in the workspace manifest, because the handshake compares the
 # stiles a plugin was compiled against with the stiles loading it.
 [package]
-name = "if_let_with_else"
+name = "single_variant_branch"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

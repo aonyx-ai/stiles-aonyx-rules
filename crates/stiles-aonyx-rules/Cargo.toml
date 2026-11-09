@@ -28,12 +28,10 @@ error_enum_shape = { path = "../../lints/error_enum_shape", default-features = f
 external_type_in_port = { path = "../../lints/external_type_in_port", default-features = false }
 facade_bypass_import = { path = "../../lints/facade_bypass_import", default-features = false }
 function_scoped_import = { path = "../../lints/function_scoped_import", default-features = false }
-if_let_with_else = { path = "../../lints/if_let_with_else", default-features = false }
 inline_comment = { path = "../../lints/inline_comment", default-features = false }
 inline_doc_link = { path = "../../lints/inline_doc_link", default-features = false }
 io_in_pure_function = { path = "../../lints/io_in_pure_function", default-features = false }
 long_doc_sentence = { path = "../../lints/long_doc_sentence", default-features = false }
-matches_macro = { path = "../../lints/matches_macro", default-features = false }
 missing_examples_doc = { path = "../../lints/missing_examples_doc", default-features = false }
 missing_trait_tests = { path = "../../lints/missing_trait_tests", default-features = false }
 multi_assert_test = { path = "../../lints/multi_assert_test", default-features = false }
@@ -44,6 +42,7 @@ pub_anyhow_result = { path = "../../lints/pub_anyhow_result", default-features =
 pub_field = { path = "../../lints/pub_field", default-features = false }
 repeated_field_access = { path = "../../lints/repeated_field_access", default-features = false }
 repeated_primitive_params = { path = "../../lints/repeated_primitive_params", default-features = false }
+single_variant_branch = { path = "../../lints/single_variant_branch", default-features = false }
 split_binding = { path = "../../lints/split_binding", default-features = false }
 terminal_output = { path = "../../lints/terminal_output", default-features = false }
 todo_comment = { path = "../../lints/todo_comment", default-features = false }
