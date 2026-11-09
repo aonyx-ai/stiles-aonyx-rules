@@ -65,8 +65,9 @@ fn resolve_at(
     }
 
     let (anchor, segments) = split_path(path)?;
-    if anchor == Anchor::Absolute {
-        return Some(segments);
+    match anchor {
+        Anchor::Absolute => return Some(segments),
+        Anchor::Relative => {}
     }
 
     let (first, rest) = segments.split_first()?;
@@ -174,8 +175,9 @@ fn lookup(node: &DecoratedNode<'_>, name: &str, namespace: Namespace, depth: usi
                 return binding;
             }
         }
-        if scope == ScopeKind::Module {
-            return Binding::Unbound;
+        match scope {
+            ScopeKind::Module => return Binding::Unbound,
+            ScopeKind::Block | ScopeKind::Transparent => {}
         }
         current = ancestor.parent();
     }

@@ -104,15 +104,33 @@ fn implies_test(arguments: &str) -> bool {
         next: 0,
     };
 
-    let Some(Token::Open) = parser.take() else {
-        return false;
-    };
+    match parser.take() {
+        Some(Token::Open) => {}
+        Some(
+            Token::Word(_)
+            | Token::Text
+            | Token::Close
+            | Token::Comma
+            | Token::Equals
+            | Token::Other,
+        )
+        | None => return false,
+    }
     let Some(predicate) = parser.predicate() else {
         return false;
     };
-    let Some(Token::Close) = parser.take() else {
-        return false;
-    };
+    match parser.take() {
+        Some(Token::Close) => {}
+        Some(
+            Token::Word(_)
+            | Token::Text
+            | Token::Open
+            | Token::Comma
+            | Token::Equals
+            | Token::Other,
+        )
+        | None => return false,
+    }
     if parser.take().is_some() {
         return false;
     }
@@ -198,17 +216,34 @@ impl<'a> Parser<'_, 'a> {
     ///
     /// Returns [`None`] when the tokens do not form a predicate.
     fn predicate(&mut self) -> Option<bool> {
-        let Some(Token::Word(name)) = self.take() else {
-            return None;
+        let name = match self.take() {
+            Some(Token::Word(name)) => name,
+            Some(
+                Token::Text
+                | Token::Open
+                | Token::Close
+                | Token::Comma
+                | Token::Equals
+                | Token::Other,
+            )
+            | None => return None,
         };
 
         match self.peek() {
             Some(Token::Equals) => {
                 self.take();
-                let Some(Token::Text) = self.take() else {
-                    return None;
-                };
-                Some(false)
+                match self.take() {
+                    Some(Token::Text) => Some(false),
+                    Some(
+                        Token::Word(_)
+                        | Token::Open
+                        | Token::Close
+                        | Token::Comma
+                        | Token::Equals
+                        | Token::Other,
+                    )
+                    | None => None,
+                }
             }
             Some(Token::Open) => {
                 self.take();
@@ -228,9 +263,20 @@ impl<'a> Parser<'_, 'a> {
     fn operands(&mut self) -> Option<Vec<bool>> {
         let mut operands = Vec::new();
         loop {
-            if let Some(Token::Close) = self.peek() {
-                self.take();
-                return Some(operands);
+            match self.peek() {
+                Some(Token::Close) => {
+                    self.take();
+                    return Some(operands);
+                }
+                Some(
+                    Token::Word(_)
+                    | Token::Text
+                    | Token::Open
+                    | Token::Comma
+                    | Token::Equals
+                    | Token::Other,
+                )
+                | None => {}
             }
             operands.push(self.predicate()?);
             match self.take()? {

@@ -168,8 +168,9 @@ fn check_signature(node: &DecoratedNode<'_>, boundary: &[String]) -> Vec<Diagnos
     if implements_a_trait(node) {
         return Vec::new();
     }
-    if attribute::builder(node) == Builder::Hidden {
-        return Vec::new();
+    match attribute::builder(node) {
+        Builder::Hidden => return Vec::new(),
+        Builder::Absent | Builder::Kept => {}
     }
 
     let Some(parameters) = node.child_by_field_name("parameters") else {
