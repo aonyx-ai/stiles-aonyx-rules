@@ -586,6 +586,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "pin-project-lite"
+version = "0.2.17"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a89322df9ebe1c1578d689c92318e070967d1042b512afbe49518723f4e6d5cd"
+
+[[package]]
 name = "prettyplease"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -949,9 +955,9 @@ dependencies = [
 
 [[package]]
 name = "stiles-codegen"
-version = "0.4.0"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5f290d7864a0d3fb53150c5bdc8dafe5bf81726d641310ebb36f38e3380c4bfb"
+checksum = "88baa64fc5359627d1f0bda9a74eb78759e19cee99f5ef79ecfab56f97955243"
 dependencies = [
  "serde",
  "serde_json",
@@ -959,21 +965,22 @@ dependencies = [
 
 [[package]]
 name = "stiles-core"
-version = "0.4.0"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ac4e87c03ecde5f61855c2341d87b2402d08354e99076636c95f6cbeb25bc46f"
+checksum = "dfae3ae2d1eab7503aa4fc9d9546178794b0c4c7ae49f511421f764132fff334"
 dependencies = [
  "bon",
  "stiles-types",
  "thiserror",
+ "tracing",
  "tree-sitter",
 ]
 
 [[package]]
 name = "stiles-macros"
-version = "0.4.0"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9382a0c57fbd3675fcd8956b6ac46bcaeec1131e845fda3d656a620ecf246590"
+checksum = "501e558050025e9368846ddb28114d98df27c4f879b57eb8103c01373498da86"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -982,9 +989,9 @@ dependencies = [
 
 [[package]]
 name = "stiles-plugin"
-version = "0.4.0"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "969116f2c3f8410c230b8c675939188c35048726023918922a11586938863528"
+checksum = "8edf2e2f095dd09635cdb8db87b5e81d01ac51cb335037fd61fe58c34b846ed8"
 dependencies = [
  "stabby",
  "stiles-rust",
@@ -994,9 +1001,9 @@ dependencies = [
 
 [[package]]
 name = "stiles-rust"
-version = "0.4.0"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "50670ae45eb78ca2ccf2e829bc10526d13de4a84f8b13eb4b55b4cdc4dbd653b"
+checksum = "10e7578b796eefd7acc276e345d44a694c7d9a857b6a532c5faf8a5affece897"
 dependencies = [
  "bon",
  "stabby",
@@ -1009,10 +1016,11 @@ dependencies = [
 
 [[package]]
 name = "stiles-testing"
-version = "0.4.0"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "542e8607794a753020f0145754bc88153b1a376ef18cf66382c6455e1e0d86f8"
+checksum = "9d65f1425985b6cf9d4b28e757e91a813ab41c00ca22a022fdbddbd962d0f14c"
 dependencies = [
+ "bon",
  "stiles-core",
  "stiles-types",
  "tree-sitter",
@@ -1022,9 +1030,9 @@ dependencies = [
 
 [[package]]
 name = "stiles-types"
-version = "0.4.0"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1a6fa2acca96fb851bab62e3159600ffd34fdd40fd2d7a52e15b5440bc3fda4a"
+checksum = "eade45f104d6a17136710551ec46cf4ef66d07b19015011bb75c7895f0bd2fd3"
 dependencies = [
  "bon",
  "stabby",
@@ -1034,9 +1042,9 @@ dependencies = [
 
 [[package]]
 name = "stiles-typescript"
-version = "0.4.0"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8c131b548b23427d5487dfaad9da300ff417bd3bac548c6d8cde5c2ac2bffc13"
+checksum = "8bd6c26f44f192a11d8ed475c2ad21e0880376646edbfb4009e5da72452ab3d5"
 dependencies = [
  "bon",
  "stabby",
@@ -1166,6 +1174,25 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1d38ac1cf9b95face32296c0a3ede1fdc270627c9d9c02a7274dd6d960dc4d56"
 dependencies = [
  "winnow",
+]
+
+[[package]]
+name = "tracing"
+version = "0.1.44"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "63e71662fa4b2a2c3a26f570f037eb95bb1f85397f3cd8076caed2f026a6d100"
+dependencies = [
+ "pin-project-lite",
+ "tracing-core",
+]
+
+[[package]]
+name = "tracing-core"
+version = "0.1.36"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "db97caf9d906fbde555dd62fa95ddba9eecfd14cb388e4f491a66d74cd5fb79a"
+dependencies = [
+ "once_cell",
 ]
 
 [[package]]
