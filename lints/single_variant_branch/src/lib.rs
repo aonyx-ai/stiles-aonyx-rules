@@ -1,6 +1,10 @@
+mod test_code;
+
 use stiles_rust::decorations::{AdtFlags, EnumVariants, ResolvedType};
 use stiles_rust::{RuleId, RustLintPass};
 use stiles_types::{DecoratedNode, Diagnostic, Severity};
+
+use crate::test_code::is_test_code;
 
 /// The id that every diagnostic of this rule carries
 ///
@@ -37,6 +41,8 @@ const DIVERGING_MACROS: &[&str] = &["panic", "unreachable", "todo", "unimplement
 /// pattern must leave only the other variant, so `Some(name)` passes and
 /// `Some(5)` does not. An enum that another crate marks `#[non_exhaustive]`
 /// is not reported, because a `match` on it needs a wildcard arm anyway.
+/// A let-else in test code whose `else` panics is not reported either,
+/// because a new variant fails that test on its first run.
 ///
 /// # Examples
 ///
@@ -124,7 +130,10 @@ impl RustLintPass for SingleVariantBranch {
     }
 
     fn check_let_declaration(&mut self, node: &DecoratedNode<'_>) -> Vec<Diagnostic> {
-        if node.child_by_field_name("alternative").is_none() {
+        let Some(alternative) = node.child_by_field_name("alternative") else {
+            return Vec::new();
+        };
+        if ends_in_panic(&alternative) && is_test_code(node) {
             return Vec::new();
         }
 
@@ -220,6 +229,19 @@ fn picks_between_two_paths(node: &DecoratedNode<'_>) -> bool {
         || node
             .child_by_field_name("consequence")
             .is_some_and(|block| block.named_children().last().is_some_and(diverges))
+}
+
+/// Returns whether the last statement of a block is a macro that panics
+fn ends_in_panic(block: &DecoratedNode<'_>) -> bool {
+    block.named_children().last().is_some_and(|last| {
+        let statement = if last.kind() == "expression_statement" {
+            last.named_child(0)
+        } else {
+            Some(*last)
+        };
+
+        statement.is_some_and(|inner| inner.kind() == "macro_invocation" && diverges(&inner))
+    })
 }
 
 /// Returns whether a statement or an expression ends its block for good
@@ -586,6 +608,27 @@ mod tests {
         let source = "fn f() { let Some(x) = k else { return; }; a(x); }";
 
         assert_no_diagnostics(&run_with(source, option(), Exhaustiveness::Exhaustive));
+    }
+
+    #[test]
+    fn let_else_that_panics_in_a_test_is_not_flagged() {
+        let source = "#[test] fn f() { let Kind::Alpha = k else { panic!(); }; a(); }";
+
+        assert_no_diagnostics(&run(source));
+    }
+
+    #[test]
+    fn let_else_that_panics_outside_a_test_is_flagged() {
+        let found = run("fn f() { let Kind::Alpha = k else { panic!(); }; a(); }");
+
+        assert_eq!(found.len(), 1);
+    }
+
+    #[test]
+    fn let_else_that_returns_in_a_test_is_flagged() {
+        let found = run("#[test] fn f() { let Kind::Alpha = k else { return; }; a(); }");
+
+        assert_eq!(found.len(), 1);
     }
 
     #[test]
