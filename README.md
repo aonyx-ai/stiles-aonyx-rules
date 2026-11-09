@@ -61,6 +61,10 @@ answer this question in one place, `crates/boundary`, because a rule that
 exempted a function the other reported would read as a bug in whichever one
 spoke.
 
+`lint.external-type-in-port` reads `allowed-crates`. It names the crates that
+a project keeps in its own public API on purpose, as Rust writes them in a
+path. The rule treats such a crate like `std`, and it still reports any other.
+
 ## Pinning
 
 A rule is a `cdylib` that stiles loads into its own process. Rust has no

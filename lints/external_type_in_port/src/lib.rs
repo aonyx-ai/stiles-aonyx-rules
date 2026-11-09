@@ -4,7 +4,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 use stiles_rust::{RuleId, RustLintPass};
-use stiles_types::{DecoratedNode, Diagnostic, Severity};
+use stiles_types::{DecoratedNode, Diagnostic, RuleOptions, Severity};
 
 use crate::test_code::is_test_code;
 
@@ -29,6 +29,9 @@ const TOOLCHAIN_CRATES: [&str; 3] = ["std", "core", "alloc"];
 /// rely on the compiler having seen it. The bound keeps a cycle from
 /// looping and leaves the name unreported.
 const MAX_IMPORT_HOPS: usize = 16;
+
+/// The option that names the crates a port may name freely
+const ALLOWED_CRATES: &str = "allowed-crates";
 
 /// Flags an external crate's type in the signature of a public trait's method
 ///
@@ -59,6 +62,11 @@ const MAX_IMPORT_HOPS: usize = 16;
 /// only under `test`. Every file in a `tests` or `benches` directory is test
 /// code too.
 ///
+/// A project can make a crate part of its own public API on purpose, and
+/// re-export it for its consumers. The `allowed-crates` option names such
+/// crates, as Rust writes them in a path. The rule then treats each one like
+/// `std`.
+///
 /// # Examples
 ///
 /// ```text
@@ -82,11 +90,18 @@ const MAX_IMPORT_HOPS: usize = 16;
 /// The rule reports `anyhow::Result`. A `DecorateError` that the domain
 /// declares takes its place, and the adapter converts its own errors into
 /// it.
-pub struct ExternalTypeInPort;
+#[derive(Default)]
+pub struct ExternalTypeInPort {
+    allowed_crates: Vec<String>,
+}
 
 impl RustLintPass for ExternalTypeInPort {
+    fn configure(&mut self, options: &RuleOptions) {
+        self.allowed_crates = options.names(RULE_ID, ALLOWED_CRATES).unwrap_or_default();
+    }
+
     fn check_source_file(&mut self, node: &DecoratedNode<'_>) -> Vec<Diagnostic> {
-        check_file(node)
+        check_file(node, &self.allowed_crates)
     }
 }
 
@@ -95,9 +110,14 @@ impl RustLintPass for ExternalTypeInPort {
 /// A trait resolves names against the module that holds it, and only
 /// `source_file` sees every module of the file. The walker visits it once,
 /// and the pass runs its own traversal from there.
-fn check_file(root: &DecoratedNode<'_>) -> Vec<Diagnostic> {
+fn check_file(root: &DecoratedNode<'_>, allowed: &[String]) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();
-    check_module(root, workspace_prefix(root.span().file()), &mut diagnostics);
+    check_module(
+        root,
+        workspace_prefix(root.span().file()),
+        allowed,
+        &mut diagnostics,
+    );
     diagnostics
 }
 
@@ -108,6 +128,7 @@ fn check_file(root: &DecoratedNode<'_>) -> Vec<Diagnostic> {
 fn check_module(
     module: &DecoratedNode<'_>,
     prefix: Option<&str>,
+    allowed: &[String],
     diagnostics: &mut Vec<Diagnostic>,
 ) {
     let items = shipped_items(module);
@@ -115,10 +136,10 @@ fn check_module(
 
     for item in &items {
         match item.kind() {
-            "trait_item" => check_trait(item, &scope, prefix, diagnostics),
+            "trait_item" => check_trait(item, &scope, prefix, allowed, diagnostics),
             "mod_item" => {
                 if let Some(body) = item.child_by_field_name("body") {
-                    check_module(&body, prefix, diagnostics);
+                    check_module(&body, prefix, allowed, diagnostics);
                 }
             }
             _ => {}
@@ -135,6 +156,7 @@ fn check_trait<'a>(
     item: &DecoratedNode<'a>,
     scope: &Scope<'a>,
     prefix: Option<&str>,
+    allowed: &[String],
     diagnostics: &mut Vec<Diagnostic>,
 ) {
     if !is_bare_pub(item) {
@@ -163,6 +185,7 @@ fn check_trait<'a>(
             generics,
             method: name.text(),
             prefix,
+            allowed,
         };
         signature.check(&method, diagnostics);
     }
@@ -419,6 +442,7 @@ struct Signature<'s, 'a> {
     generics: HashSet<&'a str>,
     method: &'a str,
     prefix: Option<&'s str>,
+    allowed: &'s [String],
 }
 
 impl<'a> Signature<'_, 'a> {
@@ -593,13 +617,14 @@ impl<'a> Signature<'_, 'a> {
         name == "Self" || self.generics.contains(name)
     }
 
-    /// Returns whether a crate is neither a toolchain crate nor a sibling
+    /// Returns whether a crate is not a toolchain crate, not an allowed crate,
+    /// and not a sibling
     ///
     /// A sibling shares the prefix before its first `-` or `_` with the
     /// directory of the crate being checked. Without that directory there is
     /// no proof of a sibling, so every other crate is external.
     fn is_external(&self, krate: &str) -> bool {
-        if TOOLCHAIN_CRATES.contains(&krate) {
+        if TOOLCHAIN_CRATES.contains(&krate) || self.allowed.iter().any(|name| name == krate) {
             return false;
         }
 
@@ -668,7 +693,7 @@ impl stiles_plugin::DeclaresRules for ExternalTypeInPort {
 }
 
 #[cfg(feature = "plugin")]
-stiles_plugin::export_lints![rust: [ExternalTypeInPort]];
+stiles_plugin::export_lints![rust: [ExternalTypeInPort::default()]];
 
 #[cfg(test)]
 mod tests {
@@ -676,14 +701,33 @@ mod tests {
 
     use stiles_rust::RustLintPassAdapter;
     use stiles_testing::{assert_diagnostic, assert_no_diagnostics, execute, parse};
-    use stiles_types::{DecoratedTree, Language, LintPass};
+    use stiles_types::{DecoratedTree, Language, LintPass, RuleOption};
 
     use super::*;
 
     fn run(source: &str) -> Vec<Diagnostic> {
         let tree = parse(source, Language::Rust);
-        let mut passes: Vec<Box<dyn LintPass>> =
-            vec![Box::new(RustLintPassAdapter::new(ExternalTypeInPort))];
+        let mut passes: Vec<Box<dyn LintPass>> = vec![Box::new(RustLintPassAdapter::new(
+            ExternalTypeInPort::default(),
+        ))];
+        execute(&tree, &mut passes)
+    }
+
+    /// Runs the rule as stiles runs it, with `allowed-crates` set
+    fn run_with_allowed_crates(source: &str, allowed: &[&str]) -> Vec<Diagnostic> {
+        let tree = parse(source, Language::Rust);
+        let options = RuleOptions::new(vec![
+            RuleOption::builder()
+                .rule(RULE_ID.as_str().to_owned())
+                .name(ALLOWED_CRATES)
+                .values(allowed.iter().map(|name| (*name).to_owned()).collect())
+                .build(),
+        ]);
+
+        let mut pass = RustLintPassAdapter::new(ExternalTypeInPort::default());
+        pass.configure(&options);
+        let mut passes: Vec<Box<dyn LintPass>> = vec![Box::new(pass)];
+
         execute(&tree, &mut passes)
     }
 
@@ -706,8 +750,9 @@ mod tests {
             .file(PathBuf::from(path))
             .build();
 
-        let mut passes: Vec<Box<dyn LintPass>> =
-            vec![Box::new(RustLintPassAdapter::new(ExternalTypeInPort))];
+        let mut passes: Vec<Box<dyn LintPass>> = vec![Box::new(RustLintPassAdapter::new(
+            ExternalTypeInPort::default(),
+        ))];
         execute(&tree, &mut passes)
     }
 
@@ -771,6 +816,20 @@ pub trait Port {
 
         assert_diagnostic(&diagnostics[0])
             .message_contains("names `File` from the external crate `ra_ap_vfs`");
+    }
+
+    #[test]
+    fn allowed_crate_is_not_flagged() {
+        let source = "pub trait Port {\n    fn run(&self) -> clawless::CommandResult;\n}";
+
+        assert_no_diagnostics(&run_with_allowed_crates(source, &["clawless"]));
+    }
+
+    #[test]
+    fn allowed_crate_leaves_another_crate_flagged() {
+        let source = "pub trait Port {\n    fn run(&self) -> anyhow::Result<()>;\n}";
+
+        assert_eq!(run_with_allowed_crates(source, &["clawless"]).len(), 1);
     }
 
     #[test]
@@ -983,7 +1042,7 @@ pub trait Port {
         stiles_testing::execute(
             &tree,
             &mut [Box::new(stiles_rust::RustLintPassAdapter::new(
-                ExternalTypeInPort,
+                ExternalTypeInPort::default(),
             ))],
         )
     }
