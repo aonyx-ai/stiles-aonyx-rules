@@ -1,3 +1,4 @@
+use stiles_rust::decorations::ItemExposure;
 use stiles_rust::{RuleId, RustLintPass, RustLintPassAdapter};
 use stiles_types::{DecoratedNode, Diagnostic, LintPass, Severity};
 
@@ -28,6 +29,11 @@ const UNCHECKED_SCOPES: &[&str] = &["block", "trait_item"];
 /// item with no docs at all, and on one documented through `#[doc = ...]`,
 /// whose text it cannot see. It also skips `#[doc(hidden)]` items, items
 /// under a module that is not `pub`, and trait members.
+///
+/// A doctest compiles as an outside crate, so it cannot reach a `pub` item
+/// that no other crate can name. The rule therefore skips an item that the
+/// Rust provider marks as internal, such as a sealed trait in a private module
+/// of another file.
 ///
 /// A `pub` method on a private type is a false positive. Tree-sitter alone
 /// cannot tell whether the type an `impl` block names leaves the crate.
@@ -154,6 +160,11 @@ fn check_item(node: &DecoratedNode<'_>, kind: ItemKind) -> Vec<Diagnostic> {
 
     if !in_public_scope(node) {
         return Vec::new();
+    }
+
+    match node.get::<ItemExposure>() {
+        Some(ItemExposure::Internal) => return Vec::new(),
+        Some(ItemExposure::Public) | None => {}
     }
 
     let Some(lines) = doc_lines(node) else {
@@ -430,14 +441,34 @@ stiles_plugin::export_lints![rust: [MissingExamplesDoc]];
 
 #[cfg(test)]
 mod tests {
-    use stiles_testing::{assert_diagnostic, assert_no_diagnostics, execute, parse};
-    use stiles_types::{Language, LintPass, Severity};
+    use stiles_testing::{assert_diagnostic, assert_no_diagnostics, decorate, execute, parse};
+    use stiles_types::{DecorationMap, Language, LintPass, Severity};
 
     use super::*;
 
     fn run(source: &str) -> Vec<Diagnostic> {
         let tree = parse(source, Language::Rust);
         let mut passes: Vec<Box<dyn LintPass>> = vec![MissingExamplesDoc::into_lint_pass()];
+        execute(&tree, &mut passes)
+    }
+
+    /// Runs the rule with the given exposure on every struct of the source
+    fn run_with_exposure(source: &str, exposure: ItemExposure) -> Vec<Diagnostic> {
+        fn mark(node: &DecoratedNode<'_>, map: &mut DecorationMap, exposure: ItemExposure) {
+            if node.kind() == "struct_item" {
+                map.insert(node.id(), exposure);
+            }
+            for child in node.named_children() {
+                mark(&child, map, exposure);
+            }
+        }
+
+        let mut tree = parse(source, Language::Rust);
+        let mut map = DecorationMap::new();
+        mark(&tree.root_node(), &mut map, exposure);
+        decorate(&mut tree, map);
+        let mut passes: Vec<Box<dyn LintPass>> = vec![MissingExamplesDoc::into_lint_pass()];
+
         execute(&tree, &mut passes)
     }
 
@@ -629,6 +660,13 @@ mod tests {
     }
 
     #[test]
+    fn internal_item_is_not_flagged() {
+        let source = "/// Docs\npub struct Foo;";
+
+        assert_no_diagnostics(&run_with_exposure(source, ItemExposure::Internal));
+    }
+
+    #[test]
     fn item_kind_words_are_distinct() {
         let kinds = [
             ItemKind::Constant,
@@ -668,6 +706,13 @@ mod tests {
         let diagnostics = run("/// Docs\nstruct Foo;");
 
         assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn public_item_is_flagged() {
+        let found = run_with_exposure("/// Docs\npub struct Foo;", ItemExposure::Public);
+
+        assert_eq!(found.len(), 1);
     }
 
     #[test]
