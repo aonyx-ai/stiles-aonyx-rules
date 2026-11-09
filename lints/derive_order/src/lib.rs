@@ -84,7 +84,7 @@ fn macro_name(full_path: &str) -> &str {
 /// Extracts derive names from `#[derive(...)]` attribute text
 ///
 /// Returns [`None`] if the text is not a derive attribute or the
-/// derive list is empty.
+/// derive list is empty. A trailing comma adds no entry.
 fn extract_derive_names(text: &str) -> Option<Vec<String>> {
     let text = text.trim();
     let inner = text.strip_prefix("#[derive(")?;
@@ -94,7 +94,12 @@ fn extract_derive_names(text: &str) -> Option<Vec<String>> {
         return None;
     }
 
-    let names: Vec<String> = inner.split(',').map(|s| s.trim().to_string()).collect();
+    let names: Vec<String> = inner
+        .split(',')
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .map(str::to_string)
+        .collect();
 
     if names.is_empty() {
         return None;
@@ -241,6 +246,22 @@ mod tests {
         let diagnostics = run("#[derive()]\nstruct Foo;");
 
         assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn multiline_trailing_comma_in_canonical_order_not_flagged() {
+        let diagnostics = run(
+            "#[derive(\n    Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, bon::Builder, CopyGetters, Getters,\n)]\nstruct Panic;",
+        );
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn multiline_trailing_comma_out_of_order_message_has_no_empty_entry() {
+        let diagnostics = run("#[derive(\n    Debug, Clone, Alpha,\n)]\nstruct Panic;");
+
+        assert!(!diagnostics[0].message().contains(", ,"));
     }
 
     #[test]
