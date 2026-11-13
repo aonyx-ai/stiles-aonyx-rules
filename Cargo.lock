@@ -401,7 +401,6 @@ dependencies = [
  "stiles-testing",
  "stiles-types",
  "stiles-typescript",
- "tree-sitter",
 ]
 
 [[package]]

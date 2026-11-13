@@ -1,7 +1,6 @@
 use stiles_rust::{RuleId, RustLintPass};
 use stiles_types::{DecoratedNode, Diagnostic, Severity, Span};
 use stiles_typescript::TypeScriptLintPass;
-use tree_sitter::Node;
 
 /// The id that every diagnostic of this rule carries
 ///
@@ -110,7 +109,7 @@ impl Syntax {
     }
 
     /// Returns whether the node is a comment of any kind
-    fn is_comment(self, node: Node<'_>) -> bool {
+    fn is_comment(self, node: DecoratedNode<'_>) -> bool {
         match self {
             Syntax::Rust => node.kind() == "line_comment" || node.kind() == "block_comment",
             Syntax::TypeScript => node.kind() == "comment",
@@ -118,7 +117,7 @@ impl Syntax {
     }
 
     /// Returns whether the comment is documentation
-    fn is_doc_comment(self, node: Node<'_>, text: &str) -> bool {
+    fn is_doc_comment(self, node: DecoratedNode<'_>, text: &str) -> bool {
         match self {
             Syntax::Rust => is_doc_comment(node),
             Syntax::TypeScript => text.starts_with("/**") && text != "/**/",
@@ -126,7 +125,7 @@ impl Syntax {
     }
 
     /// Returns whether the node is a comment that is not documentation
-    fn is_plain_comment(self, node: Node<'_>, text: &str) -> bool {
+    fn is_plain_comment(self, node: DecoratedNode<'_>, text: &str) -> bool {
         self.is_comment(node) && !self.is_doc_comment(node, text)
     }
 
@@ -165,7 +164,7 @@ enum CommentKind {
 /// The grammar records the marker in the `outer` or `inner` field, which
 /// covers `///`, `//!`, `/** */`, and `/*! */`. A bare `///` counts as
 /// documentation even though it says nothing.
-fn is_doc_comment(node: Node<'_>) -> bool {
+fn is_doc_comment(node: DecoratedNode<'_>) -> bool {
     node.child_by_field_name("outer").is_some() || node.child_by_field_name("inner").is_some()
 }
 
@@ -176,7 +175,7 @@ fn is_doc_comment(node: Node<'_>) -> bool {
 /// exempts whatever opens the file, header or not. The rule still reports
 /// every later run. A TypeScript file may open with a `#!` line, which a
 /// header follows.
-fn is_file_header(node: Node<'_>, syntax: Syntax) -> bool {
+fn is_file_header(node: DecoratedNode<'_>, syntax: Syntax) -> bool {
     let Some(parent) = node.parent() else {
         return false;
     };
@@ -254,33 +253,17 @@ fn classify(text: &str) -> CommentKind {
     }
 }
 
-/// Returns the source text of a node, read from its parent's text
-///
-/// Sibling navigation yields tree-sitter nodes, which carry byte ranges but
-/// no text of their own. A node outside the parent's range yields an empty
-/// string; a child is never outside it.
-fn text_of<'a>(node: Node<'_>, parent_text: &'a str, parent_start: usize) -> &'a str {
-    let Some(start) = node.start_byte().checked_sub(parent_start) else {
-        return "";
-    };
-    let Some(end) = node.end_byte().checked_sub(parent_start) else {
-        return "";
-    };
-
-    parent_text.get(start..end).unwrap_or_default()
-}
-
 /// Returns whether this comment belongs to a run that starts above it
 ///
 /// Comments in a run are siblings with one line break between them. The rule
 /// reports a run at most once, at its first comment, so the ones below it
 /// produce no diagnostic. An exempt comment above starts no run unless its
 /// exemption spans the lines under it.
-fn continues_run(node: Node<'_>, syntax: Syntax, parent_text: &str, parent_start: usize) -> bool {
+fn continues_run(node: DecoratedNode<'_>, syntax: Syntax) -> bool {
     let Some(previous) = node.prev_sibling() else {
         return false;
     };
-    let previous_text = text_of(previous, parent_text, parent_start);
+    let previous_text = previous.text();
     if syntax.is_exempt(previous_text) && !syntax.exemption_spans_lines() {
         return false;
     }
@@ -292,10 +275,10 @@ fn continues_run(node: Node<'_>, syntax: Syntax, parent_text: &str, parent_start
 /// Returns the end byte of the comment run that starts at this node
 ///
 /// The run stops short of an exempt comment, so no diagnostic spans one.
-fn run_end(node: Node<'_>, syntax: Syntax, parent_text: &str, parent_start: usize) -> usize {
+fn run_end(node: DecoratedNode<'_>, syntax: Syntax) -> usize {
     let mut last = node;
     while let Some(next) = last.next_sibling() {
-        let next_text = text_of(next, parent_text, parent_start);
+        let next_text = next.text();
         let joins = syntax.is_plain_comment(next, next_text)
             && last.end_position().row + 1 == next.start_position().row
             && !syntax.is_exempt(next_text);
@@ -305,29 +288,23 @@ fn run_end(node: Node<'_>, syntax: Syntax, parent_text: &str, parent_start: usiz
         last = next;
     }
 
-    last.end_byte()
+    last.span().end()
 }
 
 /// Returns the diagnostic for a comment node, if the rule reports one
 fn check_comment(node: &DecoratedNode<'_>, syntax: Syntax) -> Vec<Diagnostic> {
-    let raw = node.raw();
     let text = node.text();
-    if syntax.is_doc_comment(raw, text) || syntax.is_exempt(text) || is_file_header(raw, syntax) {
-        return Vec::new();
-    }
-
-    let Some(parent) = node.parent() else {
-        return Vec::new();
-    };
-    let parent_text = parent.text();
-    let parent_start = parent.raw().start_byte();
-    if continues_run(raw, syntax, parent_text, parent_start) {
+    if syntax.is_doc_comment(*node, text)
+        || syntax.is_exempt(text)
+        || is_file_header(*node, syntax)
+        || continues_run(*node, syntax)
+    {
         return Vec::new();
     }
 
     let span = node.span();
     let file = span.file_path().clone();
-    let end = run_end(raw, syntax, parent_text, parent_start);
+    let end = run_end(*node, syntax);
     let span = Span::builder()
         .file(file)
         .start(span.start())
@@ -808,21 +785,6 @@ mod tests {
         let diagnostics = run("fn f() {\n    // first\n    g();\n    // second\n}");
 
         assert_eq!(diagnostics.len(), 2);
-    }
-
-    #[test]
-    fn text_of_with_an_offset_parent_returns_the_node_source() {
-        let tree = parse("fn f() {\n    let x = 1;\n}", Language::Rust);
-        let function = tree
-            .root_node()
-            .named_child(0)
-            .expect("the source has one function");
-        let block = function.named_child(2).expect("the function has a body");
-        let statement = block.named_child(0).expect("the body has a statement");
-
-        let text = text_of(statement.raw(), block.text(), block.raw().start_byte());
-
-        assert_eq!(text, "let x = 1;");
     }
 
     #[test]

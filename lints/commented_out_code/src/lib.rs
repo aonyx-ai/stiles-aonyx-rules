@@ -268,8 +268,8 @@ fn strip_star_margin(body: &str) -> String {
 /// would then fail to parse, and the commented-out code on the lower line
 /// would go unreported.
 fn starts_its_own_line(node: &DecoratedNode<'_>) -> bool {
-    match node.raw().prev_sibling() {
-        Some(previous) => previous.end_position().row < node.raw().start_position().row,
+    match node.prev_sibling() {
+        Some(previous) => previous.end_position().row < node.start_position().row,
         None => true,
     }
 }
@@ -315,7 +315,7 @@ fn continues_group(previous: &DecoratedNode<'_>, next: &DecoratedNode<'_>) -> bo
         return false;
     }
 
-    previous.raw().end_position().row + 1 == next.raw().start_position().row
+    previous.end_position().row + 1 == next.start_position().row
 }
 
 /// Grades a comment body as code, ambiguous, or prose
