@@ -11,4 +11,4 @@ path = "."
 # adopts a new or changed rule from there.
 [[lints]]
 git = "https://github.com/aonyx-ai/stiles-lint-rules"
-rev = "d1748e7a77213c9d4fd7a82c354134b64cc03398"
+rev = "c4f7fbb1c2903ce7c577396bb2d0b71b277831bd"
