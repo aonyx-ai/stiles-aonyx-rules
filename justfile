@@ -24,6 +24,14 @@ test:
 check-self stiles="stiles":
     {{ stiles }} check .
 
+# Write the reference page of the rules to `site/public/index.html`
+#
+# Stiles builds the page from the rustdoc of the rule crates that the
+# facade re-exports, so it needs the release that `Cargo.toml` pins.
+reference stiles="stiles":
+    mkdir -p site/public
+    {{ stiles }} reference --package stiles-aonyx-rules --output site/public/index.html
+
 # Assemble an archive of prebuilt lints for one stiles
 package-lints rev stiles:
     #!/usr/bin/env -S bash -euo pipefail
