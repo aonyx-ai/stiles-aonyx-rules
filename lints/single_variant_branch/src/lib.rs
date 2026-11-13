@@ -23,6 +23,9 @@ pub const RULE_ID: RuleId = RuleId::new("lint.single-variant-branch");
 /// The macros that end a block without returning to it
 const DIVERGING_MACROS: &[&str] = &["panic", "unreachable", "todo", "unimplemented"];
 
+/// The variants that the prelude puts in scope by their plain name
+const PRELUDE_VARIANTS: &[&str] = &["Some", "None", "Ok", "Err"];
+
 /// The option that names the enums to treat as `#[non_exhaustive]`
 const NON_EXHAUSTIVE: &str = "non-exhaustive";
 
@@ -42,8 +45,14 @@ const NON_EXHAUSTIVE: &str = "non-exhaustive";
 /// `assert!`, or an `if` that only does extra work. `Option` and `Result`
 /// are not reported either, because they never gain a variant. Their
 /// pattern must leave only the other variant, so `Some(name)` passes and
-/// `Some(5)` does not. An enum that another crate marks `#[non_exhaustive]`
-/// is not reported, because a `match` on it needs a wildcard arm anyway.
+/// `Some(5)` does not. A struct inside the variant passes when its pattern
+/// binds every field, such as `Some(&Opened(at))`. A plain name such as
+/// `Opened` counts as a struct, unless it is `Some`, `None`, `Ok`, or `Err`.
+/// It also counts as a variant in a file that imports from inside a type,
+/// as `use Kind::*` does.
+///
+/// An enum that another crate marks `#[non_exhaustive]` is not reported,
+/// because a `match` on it needs a wildcard arm anyway.
 ///
 /// Some enums grow like that but lack the attribute, such as an enum that
 /// predates it and hides a variant instead. The `non-exhaustive` option
@@ -380,34 +389,80 @@ fn takes_variant_whole(pattern: &DecoratedNode<'_>) -> Whole {
 fn binds_everything(pattern: &DecoratedNode<'_>) -> bool {
     match pattern.kind() {
         "identifier" => pattern.text().starts_with(char::is_lowercase),
-        "mut_pattern" | "ref_pattern" | "tuple_pattern" => {
+        "mut_pattern" | "ref_pattern" | "reference_pattern" | "tuple_pattern" => {
             pattern.named_children().iter().all(binds_everything)
         }
         "mutable_specifier" | "remaining_field_pattern" => true,
-        "struct_pattern" => is_plain_struct_binding(pattern),
+        "struct_pattern" | "tuple_struct_pattern" => is_plain_struct_binding(pattern),
         _ => false,
     }
 }
 
-/// Returns whether a struct pattern names a plain type and binds its fields
+/// Returns whether a struct or tuple struct pattern binds a whole struct
 ///
-/// A path such as `Kind::Alpha { .. }` names a variant of an enum, which can
-/// fail. A plain name is a struct, which cannot.
+/// No decoration gives the type of a pattern, so the name decides. A path
+/// such as `Kind::Alpha { .. }` names a variant of an enum, which can fail.
+/// A plain name is a struct, which cannot, unless it is a variant that the
+/// prelude or an import puts in scope.
 fn is_plain_struct_binding(pattern: &DecoratedNode<'_>) -> bool {
-    let plain = pattern
-        .child_by_field_name("type")
-        .is_some_and(|name| name.kind() == "type_identifier");
+    let Some(name) = pattern.child_by_field_name("type") else {
+        return false;
+    };
+    let plain = ["identifier", "type_identifier"].contains(&name.kind())
+        && !PRELUDE_VARIANTS.contains(&name.text())
+        && !imports_through_a_type(&file_root(pattern));
 
     plain
         && pattern
             .named_children()
             .iter()
-            .filter(|child| child.kind() == "field_pattern")
-            .all(|field| {
-                field
+            .filter(|child| child.id() != name.id())
+            .all(|child| match child.kind() {
+                "field_pattern" => child
                     .child_by_field_name("pattern")
-                    .is_none_or(|inner| binds_everything(&inner))
+                    .is_none_or(|inner| binds_everything(&inner)),
+                _ => binds_everything(child),
             })
+}
+
+/// Returns the root of the tree that holds a node
+fn file_root<'a>(node: &DecoratedNode<'a>) -> DecoratedNode<'a> {
+    let mut root = *node;
+    while let Some(parent) = root.parent() {
+        root = parent;
+    }
+    root
+}
+
+/// Returns whether a `use` under a node imports a name from inside a type
+///
+/// `use Kind::*` and `use Kind::Alpha` put the variants of `Kind` in scope,
+/// so a plain name in that file can name a variant.
+fn imports_through_a_type(node: &DecoratedNode<'_>) -> bool {
+    match node.kind() {
+        "use_declaration" => goes_through_a_type(node),
+        _ => node.named_children().iter().any(imports_through_a_type),
+    }
+}
+
+/// Returns whether a part of a `use` names a path whose last segment is a type
+///
+/// A module has a lower-case name and a type a capitalised one, so the
+/// capital is what marks a type.
+fn goes_through_a_type(node: &DecoratedNode<'_>) -> bool {
+    let path = match node.kind() {
+        "scoped_identifier" | "scoped_use_list" => node.child_by_field_name("path"),
+        "use_wildcard" => node.named_child(0),
+        _ => None,
+    };
+    let through_a_type = path.is_some_and(|path| {
+        path.text()
+            .rsplit("::")
+            .next()
+            .is_some_and(|segment| segment.starts_with(char::is_uppercase))
+    });
+
+    through_a_type || node.named_children().iter().any(goes_through_a_type)
 }
 
 /// Returns the enum that an `is_` predicate of a variant tests
@@ -896,6 +951,20 @@ mod tests {
     }
 
     #[test]
+    fn option_pattern_binding_a_struct_field_to_a_name_is_not_flagged() {
+        let source = "fn f() { let Some(Inner { module: m, .. }) = k else { return; }; a(m); }";
+
+        assert_no_diagnostics(&run_with(source, option(), Exhaustiveness::Exhaustive));
+    }
+
+    #[test]
+    fn option_pattern_binding_a_tuple_struct_through_a_reference_is_not_flagged() {
+        let source = "fn f() { let Some(&Opened(opened)) = k else { return; }; a(opened); }";
+
+        assert_no_diagnostics(&run_with(source, option(), Exhaustiveness::Exhaustive));
+    }
+
+    #[test]
     fn option_pattern_binding_mutably_is_not_flagged() {
         let source = "fn f() { let Some(mut x) = k else { return; }; a(x); }";
 
@@ -903,8 +972,56 @@ mod tests {
     }
 
     #[test]
+    fn option_pattern_naming_a_prelude_variant_is_flagged() {
+        let source = "fn f() { let Some(Ok(x)) = k else { return; }; a(x); }";
+
+        assert_eq!(
+            run_with(source, option(), Exhaustiveness::Exhaustive).len(),
+            1
+        );
+    }
+
+    #[test]
+    fn option_pattern_naming_a_struct_imported_from_a_module_is_not_flagged() {
+        let source = "use crate::span::Opened;\nfn f() { let Some(&Opened(opened)) = k else { return; }; a(opened); }";
+
+        assert_no_diagnostics(&run_with(source, option(), Exhaustiveness::Exhaustive));
+    }
+
+    #[test]
     fn option_pattern_naming_a_struct_variant_is_flagged() {
         let source = "fn f() { let Some(Kind::Alpha { x }) = k else { return; }; a(x); }";
+
+        assert_eq!(
+            run_with(source, option(), Exhaustiveness::Exhaustive).len(),
+            1
+        );
+    }
+
+    #[test]
+    fn option_pattern_naming_a_tuple_variant_is_flagged() {
+        let source = "fn f() { let Some(Component::Normal(name)) = k else { return; }; a(name); }";
+
+        assert_eq!(
+            run_with(source, option(), Exhaustiveness::Exhaustive).len(),
+            1
+        );
+    }
+
+    #[test]
+    fn option_pattern_naming_a_variant_imported_by_a_glob_is_flagged() {
+        let source =
+            "use Component::*;\nfn f() { let Some(Normal(name)) = k else { return; }; a(name); }";
+
+        assert_eq!(
+            run_with(source, option(), Exhaustiveness::Exhaustive).len(),
+            1
+        );
+    }
+
+    #[test]
+    fn option_pattern_naming_a_variant_imported_in_a_list_is_flagged() {
+        let source = "use self::Component::{Normal, Prefix};\nfn f() { let Some(Normal(name)) = k else { return; }; a(name); }";
 
         assert_eq!(
             run_with(source, option(), Exhaustiveness::Exhaustive).len(),
@@ -922,6 +1039,27 @@ mod tests {
     #[test]
     fn option_pattern_that_tests_its_content_is_flagged() {
         let source = "fn f() { if let Some(5) = k { a() } else { b() } }";
+
+        assert_eq!(
+            run_with(source, option(), Exhaustiveness::Exhaustive).len(),
+            1
+        );
+    }
+
+    #[test]
+    fn option_pattern_with_a_refutable_struct_field_is_flagged() {
+        let source =
+            "fn f() { let Some(Inner { module: Some(Module { .. }) }) = k else { return; }; a(); }";
+
+        assert_eq!(
+            run_with(source, option(), Exhaustiveness::Exhaustive).len(),
+            1
+        );
+    }
+
+    #[test]
+    fn option_pattern_with_a_refutable_tuple_struct_field_is_flagged() {
+        let source = "fn f() { let Some(Opened(5)) = k else { return; }; a(); }";
 
         assert_eq!(
             run_with(source, option(), Exhaustiveness::Exhaustive).len(),
