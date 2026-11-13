@@ -10,3 +10,6 @@ target/
 
 # Archives assembled by `just package-lints`
 dist/
+
+# The reference page that `just reference` writes
+site/public/
