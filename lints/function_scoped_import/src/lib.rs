@@ -212,6 +212,10 @@ impl stiles_plugin::DeclaresRules for FunctionScopedImport {
     fn rules(&self) -> Vec<RuleId> {
         vec![RuleId::new("lint.function-scoped-import")]
     }
+
+    fn reads(&self) -> stiles_plugin::Reads {
+        stiles_plugin::Reads::of::<ImportSource>()
+    }
 }
 
 #[cfg(feature = "plugin")]
@@ -463,6 +467,14 @@ mod tests {
         let diagnostics = run("fn f() { { use a::b; } }");
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[cfg(feature = "plugin")]
+    #[test]
+    fn reads_returns_the_import_source() {
+        let reads = stiles_plugin::DeclaresRules::reads(&FunctionScopedImport);
+
+        assert_eq!(reads, stiles_plugin::Reads::of::<ImportSource>());
     }
 
     #[test]

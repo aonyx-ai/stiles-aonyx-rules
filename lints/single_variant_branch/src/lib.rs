@@ -459,6 +459,12 @@ impl stiles_plugin::DeclaresRules for SingleVariantBranch {
     fn rules(&self) -> Vec<RuleId> {
         vec![RULE_ID]
     }
+
+    fn reads(&self) -> stiles_plugin::Reads {
+        stiles_plugin::Reads::of::<ResolvedType>()
+            .and::<AdtFlags>()
+            .and::<EnumVariants>()
+    }
 }
 
 #[cfg(feature = "plugin")]
@@ -736,6 +742,19 @@ mod tests {
     #[test]
     fn predicate_that_names_no_variant_is_not_flagged() {
         assert_no_diagnostics(&run("fn f() { if k.is_terminal() { a() } else { b() } }"));
+    }
+
+    #[cfg(feature = "plugin")]
+    #[test]
+    fn reads_returns_the_resolved_type_the_adt_flags_and_the_enum_variants() {
+        let reads = stiles_plugin::DeclaresRules::reads(&SingleVariantBranch);
+
+        assert_eq!(
+            reads,
+            stiles_plugin::Reads::of::<ResolvedType>()
+                .and::<AdtFlags>()
+                .and::<EnumVariants>()
+        );
     }
 
     #[test]

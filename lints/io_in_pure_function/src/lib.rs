@@ -300,6 +300,10 @@ impl stiles_plugin::DeclaresRules for IoInPureFunction {
     fn rules(&self) -> Vec<RuleId> {
         vec![RuleId::new("lint.io-in-pure-function")]
     }
+
+    fn reads(&self) -> stiles_plugin::Reads {
+        stiles_plugin::Reads::none()
+    }
 }
 
 #[cfg(feature = "plugin")]

@@ -388,6 +388,10 @@ impl stiles_plugin::DeclaresRules for PubAnyhowResult {
     fn rules(&self) -> Vec<RuleId> {
         vec![RULE_ID]
     }
+
+    fn reads(&self) -> stiles_plugin::Reads {
+        stiles_plugin::Reads::of::<FnSignature>()
+    }
 }
 
 #[cfg(feature = "plugin")]
@@ -1091,6 +1095,14 @@ mod tests {
         );
 
         assert_eq!(diagnostics.len(), 2);
+    }
+
+    #[cfg(feature = "plugin")]
+    #[test]
+    fn reads_returns_the_fn_signature() {
+        let reads = stiles_plugin::DeclaresRules::reads(&PubAnyhowResult);
+
+        assert_eq!(reads, stiles_plugin::Reads::of::<FnSignature>());
     }
 
     #[test]

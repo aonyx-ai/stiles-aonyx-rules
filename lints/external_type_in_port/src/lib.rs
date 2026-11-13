@@ -690,6 +690,10 @@ impl stiles_plugin::DeclaresRules for ExternalTypeInPort {
     fn rules(&self) -> Vec<RuleId> {
         vec![RULE_ID]
     }
+
+    fn reads(&self) -> stiles_plugin::Reads {
+        stiles_plugin::Reads::none()
+    }
 }
 
 #[cfg(feature = "plugin")]

@@ -370,6 +370,10 @@ impl stiles_plugin::DeclaresRules for SplitBinding {
     fn rules(&self) -> Vec<RuleId> {
         vec![RuleId::new("lint.split-binding")]
     }
+
+    fn reads(&self) -> stiles_plugin::Reads {
+        stiles_plugin::Reads::none()
+    }
 }
 
 #[cfg(feature = "plugin")]

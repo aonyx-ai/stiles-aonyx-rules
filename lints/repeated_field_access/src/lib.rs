@@ -320,6 +320,10 @@ impl stiles_plugin::DeclaresRules for RepeatedFieldAccess {
     fn rules(&self) -> Vec<RuleId> {
         vec![RuleId::new("lint.repeated-field-access")]
     }
+
+    fn reads(&self) -> stiles_plugin::Reads {
+        stiles_plugin::Reads::none()
+    }
 }
 
 #[cfg(feature = "plugin")]

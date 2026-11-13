@@ -434,6 +434,10 @@ impl stiles_plugin::DeclaresRules for MissingExamplesDoc {
     fn rules(&self) -> Vec<RuleId> {
         vec![RuleId::new("lint.missing-examples-doc")]
     }
+
+    fn reads(&self) -> stiles_plugin::Reads {
+        stiles_plugin::Reads::of::<ItemExposure>()
+    }
 }
 
 #[cfg(feature = "plugin")]
@@ -713,6 +717,14 @@ mod tests {
         let found = run_with_exposure("/// Docs\npub struct Foo;", ItemExposure::Public);
 
         assert_eq!(found.len(), 1);
+    }
+
+    #[cfg(feature = "plugin")]
+    #[test]
+    fn reads_returns_the_item_exposure() {
+        let reads = stiles_plugin::DeclaresRules::reads(&MissingExamplesDoc);
+
+        assert_eq!(reads, stiles_plugin::Reads::of::<ItemExposure>());
     }
 
     #[test]
