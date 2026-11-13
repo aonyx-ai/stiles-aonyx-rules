@@ -63,6 +63,16 @@ spoke.
 a project keeps in its own public API on purpose, as Rust writes them in a
 path. The rule treats such a crate like `std`, and it still reports any other.
 
+`lint.single-variant-branch` reads `non-exhaustive`. It names the enums
+that grow like a `#[non_exhaustive]` enum but lack the attribute, by the
+path of their definition. A finding prints that path, so it can be copied
+from there:
+
+```toml
+[rules.options."lint.single-variant-branch"]
+non-exhaustive = ["tar::entry_type::EntryType"]
+```
+
 ## Pinning
 
 A rule is a `cdylib` that stiles loads into its own process. Rust has no
