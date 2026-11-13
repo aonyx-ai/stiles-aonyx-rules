@@ -1,8 +1,8 @@
 mod test_code;
 
-use stiles_rust::decorations::{AdtFlags, EnumVariants, ResolvedType};
+use stiles_rust::decorations::{AdtFlags, AdtPath, EnumVariants, ResolvedType};
 use stiles_rust::{RuleId, RustLintPass};
-use stiles_types::{DecoratedNode, Diagnostic, Severity};
+use stiles_types::{DecoratedNode, Diagnostic, RuleOptions, Severity};
 
 use crate::test_code::is_test_code;
 
@@ -23,6 +23,9 @@ pub const RULE_ID: RuleId = RuleId::new("lint.single-variant-branch");
 /// The macros that end a block without returning to it
 const DIVERGING_MACROS: &[&str] = &["panic", "unreachable", "todo", "unimplemented"];
 
+/// The option that names the enums to treat as `#[non_exhaustive]`
+const NON_EXHAUSTIVE: &str = "non-exhaustive";
+
 /// Flags a branch that one variant of an enum decides
 ///
 /// A new variant of an enum needs a decision wherever the enum picks a path.
@@ -41,6 +44,14 @@ const DIVERGING_MACROS: &[&str] = &["panic", "unreachable", "todo", "unimplement
 /// pattern must leave only the other variant, so `Some(name)` passes and
 /// `Some(5)` does not. An enum that another crate marks `#[non_exhaustive]`
 /// is not reported, because a `match` on it needs a wildcard arm anyway.
+///
+/// Some enums grow like that but lack the attribute, such as an enum that
+/// predates it and hides a variant instead. The `non-exhaustive` option
+/// names such enums by the path of their definition, which can differ from
+/// the path a re-export gives them. The finding prints that path, such as
+/// `tar::entry_type::EntryType`, and the rule treats an enum it names as
+/// `#[non_exhaustive]`.
+///
 /// A let-else in test code whose `else` panics is not reported either,
 /// because a new variant fails that test on its first run.
 ///
@@ -86,14 +97,18 @@ const DIVERGING_MACROS: &[&str] = &["panic", "unreachable", "todo", "unimplement
 /// decorations.insert(value, AdtFlags::from_exhaustiveness(Exhaustiveness::Exhaustive));
 /// decorations.insert(value, EnumVariants::new(["A", "B"]));
 /// decorate(&mut tree, decorations);
-/// let pass: Box<dyn LintPass> = Box::new(RustLintPassAdapter::new(SingleVariantBranch));
+/// let pass: Box<dyn LintPass> = Box::new(RustLintPassAdapter::new(SingleVariantBranch::default()));
 /// let mut passes = vec![pass];
 ///
 /// let diagnostics = execute(&tree, &mut passes);
 ///
 /// assert_eq!(diagnostics.len(), 1);
 /// ```
-pub struct SingleVariantBranch;
+#[derive(Default)]
+pub struct SingleVariantBranch {
+    /// The defining paths of the enums to treat as `#[non_exhaustive]`
+    non_exhaustive: Vec<String>,
+}
 
 /// Whether an enum can gain a variant
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
@@ -108,6 +123,8 @@ enum Growth {
 struct TestedEnum {
     /// The type as the provider renders it
     display: String,
+    /// The path of the enum's definition, when the provider found it
+    path: Option<String>,
     /// The names of the variants, in declaration order
     names: Vec<String>,
     /// Whether the enum can gain a variant
@@ -115,6 +132,10 @@ struct TestedEnum {
 }
 
 impl RustLintPass for SingleVariantBranch {
+    fn configure(&mut self, options: &RuleOptions) {
+        self.non_exhaustive = options.names(RULE_ID, NON_EXHAUSTIVE).unwrap_or_default();
+    }
+
     fn check_if_expression(&mut self, node: &DecoratedNode<'_>) -> Vec<Diagnostic> {
         if !picks_between_two_paths(node) {
             return Vec::new();
@@ -125,6 +146,7 @@ impl RustLintPass for SingleVariantBranch {
 
         tests_in(&condition)
             .into_iter()
+            .filter(|tested| !self.declares_non_exhaustive(tested))
             .map(|tested| single_variant_finding(node, &tested))
             .collect()
     }
@@ -139,6 +161,7 @@ impl RustLintPass for SingleVariantBranch {
 
         pattern_test(node)
             .iter()
+            .filter(|tested| !self.declares_non_exhaustive(tested))
             .map(|tested| single_variant_finding(node, tested))
             .collect()
     }
@@ -147,17 +170,21 @@ impl RustLintPass for SingleVariantBranch {
         if !names_matches(node) || !lists_several_patterns(node) {
             return Vec::new();
         }
-        let Some(TestedEnum { display, names, .. }) = open_enum(node) else {
+        let Some(tested) = open_enum(node) else {
             return Vec::new();
         };
+        if self.declares_non_exhaustive(&tested) {
+            return Vec::new();
+        }
 
         vec![
             Diagnostic::builder()
                 .rule_id(RULE_ID)
                 .severity(Severity::Error)
                 .message(format!(
-                    "`matches!` sorts the variants of `{display}` into two groups; write a `match` that names {}",
-                    listed(&names)
+                    "`matches!` sorts the variants of {} into two groups; write a `match` that names {}",
+                    described(&tested),
+                    listed(&tested.names)
                 ))
                 .span(node.span())
                 .build(),
@@ -165,19 +192,39 @@ impl RustLintPass for SingleVariantBranch {
     }
 }
 
+impl SingleVariantBranch {
+    /// Returns whether the `non-exhaustive` option names a tested enum
+    fn declares_non_exhaustive(&self, tested: &TestedEnum) -> bool {
+        tested
+            .path
+            .as_ref()
+            .is_some_and(|path| self.non_exhaustive.contains(path))
+    }
+}
+
 /// Returns the finding for a branch that one variant decides
 fn single_variant_finding(node: &DecoratedNode<'_>, tested: &TestedEnum) -> Diagnostic {
-    let TestedEnum { display, names, .. } = tested;
-
     Diagnostic::builder()
         .rule_id(RULE_ID)
         .severity(Severity::Error)
         .message(format!(
-            "one variant of `{display}` decides this branch; write a `match` that names {}",
-            listed(names)
+            "one variant of {} decides this branch; write a `match` that names {}",
+            described(tested),
+            listed(&tested.names)
         ))
         .span(node.span())
         .build()
+}
+
+/// Returns the type in backticks, followed by the path of its definition
+///
+/// The path is what the `non-exhaustive` option takes, so a reader can copy
+/// it from the finding.
+fn described(tested: &TestedEnum) -> String {
+    match &tested.path {
+        Some(path) => format!("`{}` (`{path}`)", tested.display),
+        None => format!("`{}`", tested.display),
+    }
 }
 
 /// Returns the names in backticks, joined as a sentence would
@@ -210,6 +257,9 @@ fn tested_enum(value: &DecoratedNode<'_>) -> Option<TestedEnum> {
 
     applies.then(|| TestedEnum {
         display: resolved.display().to_owned(),
+        path: value
+            .decoration::<AdtPath>()
+            .map(|adt| adt.path().to_string()),
         names,
         growth,
     })
@@ -463,23 +513,35 @@ impl stiles_plugin::DeclaresRules for SingleVariantBranch {
     fn reads(&self) -> stiles_plugin::Reads {
         stiles_plugin::Reads::of::<ResolvedType>()
             .and::<AdtFlags>()
+            .and::<AdtPath>()
             .and::<EnumVariants>()
     }
 }
 
 #[cfg(feature = "plugin")]
-stiles_plugin::export_lints![rust: [SingleVariantBranch]];
+stiles_plugin::export_lints![rust: [SingleVariantBranch::default()]];
 
 #[cfg(test)]
 mod tests {
     use stiles_rust::RustLintPassAdapter;
-    use stiles_rust::decorations::{AdtKind, Exhaustiveness, OptionKind, ResultKind};
+    use stiles_rust::decorations::{AdtKind, Exhaustiveness, OptionKind, ResultKind, TypePath};
     use stiles_testing::{assert_no_diagnostics, decorate, execute, parse};
-    use stiles_types::{DecorationMap, Language, LintPass};
+    use stiles_types::{DecorationMap, Language, LintPass, RuleOption};
 
     use super::*;
 
     const KIND: [&str; 3] = ["Alpha", "Beta", "Gamma"];
+
+    /// The path of the definition of the tested enum
+    const KIND_PATH: &str = "sample::kind::Kind";
+
+    /// How a test decorates its tested values and configures the rule
+    struct Setup<'a> {
+        ty: ResolvedType,
+        exhaustiveness: Exhaustiveness,
+        path: Option<AdtPath>,
+        non_exhaustive: &'a [&'a str],
+    }
 
     /// Returns whether the provider would decorate this node in a test
     fn is_tested_value(node: &DecoratedNode<'_>) -> bool {
@@ -487,31 +549,80 @@ mod tests {
             || (node.kind() == "macro_invocation" && node.text().starts_with("matches!"))
     }
 
-    fn mark(
-        node: &DecoratedNode<'_>,
-        map: &mut DecorationMap,
-        ty: &ResolvedType,
-        exhaustiveness: Exhaustiveness,
-    ) {
+    fn mark(node: &DecoratedNode<'_>, map: &mut DecorationMap, setup: &Setup<'_>) {
         if is_tested_value(node) {
-            map.insert(node.id(), ty.clone());
-            map.insert(node.id(), AdtFlags::from_exhaustiveness(exhaustiveness));
+            map.insert(node.id(), setup.ty.clone());
+            map.insert(
+                node.id(),
+                AdtFlags::from_exhaustiveness(setup.exhaustiveness),
+            );
             map.insert(node.id(), EnumVariants::new(KIND));
+            if let Some(path) = &setup.path {
+                map.insert(node.id(), path.clone());
+            }
         }
         for child in node.named_children() {
-            mark(&child, map, ty, exhaustiveness);
+            mark(&child, map, setup);
         }
     }
 
-    fn run_with(source: &str, ty: ResolvedType, exhaustiveness: Exhaustiveness) -> Vec<Diagnostic> {
+    /// Runs the rule as stiles runs it, with `non-exhaustive` set
+    fn run_setup(source: &str, setup: &Setup<'_>) -> Vec<Diagnostic> {
         let mut tree = parse(source, Language::Rust);
         let mut map = DecorationMap::new();
-        mark(&tree.root_node(), &mut map, &ty, exhaustiveness);
+        mark(&tree.root_node(), &mut map, setup);
         decorate(&mut tree, map);
-        let mut passes: Vec<Box<dyn LintPass>> =
-            vec![Box::new(RustLintPassAdapter::new(SingleVariantBranch))];
+        let options = RuleOptions::new(vec![
+            RuleOption::builder()
+                .rule(RULE_ID.as_str().to_owned())
+                .name(NON_EXHAUSTIVE)
+                .values(
+                    setup
+                        .non_exhaustive
+                        .iter()
+                        .map(|path| (*path).to_owned())
+                        .collect(),
+                )
+                .build(),
+        ]);
+        let mut pass = RustLintPassAdapter::new(SingleVariantBranch::default());
+        pass.configure(&options);
+        let mut passes: Vec<Box<dyn LintPass>> = vec![Box::new(pass)];
 
         execute(&tree, &mut passes)
+    }
+
+    fn kind_path() -> AdtPath {
+        AdtPath::new(
+            TypePath::builder()
+                .krate("sample")
+                .modules(["kind"])
+                .name("Kind")
+                .build(),
+        )
+    }
+
+    fn run_with(source: &str, ty: ResolvedType, exhaustiveness: Exhaustiveness) -> Vec<Diagnostic> {
+        let setup = Setup {
+            ty,
+            exhaustiveness,
+            path: Some(kind_path()),
+            non_exhaustive: &[],
+        };
+
+        run_setup(source, &setup)
+    }
+
+    /// Runs the rule with `non-exhaustive` naming the given paths
+    fn run_naming(source: &str, non_exhaustive: &[&str]) -> Vec<Diagnostic> {
+        let setup = Setup {
+            ty: kind(),
+            exhaustiveness: Exhaustiveness::Exhaustive,
+            path: Some(kind_path()),
+            non_exhaustive,
+        };
+
+        run_setup(source, &setup)
     }
 
     fn kind() -> ResolvedType {
@@ -565,6 +676,36 @@ mod tests {
     }
 
     #[test]
+    fn finding_names_the_type_and_the_path_of_its_definition() {
+        let found = run("fn f() { if let Kind::Alpha = k { a() } else { b() } }");
+
+        assert_eq!(
+            found[0].message(),
+            "one variant of `Kind` (`sample::kind::Kind`) decides this branch; write a `match` that names `Alpha`, `Beta`, and `Gamma`"
+        );
+    }
+
+    #[test]
+    fn finding_without_a_path_names_the_type_alone() {
+        let setup = Setup {
+            ty: kind(),
+            exhaustiveness: Exhaustiveness::Exhaustive,
+            path: None,
+            non_exhaustive: &[],
+        };
+
+        let found = run_setup(
+            "fn f() { if let Kind::Alpha = k { a() } else { b() } }",
+            &setup,
+        );
+
+        assert_eq!(
+            found[0].message(),
+            "one variant of `Kind` decides this branch; write a `match` that names `Alpha`, `Beta`, and `Gamma`"
+        );
+    }
+
+    #[test]
     fn if_let_on_a_foreign_non_exhaustive_enum_is_not_flagged() {
         let source = "fn f() { if let Kind::Alpha = k { a() } else { b() } }";
 
@@ -596,8 +737,9 @@ mod tests {
             "fn f() { if let A = k { a() } else { b() } }",
             Language::Rust,
         );
-        let mut passes: Vec<Box<dyn LintPass>> =
-            vec![Box::new(RustLintPassAdapter::new(SingleVariantBranch))];
+        let mut passes: Vec<Box<dyn LintPass>> = vec![Box::new(RustLintPassAdapter::new(
+            SingleVariantBranch::default(),
+        ))];
 
         assert_no_diagnostics(&execute(&tree, &mut passes));
     }
@@ -666,6 +808,21 @@ mod tests {
     }
 
     #[test]
+    fn matches_of_several_variants_names_the_path_of_the_enum() {
+        let found = run("fn f() -> bool { matches!(k, Kind::Alpha | Kind::Beta) }");
+
+        stiles_testing::assert_diagnostic(&found[0])
+            .message_contains("`Kind` (`sample::kind::Kind`)");
+    }
+
+    #[test]
+    fn matches_of_several_variants_on_an_enum_non_exhaustive_names_is_not_flagged() {
+        let source = "fn f() -> bool { matches!(k, Kind::Alpha | Kind::Beta) }";
+
+        assert_no_diagnostics(&run_naming(source, &[KIND_PATH]));
+    }
+
+    #[test]
     fn matches_with_a_closure_in_its_guard_is_not_several_patterns() {
         let source = "fn f() -> bool { matches!(k, Kind::Alpha if v.iter().any(|x| x)) }";
 
@@ -677,6 +834,58 @@ mod tests {
         let found = run("fn f() { if !k.is_alpha() { a() } else { b() } }");
 
         assert_eq!(found.len(), 1);
+    }
+
+    #[test]
+    fn non_exhaustive_naming_another_enum_leaves_the_branch_flagged() {
+        let source = "fn f() { if let Kind::Alpha = k { a() } else { b() } }";
+
+        assert_eq!(run_naming(source, &["tar::entry_type::EntryType"]).len(), 1);
+    }
+
+    #[test]
+    fn non_exhaustive_naming_the_enum_exempts_a_let_else() {
+        let source = "fn f() { let Kind::Alpha = k else { return; }; a(); }";
+
+        assert_no_diagnostics(&run_naming(source, &[KIND_PATH]));
+    }
+
+    #[test]
+    fn non_exhaustive_naming_the_enum_exempts_a_predicate() {
+        let source = "fn f() { if k.is_alpha() { a() } else { b() } }";
+
+        assert_no_diagnostics(&run_naming(source, &[KIND_PATH]));
+    }
+
+    #[test]
+    fn non_exhaustive_naming_the_enum_exempts_an_if_let() {
+        let source = "fn f() { if let Kind::Alpha = k { a() } else { b() } }";
+
+        assert_no_diagnostics(&run_naming(source, &[KIND_PATH]));
+    }
+
+    #[test]
+    fn non_exhaustive_naming_the_enum_without_a_path_leaves_the_branch_flagged() {
+        let setup = Setup {
+            ty: kind(),
+            exhaustiveness: Exhaustiveness::Exhaustive,
+            path: None,
+            non_exhaustive: &[KIND_PATH],
+        };
+
+        let found = run_setup(
+            "fn f() { if let Kind::Alpha = k { a() } else { b() } }",
+            &setup,
+        );
+
+        assert_eq!(found.len(), 1);
+    }
+
+    #[test]
+    fn non_exhaustive_naming_the_rendered_name_leaves_the_branch_flagged() {
+        let source = "fn f() { if let Kind::Alpha = k { a() } else { b() } }";
+
+        assert_eq!(run_naming(source, &["Kind"]).len(), 1);
     }
 
     #[test]
@@ -746,13 +955,14 @@ mod tests {
 
     #[cfg(feature = "plugin")]
     #[test]
-    fn reads_returns_the_resolved_type_the_adt_flags_and_the_enum_variants() {
-        let reads = stiles_plugin::DeclaresRules::reads(&SingleVariantBranch);
+    fn reads_returns_the_resolved_type_the_adt_flags_the_adt_path_and_the_enum_variants() {
+        let reads = stiles_plugin::DeclaresRules::reads(&SingleVariantBranch::default());
 
         assert_eq!(
             reads,
             stiles_plugin::Reads::of::<ResolvedType>()
                 .and::<AdtFlags>()
+                .and::<AdtPath>()
                 .and::<EnumVariants>()
         );
     }
