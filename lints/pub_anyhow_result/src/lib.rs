@@ -388,6 +388,10 @@ impl stiles_plugin::DeclaresRules for PubAnyhowResult {
     fn rules(&self) -> Vec<RuleId> {
         vec![RULE_ID]
     }
+
+    fn reads(&self) -> stiles_plugin::Reads {
+        stiles_plugin::Reads::of::<FnSignature>()
+    }
 }
 
 #[cfg(feature = "plugin")]
@@ -468,14 +472,12 @@ mod tests {
 
     /// Runs the rule on `source` as if it were the file at `path`
     ///
-    /// `parse` names every file `<test>`, so this parses again with the
-    /// grammar it used and a path of the test's own.
+    /// `parse` names every file `<test>`, so this parses with the grammar
+    /// of `stiles-rust` and a path of the test's own.
     fn run_in_file(source: &str, path: &Path) -> Vec<Diagnostic> {
-        let parsed = parse(source, Language::Rust);
-        let grammar = parsed.root_node().raw().language().to_owned();
         let mut parser = tree_sitter::Parser::new();
         parser
-            .set_language(&grammar)
+            .set_language(&stiles_rust::language())
             .expect("the grammar should load");
         let tree = parser.parse(source, None).expect("the source should parse");
         let tree = DecoratedTree::builder()
@@ -1093,6 +1095,14 @@ mod tests {
         );
 
         assert_eq!(diagnostics.len(), 2);
+    }
+
+    #[cfg(feature = "plugin")]
+    #[test]
+    fn reads_returns_the_fn_signature() {
+        let reads = stiles_plugin::DeclaresRules::reads(&PubAnyhowResult);
+
+        assert_eq!(reads, stiles_plugin::Reads::of::<FnSignature>());
     }
 
     #[test]

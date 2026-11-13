@@ -126,9 +126,7 @@ fn continues(previous: &DecoratedNode<'_>, next: &DecoratedNode<'_>, marker: Mar
     let same_kind = previous.kind() == "line_comment" && next.kind() == "line_comment";
     let same_marker = self::marker(previous) == Some(marker) && self::marker(next) == Some(marker);
 
-    same_kind
-        && same_marker
-        && previous.raw().start_position().row + 1 == next.raw().start_position().row
+    same_kind && same_marker && previous.start_position().row + 1 == next.start_position().row
 }
 
 /// Returns the documentation of one `///` or `//!` line

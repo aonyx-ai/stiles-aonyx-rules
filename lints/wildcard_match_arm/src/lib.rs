@@ -139,6 +139,10 @@ impl stiles_plugin::DeclaresRules for WildcardMatchArm {
     fn rules(&self) -> Vec<RuleId> {
         vec![RULE_ID]
     }
+
+    fn reads(&self) -> stiles_plugin::Reads {
+        stiles_plugin::Reads::of::<ResolvedType>().and::<AdtFlags>()
+    }
 }
 
 #[cfg(feature = "plugin")]
@@ -383,6 +387,17 @@ mod tests {
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.wildcard-match-arm")
             .has_severity(Severity::Error);
+    }
+
+    #[cfg(feature = "plugin")]
+    #[test]
+    fn reads_returns_the_resolved_type_and_the_adt_flags() {
+        let reads = stiles_plugin::DeclaresRules::reads(&WildcardMatchArm);
+
+        assert_eq!(
+            reads,
+            stiles_plugin::Reads::of::<ResolvedType>().and::<AdtFlags>()
+        );
     }
 
     #[test]

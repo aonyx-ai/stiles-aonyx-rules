@@ -121,6 +121,10 @@ impl stiles_plugin::DeclaresRules for InlineDocLink {
     fn rules(&self) -> Vec<RuleId> {
         vec![RuleId::new("lint.inline-doc-link")]
     }
+
+    fn reads(&self) -> stiles_plugin::Reads {
+        stiles_plugin::Reads::none()
+    }
 }
 
 #[cfg(feature = "plugin")]

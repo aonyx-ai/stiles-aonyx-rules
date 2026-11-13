@@ -1,5 +1,3 @@
-use std::ops::Range;
-
 use stiles_rust::{RuleId, RustLintPass};
 use stiles_types::{DecoratedNode, Diagnostic, Severity};
 
@@ -101,7 +99,7 @@ impl<'a> Binding<'a> {
         let name = Name(name);
 
         let value = statement.child_by_field_name("value")?;
-        let end = statement.raw().end_byte();
+        let end = statement.span().end();
 
         Some(Self {
             name,
@@ -185,7 +183,7 @@ fn analyze(block: &DecoratedNode<'_>) -> Vec<Diagnostic> {
     collect_identifiers(block, &mut identifiers);
 
     let text = block.text();
-    let start = block.raw().start_byte();
+    let start = block.span().start();
 
     let mut diagnostics = Vec::new();
     for (index, binding) in bindings.iter().enumerate() {
@@ -195,7 +193,7 @@ fn analyze(block: &DecoratedNode<'_>) -> Vec<Diagnostic> {
         let uses: Vec<usize> = identifiers
             .iter()
             .filter(|identifier| identifier.text() == name.as_str())
-            .map(|identifier| identifier.raw().start_byte())
+            .map(|identifier| identifier.span().start())
             .filter(|offset| *offset >= end)
             .collect();
 
@@ -257,8 +255,8 @@ fn collect_identifiers<'a>(node: &DecoratedNode<'a>, out: &mut Vec<DecoratedNode
 
 /// Returns whether `node` covers the byte at `offset`
 fn contains(node: &DecoratedNode<'_>, offset: usize) -> bool {
-    let Range { start, end } = node.raw().byte_range();
-    start <= offset && offset < end
+    let span = node.span();
+    span.start() <= offset && offset < span.end()
 }
 
 /// Returns whether `value` is built from `name` and nothing else in scope
@@ -371,6 +369,10 @@ fn head(name: &str) -> &str {
 impl stiles_plugin::DeclaresRules for SplitBinding {
     fn rules(&self) -> Vec<RuleId> {
         vec![RuleId::new("lint.split-binding")]
+    }
+
+    fn reads(&self) -> stiles_plugin::Reads {
+        stiles_plugin::Reads::none()
     }
 }
 

@@ -25,9 +25,8 @@ plugin = []
 
 [dependencies]
 stiles-plugin = { workspace = true }
-# `DecoratedNode::raw()` returns a `tree_sitter::Node`, which the rule names
-# directly. The version matches the workspace so the plugin and the host agree
-# on the type that crosses the boundary.
+# The rule parses each comment body with a `tree_sitter::Parser` of its own,
+# set to the grammar of `stiles-rust`, and walks the probe's tree.
 tree-sitter = { workspace = true }
 stiles-rust = { workspace = true }
 stiles-types = { workspace = true }

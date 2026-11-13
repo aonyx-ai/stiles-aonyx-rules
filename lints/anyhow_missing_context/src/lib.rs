@@ -200,6 +200,10 @@ impl stiles_plugin::DeclaresRules for AnyhowMissingContext {
     fn rules(&self) -> Vec<RuleId> {
         vec![RuleId::new("lint.anyhow-missing-context")]
     }
+
+    fn reads(&self) -> stiles_plugin::Reads {
+        stiles_plugin::Reads::of::<ResolvedType>().and::<FnSignature>()
+    }
 }
 
 #[cfg(feature = "plugin")]
@@ -476,6 +480,17 @@ mod tests {
         let diagnostics = execute(&tree, &mut passes());
 
         assert_no_diagnostics(&diagnostics);
+    }
+
+    #[cfg(feature = "plugin")]
+    #[test]
+    fn reads_returns_the_resolved_type_and_the_fn_signature() {
+        let reads = stiles_plugin::DeclaresRules::reads(&AnyhowMissingContext);
+
+        assert_eq!(
+            reads,
+            stiles_plugin::Reads::of::<ResolvedType>().and::<FnSignature>()
+        );
     }
 
     #[test]

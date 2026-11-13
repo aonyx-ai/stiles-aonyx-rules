@@ -434,6 +434,10 @@ impl stiles_plugin::DeclaresRules for FacadeBypassImport {
     fn rules(&self) -> Vec<RuleId> {
         vec![RuleId::new("lint.facade-bypass-import")]
     }
+
+    fn reads(&self) -> stiles_plugin::Reads {
+        stiles_plugin::Reads::of::<Reexports>()
+    }
 }
 
 #[cfg(feature = "plugin")]
@@ -871,6 +875,14 @@ mod tests {
         );
 
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[cfg(feature = "plugin")]
+    #[test]
+    fn reads_returns_the_reexports() {
+        let reads = stiles_plugin::DeclaresRules::reads(&FacadeBypassImport);
+
+        assert_eq!(reads, stiles_plugin::Reads::of::<Reexports>());
     }
 
     #[test]

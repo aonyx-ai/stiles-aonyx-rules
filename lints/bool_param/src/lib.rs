@@ -177,6 +177,10 @@ impl stiles_plugin::DeclaresRules for BoolParam {
     fn rules(&self) -> Vec<RuleId> {
         vec![RuleId::new("lint.bool-param")]
     }
+
+    fn reads(&self) -> stiles_plugin::Reads {
+        stiles_plugin::Reads::none()
+    }
 }
 
 #[cfg(feature = "plugin")]
