@@ -23,7 +23,6 @@ commented_out_code = { path = "../../lints/commented_out_code", default-features
 derive_order = { path = "../../lints/derive_order", default-features = false }
 doc_summary_period = { path = "../../lints/doc_summary_period", default-features = false }
 doc_summary_person = { path = "../../lints/doc_summary_person", default-features = false }
-em_dash_aside = { path = "../../lints/em_dash_aside", default-features = false }
 error_enum_shape = { path = "../../lints/error_enum_shape", default-features = false }
 external_type_in_port = { path = "../../lints/external_type_in_port", default-features = false }
 facade_bypass_import = { path = "../../lints/facade_bypass_import", default-features = false }
