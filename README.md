@@ -27,17 +27,15 @@ rule ids they report under are all `lint.<name>`.
 Every rule reports an error, so any finding fails `stiles check`. A
 convention that a rule cannot report as an error does not become a rule.
 
-Most rules read Rust syntax or Rust types, so they run on Rust alone. The
-rules that read only comments also run on TypeScript: `todo_comment`,
-`inline_comment`, `em_dash_aside`, `long_doc_sentence`, and
-`inline_doc_link`. The three that read doc comment prose take it from
-`crates/doc_comment`, which reads a Rust doc comment and a TypeScript
-`/** */` block alike. It removes the comment markers, and in TypeScript it
-also removes the block tag syntax and `@example` code, so no rule reads
-them as prose.
-`commented_out_code` stays with Rust: it decides whether a comment is code
-by parsing it as Rust. `doc_summary_period` stays with Rust too: the
-summary it reads is the first paragraph that rustdoc shows.
+Most rules read Rust syntax or Rust types, so they run on Rust alone. The rules
+that read only comments also run on TypeScript: `todo_comment`,
+`inline_comment`, `long_doc_sentence`, and `inline_doc_link`. The two that read
+doc comment prose take it from `crates/doc_comment`, which reads a Rust doc
+comment and a TypeScript `/** */` block alike. It removes the comment markers,
+and in TypeScript it also removes the block tag syntax and `@example` code, so
+no rule reads them as prose. `commented_out_code` stays with Rust: it decides
+whether a comment is code by parsing it as Rust. `doc_summary_period` stays with
+Rust too: the summary it reads is the first paragraph that rustdoc shows.
 
 ## Options
 

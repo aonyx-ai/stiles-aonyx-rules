@@ -17,7 +17,6 @@ pub use commented_out_code;
 pub use derive_order;
 pub use doc_summary_period;
 pub use doc_summary_person;
-pub use em_dash_aside;
 pub use error_enum_shape;
 pub use external_type_in_port;
 pub use facade_bypass_import;

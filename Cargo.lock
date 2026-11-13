@@ -275,19 +275,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "em_dash_aside"
-version = "0.4.0"
-dependencies = [
- "doc_comment",
- "example_pair",
- "stiles-plugin",
- "stiles-rust",
- "stiles-testing",
- "stiles-types",
- "stiles-typescript",
-]
-
-[[package]]
 name = "equivalent"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -912,7 +899,6 @@ dependencies = [
  "derive_order",
  "doc_summary_period",
  "doc_summary_person",
- "em_dash_aside",
  "error_enum_shape",
  "external_type_in_port",
  "facade_bypass_import",
