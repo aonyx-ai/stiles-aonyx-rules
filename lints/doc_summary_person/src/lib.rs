@@ -1,6 +1,6 @@
-use std::path::Path;
-
-use stiles_rust::{RuleId, RustLintPass};
+#[cfg(feature = "plugin")]
+use stiles_rust::ReadsTestCode as _;
+use stiles_rust::{RuleId, RustLintPass, is_test_code};
 use stiles_types::{DecoratedNode, Diagnostic, Severity, Span};
 
 /// The id that every diagnostic of this rule carries
@@ -42,9 +42,11 @@ const LY_VERBS: &[&str] = &[
 ///
 /// The rule reads functions and methods only, including trait methods with
 /// no body. A struct or a constant is documented with a noun phrase. Test
-/// code is exempt. That covers a function with a test attribute such as
+/// code is exempt, which the Rust provider marks with the `TestCode`
+/// decoration. That covers a function with a test attribute such as
 /// `#[test]` or `#[tokio::test]`, and anything under a `#[cfg(test)]` item.
-/// It also covers anything in a `tests` or `benches` directory.
+/// It also covers a file that only integration tests and benches compile,
+/// by the kinds of its `Target` decoration.
 ///
 /// The summary is the first line of text in the item's first outer doc
 /// comment. When a `#[doc = ...]` attribute comes before that comment, the
@@ -92,7 +94,7 @@ impl RustLintPass for DocSummaryPerson {
 /// a third-person verb
 fn report(node: &DecoratedNode<'_>) -> Vec<Diagnostic> {
     let span = node.span();
-    if is_test_target(span.file()) || is_test_code(node) {
+    if is_test_code(node) {
         return Vec::new();
     }
 
@@ -355,170 +357,6 @@ fn supplies_doc_text(attribute: &DecoratedNode<'_>) -> bool {
     text.starts_with("#[doc=") || (text.starts_with("#[cfg_attr(") && text.contains("doc="))
 }
 
-/// Returns whether any component of a path is `tests` or `benches`
-///
-/// Cargo builds those directories only for test and benchmark targets, so
-/// the code there is test code. `lint.missing-trait-tests` reads the path
-/// the same way.
-fn is_test_target(path: &Path) -> bool {
-    path.components()
-        .filter_map(|component| component.as_os_str().to_str())
-        .any(|name| name == "tests" || name == "benches")
-}
-
-/// Returns whether the node sits in code that only a test build compiles
-///
-/// The walk visits the node and every ancestor. An item writes its gate in
-/// front of itself, and a module or a file writes it inside, so both
-/// spellings count at every level. A test attribute on the function itself
-/// counts, and so does one on an enclosing function, for a helper declared
-/// inside a test.
-fn is_test_code(node: &DecoratedNode<'_>) -> bool {
-    let mut current = Some(*node);
-    while let Some(item) = current {
-        let outer = outer_attributes(&item);
-        if outer.iter().any(is_test_attribute) || outer.iter().any(is_test_cfg) {
-            return true;
-        }
-        if inner_attributes(&item).iter().any(is_test_cfg) {
-            return true;
-        }
-        current = item.parent();
-    }
-    false
-}
-
-/// Returns the `attribute` nodes written in front of the node
-///
-/// Tree-sitter makes each attribute a sibling of the item it decorates. The
-/// walk reads backward from the node over attributes and comments. It stops
-/// at the first sibling that is neither, so an attribute on the item before
-/// this one never reaches it.
-fn outer_attributes<'a>(node: &DecoratedNode<'a>) -> Vec<DecoratedNode<'a>> {
-    let Some(parent) = node.parent() else {
-        return Vec::new();
-    };
-    let siblings = parent.named_children();
-    let Some(position) = siblings
-        .iter()
-        .position(|sibling| sibling.id() == node.id())
-    else {
-        return Vec::new();
-    };
-
-    let mut attributes = Vec::new();
-    for sibling in siblings[..position].iter().rev() {
-        match sibling.kind() {
-            "attribute_item" => attributes.extend(sibling.named_child(0)),
-            "line_comment" | "block_comment" => {}
-            _ => break,
-        }
-    }
-    attributes
-}
-
-/// Returns the `attribute` nodes of the `#![..]` items that open the node
-///
-/// A file and a module body hold their inner attributes as leading
-/// children. The walk stops at the first child that is neither an inner
-/// attribute nor a comment.
-fn inner_attributes<'a>(node: &DecoratedNode<'a>) -> Vec<DecoratedNode<'a>> {
-    let mut attributes = Vec::new();
-    for child in node.named_children() {
-        match child.kind() {
-            "inner_attribute_item" => attributes.extend(child.named_child(0)),
-            "line_comment" | "block_comment" => {}
-            _ => break,
-        }
-    }
-    attributes
-}
-
-/// Returns whether the attribute marks a test, such as `#[tokio::test]`
-///
-/// Only the last segment of the path counts, because `#[tokio::test]` and
-/// `#[test]` after a `use tokio::test` name one macro.
-fn is_test_attribute(attribute: &DecoratedNode<'_>) -> bool {
-    let Some(path) = attribute.named_child(0) else {
-        return false;
-    };
-    let name = match path.kind() {
-        "scoped_identifier" => path.child_by_field_name("name"),
-        _ => Some(path),
-    };
-    name.is_some_and(|name| name.text() == "test")
-}
-
-/// Returns whether the attribute is a `cfg` that holds only in tests
-///
-/// `cfg_attr` does not count, because it applies another attribute rather
-/// than removing the item.
-fn is_test_cfg(attribute: &DecoratedNode<'_>) -> bool {
-    let Some(path) = attribute.named_child(0) else {
-        return false;
-    };
-    if path.kind() != "identifier" || path.text() != "cfg" {
-        return false;
-    }
-    let Some(arguments) = attribute.child_by_field_name("arguments") else {
-        return false;
-    };
-
-    let predicates = predicates(&arguments);
-    match predicates.as_slice() {
-        [predicate] => implies_test(predicate),
-        _ => false,
-    }
-}
-
-/// Splits a `cfg` token tree into its comma-separated predicates
-///
-/// Each predicate is the list of tokens between two commas, with the
-/// tree's own parentheses left out.
-fn predicates<'a>(tree: &DecoratedNode<'a>) -> Vec<Vec<DecoratedNode<'a>>> {
-    let mut predicates = Vec::new();
-    let mut current = Vec::new();
-    let Ok(count) = u32::try_from(tree.child_count()) else {
-        return predicates;
-    };
-    for position in 0..count {
-        let Some(token) = tree.child(position) else {
-            continue;
-        };
-        match token.kind() {
-            "(" | ")" => {}
-            "," => predicates.push(std::mem::take(&mut current)),
-            _ => current.push(token),
-        }
-    }
-    if !current.is_empty() {
-        predicates.push(current);
-    }
-    predicates
-}
-
-/// Returns whether a `cfg` predicate can hold only when `test` holds
-///
-/// `all(..)` needs one operand that implies `test`, and `any(..)` needs every
-/// operand to. `not(..)` never does, and neither does a key-value predicate,
-/// so `cfg(feature = "test")` and `cfg(not(test))` are not test code.
-fn implies_test(predicate: &[DecoratedNode<'_>]) -> bool {
-    match predicate {
-        [word] => word.kind() == "identifier" && word.text() == "test",
-        [operator, operands] if operands.kind() == "token_tree" => {
-            let operands = predicates(operands);
-            match operator.text() {
-                "all" => operands.iter().any(|operand| implies_test(operand)),
-                "any" => {
-                    !operands.is_empty() && operands.iter().all(|operand| implies_test(operand))
-                }
-                _ => false,
-            }
-        }
-        _ => false,
-    }
-}
-
 #[cfg(feature = "plugin")]
 impl stiles_plugin::DeclaresRules for DocSummaryPerson {
     fn rules(&self) -> Vec<RuleId> {
@@ -526,7 +364,7 @@ impl stiles_plugin::DeclaresRules for DocSummaryPerson {
     }
 
     fn reads(&self) -> stiles_plugin::Reads {
-        stiles_plugin::Reads::none()
+        stiles_plugin::Reads::none().and_test_code()
     }
 }
 
@@ -536,13 +374,20 @@ stiles_plugin::export_lints![rust: [DocSummaryPerson]];
 #[cfg(test)]
 mod tests {
     use stiles_rust::RustLintPassAdapter;
+    use stiles_rust::decorations::TargetKind;
     use stiles_testing::{assert_diagnostic, assert_no_diagnostics, execute, parse};
-    use stiles_types::{Language, LintPass, Severity};
+    use stiles_types::{DecoratedTree, Language, LintPass, Severity};
 
     use super::*;
 
     fn check(source: &str) -> Vec<Diagnostic> {
-        let tree = parse(source, Language::Rust);
+        check_attaching(source, |_| {})
+    }
+
+    /// Runs the rule after `attach` adds what the provider knows of test code
+    fn check_attaching(source: &str, attach: impl FnOnce(&mut DecoratedTree)) -> Vec<Diagnostic> {
+        let mut tree = parse(source, Language::Rust);
+        attach(&mut tree);
         let mut passes: Vec<Box<dyn LintPass>> =
             vec![Box::new(RustLintPassAdapter::new(DocSummaryPerson))];
 
@@ -686,7 +531,10 @@ mod tests {
 
     #[test]
     fn cfg_all_with_test_is_not_flagged() {
-        let diagnostics = check("#[cfg(all(test, unix))]\n/// Build a fixture\nfn fixture() {}");
+        let source = "#[cfg(all(test, unix))]\n/// Build a fixture\nfn fixture() {}";
+
+        let diagnostics =
+            check_attaching(source, |tree| test_decorations::mark(tree, "fn fixture"));
 
         assert_no_diagnostics(&diagnostics);
     }
@@ -730,7 +578,9 @@ mod tests {
 
     #[test]
     fn cfg_test_on_the_previous_item_is_flagged() {
-        let diagnostics = check("#[cfg(test)]\nmod tests {}\n/// Return the length\nfn len() {}");
+        let source = "#[cfg(test)]\nmod tests {}\n/// Return the length\nfn len() {}";
+
+        let diagnostics = check_attaching(source, |tree| test_decorations::mark(tree, "mod tests"));
 
         assert_eq!(diagnostics.len(), 1);
     }
@@ -882,7 +732,10 @@ mod tests {
 
     #[test]
     fn file_with_inner_cfg_test_is_not_flagged() {
-        let diagnostics = check("#![cfg(test)]\n/// Build a fixture\nfn fixture() {}");
+        let diagnostics = check_attaching(
+            "#![cfg(test)]\n/// Build a fixture\nfn fixture() {}",
+            test_decorations::enclose_file,
+        );
 
         assert_no_diagnostics(&diagnostics);
     }
@@ -896,6 +749,33 @@ mod tests {
     }
 
     #[test]
+    fn function_in_a_bench_file_is_not_flagged() {
+        let diagnostics = check_attaching("/// Build a fixture\nfn fixture() {}", |tree| {
+            test_decorations::target(tree, [TargetKind::Bench]);
+        });
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn function_in_a_file_a_library_shares_with_a_test_is_flagged() {
+        let diagnostics = check_attaching("/// Return the length\nfn len() {}", |tree| {
+            test_decorations::target(tree, [TargetKind::IntegrationTest, TargetKind::Library]);
+        });
+
+        assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn function_in_an_integration_test_file_is_not_flagged() {
+        let diagnostics = check_attaching("/// Build a fixture\nfn fixture() {}", |tree| {
+            test_decorations::target(tree, [TargetKind::IntegrationTest]);
+        });
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
     fn function_without_docs_is_not_flagged() {
         let diagnostics = check("fn len() {}");
 
@@ -904,16 +784,18 @@ mod tests {
 
     #[test]
     fn helper_in_cfg_test_module_is_not_flagged() {
-        let diagnostics =
-            check("#[cfg(test)]\nmod tests {\n    /// Build a fixture\n    fn fixture() {}\n}");
+        let source = "#[cfg(test)]\nmod tests {\n    /// Build a fixture\n    fn fixture() {}\n}";
+
+        let diagnostics = check_attaching(source, |tree| test_decorations::mark(tree, "mod tests"));
 
         assert_no_diagnostics(&diagnostics);
     }
 
     #[test]
     fn helper_in_module_with_inner_cfg_test_is_not_flagged() {
-        let diagnostics = check(
+        let diagnostics = check_attaching(
             "mod tests {\n    #![cfg(test)]\n    /// Build a fixture\n    fn fixture() {}\n}",
+            |tree| test_decorations::mark(tree, "mod tests"),
         );
 
         assert_no_diagnostics(&diagnostics);
@@ -921,8 +803,9 @@ mod tests {
 
     #[test]
     fn helper_in_nested_module_under_cfg_test_is_not_flagged() {
-        let diagnostics = check(
+        let diagnostics = check_attaching(
             "#[cfg(test)]\nmod tests {\n    mod helpers {\n        /// Build a fixture\n        fn fixture() {}\n    }\n}",
+            |tree| test_decorations::mark(tree, "mod tests"),
         );
 
         assert_no_diagnostics(&diagnostics);
@@ -930,8 +813,9 @@ mod tests {
 
     #[test]
     fn helper_inside_a_test_function_is_not_flagged() {
-        let diagnostics =
-            check("#[test]\nfn parses() {\n    /// Build a fixture\n    fn fixture() {}\n}");
+        let source = "#[test]\nfn parses() {\n    /// Build a fixture\n    fn fixture() {}\n}";
+
+        let diagnostics = check_attaching(source, |tree| test_decorations::mark(tree, "fn parses"));
 
         assert_no_diagnostics(&diagnostics);
     }
@@ -1117,8 +1001,9 @@ mod tests {
 
     #[test]
     fn method_in_impl_under_cfg_test_is_not_flagged() {
-        let diagnostics = check(
+        let diagnostics = check_attaching(
             "#[cfg(test)]\nmod tests {\n    impl Foo {\n        /// Build a foo\n        fn build() {}\n    }\n}",
+            |tree| test_decorations::mark(tree, "mod tests"),
         );
 
         assert_no_diagnostics(&diagnostics);
@@ -1175,6 +1060,18 @@ mod tests {
         assert_no_diagnostics(&diagnostics);
     }
 
+    #[cfg(feature = "plugin")]
+    #[test]
+    fn reads_returns_the_target_and_the_test_code() {
+        let reads = stiles_plugin::DeclaresRules::reads(&DocSummaryPerson);
+
+        assert_eq!(
+            reads,
+            stiles_plugin::Reads::of::<stiles_rust::decorations::Target>()
+                .and::<stiles_rust::decorations::TestCode>()
+        );
+    }
+
     #[test]
     fn reference_link_opening_is_flagged_with_its_label() {
         assert_eq!(
@@ -1185,8 +1082,9 @@ mod tests {
 
     #[test]
     fn scoped_test_attribute_is_not_flagged() {
-        let diagnostics = check(
+        let diagnostics = check_attaching(
             "/// Check the client\n#[tokio::test(flavor = \"multi_thread\")]\nasync fn client() {}",
+            |tree| test_decorations::mark(tree, "async fn client"),
         );
 
         assert_no_diagnostics(&diagnostics);
@@ -1201,36 +1099,22 @@ mod tests {
 
     #[test]
     fn test_attribute_above_the_doc_comment_is_not_flagged() {
-        let diagnostics = check("#[test]\n/// Check the parser\nfn parses() {}");
+        let diagnostics =
+            check_attaching("#[test]\n/// Check the parser\nfn parses() {}", |tree| {
+                test_decorations::mark(tree, "fn parses")
+            });
 
         assert_no_diagnostics(&diagnostics);
     }
 
     #[test]
     fn test_function_is_not_flagged() {
-        let diagnostics = check("/// Check the parser\n#[test]\nfn parses() {}");
+        let diagnostics =
+            check_attaching("/// Check the parser\n#[test]\nfn parses() {}", |tree| {
+                test_decorations::mark(tree, "fn parses")
+            });
 
         assert_no_diagnostics(&diagnostics);
-    }
-
-    #[test]
-    fn test_target_paths_exclude_a_src_lib_file() {
-        assert!(!is_test_target(Path::new("crates/core/src/lib.rs")));
-    }
-
-    #[test]
-    fn test_target_paths_exclude_a_src_tests_file() {
-        assert!(!is_test_target(Path::new("crates/core/src/tests.rs")));
-    }
-
-    #[test]
-    fn test_target_paths_include_a_benches_file() {
-        assert!(is_test_target(Path::new("benches/throughput.rs")));
-    }
-
-    #[test]
-    fn test_target_paths_include_a_tests_directory_file() {
-        assert!(is_test_target(Path::new("crates/core/tests/common/mod.rs")));
     }
 
     #[test]

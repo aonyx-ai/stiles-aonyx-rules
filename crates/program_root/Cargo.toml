@@ -1,0 +1,25 @@
+# Two rules spare the root of a binary, where a program meets its user, and
+# they have to agree on which file that is. The answer lives here rather
+# than in each rule, because a copy that drifts makes one rule spare a file
+# that the other reports.
+#
+# This crate is an rlib and exports no plugin declaration, so the build
+# produces no dynamic library for stiles to load.
+[package]
+name = "program_root"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+stiles-rust = { workspace = true }
+stiles-types = { workspace = true }
+
+[dev-dependencies]
+stiles-testing = { workspace = true }
+test_decorations = { workspace = true }
+
+[lints]
+workspace = true

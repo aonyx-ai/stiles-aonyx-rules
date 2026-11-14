@@ -1,7 +1,7 @@
-use std::path::Path;
-
+#[cfg(feature = "plugin")]
+use stiles_rust::ReadsTestCode as _;
 use stiles_rust::decorations::{FnSignature, TypePathRef};
-use stiles_rust::{RuleId, RustLintPass, RustLintPassAdapter};
+use stiles_rust::{RuleId, RustLintPass, RustLintPassAdapter, is_test_code};
 use stiles_types::{DecoratedNode, Diagnostic, LintPass, Severity};
 
 /// The id that every diagnostic of this rule carries
@@ -49,10 +49,13 @@ const ANYHOW_ERROR: TypePathRef<'static> = TypePathRef::builder()
 ///
 /// The rule skips a function with a `#[command]` attribute, under any path,
 /// because the command framework fixes its signature. It skips every
-/// function in a file named `main.rs`, because that is where a binary
-/// reports its errors. It skips test code. That is a function under
-/// `#[test]` or under a `cfg` that holds only in tests, and every file under
-/// a `tests` or `benches` directory.
+/// function in the root file of a binary, because that is where a binary
+/// reports its errors. The kinds of the `Target` decoration of that file
+/// are only binaries, and the file declares `fn main`. The rule skips test
+/// code, which the Rust provider marks with the `TestCode` decoration. That
+/// is a function under `#[test]` or under a `cfg` that holds only in tests.
+/// A file is test code too when the kinds of its `Target` decoration are
+/// only integration tests and benches.
 ///
 /// # Examples
 ///
@@ -146,9 +149,7 @@ fn check_signature(node: &DecoratedNode<'_>) -> Vec<Diagnostic> {
         return Vec::new();
     }
 
-    let span = node.span();
-    let file = span.file();
-    if is_main_file(file) || is_test_target(file) {
+    if program_root::is_binary_root(node) {
         return Vec::new();
     }
     if outer_attributes(node).iter().any(is_command_attribute) {
@@ -207,46 +208,6 @@ fn has_bare_pub(item: &DecoratedNode<'_>) -> bool {
         .any(|child| child.kind() == "visibility_modifier" && child.named_child_count() == 0)
 }
 
-/// Returns whether the file is a crate's `main.rs`
-fn is_main_file(path: &Path) -> bool {
-    path.file_name().is_some_and(|name| name == "main.rs")
-}
-
-/// Returns whether any directory in a path is `tests` or `benches`
-///
-/// Cargo builds those directories only for test and benchmark targets, so
-/// the code there is test code. The file name itself does not count.
-fn is_test_target(path: &Path) -> bool {
-    let Some(directory) = path.parent() else {
-        return false;
-    };
-    directory
-        .components()
-        .filter_map(|component| component.as_os_str().to_str())
-        .any(|name| name == "tests" || name == "benches")
-}
-
-/// Returns whether the node sits in code that only a test build compiles
-///
-/// The walk visits the node and every ancestor. An item writes its gate in
-/// front of itself, and a module or a file writes it inside, so both
-/// spellings count at every level. A `#[test]` on an enclosing function
-/// counts too, for a helper declared inside a test.
-fn is_test_code(node: &DecoratedNode<'_>) -> bool {
-    let mut current = Some(*node);
-    while let Some(item) = current {
-        let outer = outer_attributes(&item);
-        if outer.iter().any(is_test_attribute) || outer.iter().any(is_test_cfg) {
-            return true;
-        }
-        if inner_attributes(&item).iter().any(is_test_cfg) {
-            return true;
-        }
-        current = item.parent();
-    }
-    false
-}
-
 /// Returns the `attribute` nodes written in front of the node
 ///
 /// Tree-sitter makes each attribute a sibling of the item it decorates. The
@@ -276,23 +237,6 @@ fn outer_attributes<'a>(node: &DecoratedNode<'a>) -> Vec<DecoratedNode<'a>> {
     attributes
 }
 
-/// Returns the `attribute` nodes of the `#![..]` items that open the node
-///
-/// A file and a module body hold their inner attributes as leading
-/// children. The walk stops at the first child that is neither an inner
-/// attribute nor a comment.
-fn inner_attributes<'a>(node: &DecoratedNode<'a>) -> Vec<DecoratedNode<'a>> {
-    let mut attributes = Vec::new();
-    for child in node.named_children() {
-        match child.kind() {
-            "inner_attribute_item" => attributes.extend(child.named_child(0)),
-            "line_comment" | "block_comment" => {}
-            _ => break,
-        }
-    }
-    attributes
-}
-
 /// Returns the last segment of an attribute's path
 ///
 /// `#[tauri::command]` and `#[command]` name one macro, and which one a
@@ -311,78 +255,6 @@ fn is_command_attribute(attribute: &DecoratedNode<'_>) -> bool {
     attribute_name(attribute) == Some("command")
 }
 
-/// Returns whether the attribute marks a test, such as `#[tokio::test]`
-fn is_test_attribute(attribute: &DecoratedNode<'_>) -> bool {
-    attribute_name(attribute) == Some("test")
-}
-
-/// Returns whether the attribute is a `cfg` that holds only in tests
-///
-/// `cfg_attr` does not count, because it applies another attribute rather
-/// than removing the item.
-fn is_test_cfg(attribute: &DecoratedNode<'_>) -> bool {
-    let Some(path) = attribute.named_child(0) else {
-        return false;
-    };
-    if path.kind() != "identifier" || path.text() != "cfg" {
-        return false;
-    }
-    let Some(arguments) = attribute.child_by_field_name("arguments") else {
-        return false;
-    };
-
-    let predicates = predicates(&arguments);
-    match predicates.as_slice() {
-        [predicate] => implies_test(predicate),
-        _ => false,
-    }
-}
-
-/// Splits a `cfg` token tree into its comma-separated predicates
-///
-/// Each predicate is the list of tokens between two commas, with the
-/// tree's own parentheses left out.
-fn predicates<'a>(tree: &DecoratedNode<'a>) -> Vec<Vec<DecoratedNode<'a>>> {
-    let mut predicates = Vec::new();
-    let mut current = Vec::new();
-    for position in 0..tree.child_count() as u32 {
-        let Some(token) = tree.child(position) else {
-            continue;
-        };
-        match token.kind() {
-            "(" | ")" => {}
-            "," => predicates.push(std::mem::take(&mut current)),
-            _ => current.push(token),
-        }
-    }
-    if !current.is_empty() {
-        predicates.push(current);
-    }
-    predicates
-}
-
-/// Returns whether a `cfg` predicate can hold only when `test` holds
-///
-/// `all(..)` needs one operand that implies `test`, and `any(..)` needs every
-/// operand to. `not(..)` never does, and neither does a key-value predicate,
-/// so `cfg(feature = "test")` and `cfg(not(test))` are not test code.
-fn implies_test(predicate: &[DecoratedNode<'_>]) -> bool {
-    match predicate {
-        [word] => word.kind() == "identifier" && word.text() == "test",
-        [operator, operands] if operands.kind() == "token_tree" => {
-            let operands = predicates(operands);
-            match operator.text() {
-                "all" => operands.iter().any(|operand| implies_test(operand)),
-                "any" => {
-                    !operands.is_empty() && operands.iter().all(|operand| implies_test(operand))
-                }
-                _ => false,
-            }
-        }
-        _ => false,
-    }
-}
-
 #[cfg(feature = "plugin")]
 impl stiles_plugin::DeclaresRules for PubAnyhowResult {
     fn rules(&self) -> Vec<RuleId> {
@@ -390,7 +262,7 @@ impl stiles_plugin::DeclaresRules for PubAnyhowResult {
     }
 
     fn reads(&self) -> stiles_plugin::Reads {
-        stiles_plugin::Reads::of::<FnSignature>()
+        stiles_plugin::Reads::of::<FnSignature>().and_test_code()
     }
 }
 
@@ -399,7 +271,9 @@ stiles_plugin::export_lints![rust: [PubAnyhowResult]];
 
 #[cfg(test)]
 mod tests {
-    use stiles_rust::decorations::{ErrorType, ResolvedType, ResultKind, ReturnMode, TypePath};
+    use stiles_rust::decorations::{
+        ErrorType, ResolvedType, ResultKind, ReturnMode, TargetKind, TypePath,
+    };
     use stiles_testing::{assert_diagnostic, assert_no_diagnostics, decorate, execute, parse};
     use stiles_types::{DecoratedTree, DecorationMap, Language};
 
@@ -467,31 +341,18 @@ mod tests {
     /// The rule reads a decoration the Rust provider makes, and these tests
     /// run no provider, so they attach it by hand.
     fn run_with(source: &str, signature: FnSignature) -> Vec<Diagnostic> {
-        run_decorated(parse(source, Language::Rust), signature)
+        run_decorated(source, signature, |_| {})
     }
 
-    /// Runs the rule on `source` as if it were the file at `path`
-    ///
-    /// `parse` names every file `<test>`, so this parses with the grammar
-    /// of `stiles-rust` and a path of the test's own.
-    fn run_in_file(source: &str, path: &Path) -> Vec<Diagnostic> {
-        let mut parser = tree_sitter::Parser::new();
-        parser
-            .set_language(&stiles_rust::language())
-            .expect("the grammar should load");
-        let tree = parser.parse(source, None).expect("the source should parse");
-        let tree = DecoratedTree::builder()
-            .tree(tree)
-            .language(Language::Rust)
-            .source(source.to_owned())
-            .file(path.to_path_buf())
-            .build();
-
-        run_decorated(tree, anyhow_signature())
-    }
-
-    /// Attaches `signature` to every function in `tree` and runs the rule
-    fn run_decorated(mut tree: DecoratedTree, signature: FnSignature) -> Vec<Diagnostic> {
+    /// Attaches `signature` to every function in `source`, lets `attach`
+    /// add what the provider knows of test code and targets, and runs the
+    /// rule
+    fn run_decorated(
+        source: &str,
+        signature: FnSignature,
+        attach: impl FnOnce(&mut DecoratedTree),
+    ) -> Vec<Diagnostic> {
+        let mut tree = parse(source, Language::Rust);
         let mut ids = Vec::new();
         collect_signature_ids(&tree.root_node(), &mut ids);
 
@@ -500,6 +361,7 @@ mod tests {
             map.insert(id, signature.clone());
         }
         decorate(&mut tree, map);
+        attach(&mut tree);
 
         let mut passes = vec![PubAnyhowResult::into_lint_pass()];
         execute(&tree, &mut passes)
@@ -508,6 +370,13 @@ mod tests {
     /// Runs the rule with every function decorated as `anyhow::Result<()>`
     fn run(source: &str) -> Vec<Diagnostic> {
         run_with(source, anyhow_signature())
+    }
+
+    /// Runs the rule on a file that only Cargo targets of `kinds` compile
+    fn run_in_target(source: &str, kinds: impl IntoIterator<Item = TargetKind>) -> Vec<Diagnostic> {
+        run_decorated(source, anyhow_signature(), |tree| {
+            test_decorations::target(tree, kinds);
+        })
     }
 
     fn collect_signature_ids(node: &DecoratedNode<'_>, ids: &mut Vec<usize>) {
@@ -545,6 +414,23 @@ mod tests {
     }
 
     #[test]
+    fn binary_module_without_main_flagged() {
+        let diagnostics = run_in_target("pub fn run() -> Result<()> {}", [TargetKind::Binary]);
+
+        assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn binary_root_not_flagged() {
+        let diagnostics = run_in_target(
+            "fn main() {}\n\npub fn run() -> Result<()> {}",
+            [TargetKind::Binary],
+        );
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
     fn boxed_error_type_not_flagged() {
         let ret = ResolvedType::new("Result<(), Box<dyn Error>>".into())
             .with_result_kind(ResultKind::Result);
@@ -568,14 +454,22 @@ mod tests {
 
     #[test]
     fn cfg_all_with_test_not_flagged() {
-        let diagnostics = run("#[cfg(all(test, unix))]\npub fn f() -> Result<()> {}");
+        let diagnostics = run_decorated(
+            "#[cfg(all(test, unix))]\npub fn f() -> Result<()> {}",
+            anyhow_signature(),
+            |tree| test_decorations::mark(tree, "pub fn f"),
+        );
 
         assert_no_diagnostics(&diagnostics);
     }
 
     #[test]
     fn cfg_any_of_only_tests_not_flagged() {
-        let diagnostics = run("#[cfg(any(test, all(test, unix)))]\npub fn f() -> Result<()> {}");
+        let source = "#[cfg(any(test, all(test, unix)))]\npub fn f() -> Result<()> {}";
+
+        let diagnostics = run_decorated(source, anyhow_signature(), |tree| {
+            test_decorations::mark(tree, "pub fn f")
+        });
 
         assert_no_diagnostics(&diagnostics);
     }
@@ -618,28 +512,44 @@ mod tests {
 
     #[test]
     fn cfg_test_behind_doc_comment_not_flagged() {
-        let diagnostics = run("#[cfg(test)]\n/// Helps\npub fn f() -> Result<()> {}");
+        let diagnostics = run_decorated(
+            "#[cfg(test)]\n/// Helps\npub fn f() -> Result<()> {}",
+            anyhow_signature(),
+            |tree| test_decorations::mark(tree, "pub fn f"),
+        );
 
         assert_no_diagnostics(&diagnostics);
     }
 
     #[test]
     fn cfg_test_module_not_flagged() {
-        let diagnostics = run("#[cfg(test)]\nmod tests {\n    pub fn f() -> Result<()> {}\n}");
+        let source = "#[cfg(test)]\nmod tests {\n    pub fn f() -> Result<()> {}\n}";
+
+        let diagnostics = run_decorated(source, anyhow_signature(), |tree| {
+            test_decorations::mark(tree, "mod tests")
+        });
 
         assert_no_diagnostics(&diagnostics);
     }
 
     #[test]
     fn cfg_test_on_function_not_flagged() {
-        let diagnostics = run("#[cfg(test)]\npub fn f() -> Result<()> {}");
+        let diagnostics = run_decorated(
+            "#[cfg(test)]\npub fn f() -> Result<()> {}",
+            anyhow_signature(),
+            |tree| test_decorations::mark(tree, "pub fn f"),
+        );
 
         assert_no_diagnostics(&diagnostics);
     }
 
     #[test]
     fn cfg_test_on_impl_not_flagged() {
-        let diagnostics = run("#[cfg(test)]\nimpl S {\n    pub fn f() -> Result<()> {}\n}");
+        let source = "#[cfg(test)]\nimpl S {\n    pub fn f() -> Result<()> {}\n}";
+
+        let diagnostics = run_decorated(source, anyhow_signature(), |tree| {
+            test_decorations::mark(tree, "impl S")
+        });
 
         assert_no_diagnostics(&diagnostics);
     }
@@ -796,7 +706,11 @@ mod tests {
 
     #[test]
     fn helper_inside_test_function_not_flagged() {
-        let diagnostics = run("#[test]\nfn t() {\n    pub fn helper() -> Result<()> {}\n}");
+        let source = "#[test]\nfn t() {\n    pub fn helper() -> Result<()> {}\n}";
+
+        let diagnostics = run_decorated(source, anyhow_signature(), |tree| {
+            test_decorations::mark(tree, "fn t")
+        });
 
         assert_no_diagnostics(&diagnostics);
     }
@@ -824,73 +738,48 @@ mod tests {
 
     #[test]
     fn inner_cfg_test_in_file_not_flagged() {
-        let diagnostics = run("#![cfg(test)]\n\npub fn f() -> Result<()> {}");
-
-        assert_no_diagnostics(&diagnostics);
-    }
-
-    #[test]
-    fn inner_cfg_test_in_module_not_flagged() {
-        let diagnostics = run("mod m {\n    #![cfg(test)]\n    pub fn f() -> Result<()> {}\n}");
-
-        assert_no_diagnostics(&diagnostics);
-    }
-
-    #[test]
-    fn integration_test_file_not_flagged() {
-        let diagnostics = run_in_file(
-            "pub fn setup() -> Result<()> {}",
-            Path::new("crates/app/tests/common.rs"),
+        let diagnostics = run_decorated(
+            "#![cfg(test)]\n\npub fn f() -> Result<()> {}",
+            anyhow_signature(),
+            test_decorations::enclose_file,
         );
 
         assert_no_diagnostics(&diagnostics);
     }
 
     #[test]
-    fn is_main_file_with_bin_main_returns_true() {
-        assert!(is_main_file(Path::new("src/bin/tool/main.rs")));
+    fn inner_cfg_test_in_module_not_flagged() {
+        let source = "mod m {\n    #![cfg(test)]\n    pub fn f() -> Result<()> {}\n}";
+
+        let diagnostics = run_decorated(source, anyhow_signature(), |tree| {
+            test_decorations::mark(tree, "mod m")
+        });
+
+        assert_no_diagnostics(&diagnostics);
     }
 
     #[test]
-    fn is_main_file_with_crate_main_returns_true() {
-        assert!(is_main_file(Path::new("crates/app/src/main.rs")));
-    }
+    fn integration_test_file_not_flagged() {
+        let diagnostics = run_in_target(
+            "pub fn setup() -> Result<()> {}",
+            [TargetKind::IntegrationTest],
+        );
 
-    #[test]
-    fn is_main_file_with_library_file_returns_false() {
-        assert!(!is_main_file(Path::new("src/lib.rs")));
-    }
-
-    #[test]
-    fn is_main_file_with_main_directory_returns_false() {
-        assert!(!is_main_file(Path::new("src/main.rs/run.rs")));
-    }
-
-    #[test]
-    fn is_main_file_with_suffixed_name_returns_false() {
-        assert!(!is_main_file(Path::new("src/domain_main.rs")));
-    }
-
-    #[test]
-    fn is_test_target_with_benchmark_path_returns_true() {
-        assert!(is_test_target(Path::new("benches/throughput.rs")));
-    }
-
-    #[test]
-    fn is_test_target_with_integration_test_path_returns_true() {
-        assert!(is_test_target(Path::new("crates/core/tests/common/mod.rs")));
-    }
-
-    #[test]
-    fn is_test_target_with_source_path_returns_false() {
-        assert!(!is_test_target(Path::new("crates/core/src/tests.rs")));
+        assert_no_diagnostics(&diagnostics);
     }
 
     #[test]
     fn library_file_flagged() {
-        let diagnostics = run_in_file(
-            "pub fn run() -> Result<()> {}",
-            Path::new("crates/app/src/lib.rs"),
+        let diagnostics = run_in_target("pub fn run() -> Result<()> {}", [TargetKind::Library]);
+
+        assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn library_file_with_main_flagged() {
+        let diagnostics = run_in_target(
+            "fn main() {}\n\npub fn run() -> Result<()> {}",
+            [TargetKind::Library],
         );
 
         assert_eq!(diagnostics.len(), 1);
@@ -901,16 +790,6 @@ mod tests {
         let diagnostics = run_with(
             "pub fn f() -> Result<(), Error> {}",
             local_error_signature(),
-        );
-
-        assert_no_diagnostics(&diagnostics);
-    }
-
-    #[test]
-    fn main_file_not_flagged() {
-        let diagnostics = run_in_file(
-            "pub fn run() -> Result<()> {}",
-            Path::new("crates/app/src/main.rs"),
         );
 
         assert_no_diagnostics(&diagnostics);
@@ -1081,8 +960,10 @@ mod tests {
 
     #[test]
     fn pub_trait_in_cfg_test_module_not_flagged() {
-        let diagnostics = run(
+        let diagnostics = run_decorated(
             "#[cfg(test)]\nmod tests {\n    pub trait T {\n        fn f() -> Result<()>;\n    }\n}",
+            anyhow_signature(),
+            |tree| test_decorations::mark(tree, "mod tests"),
         );
 
         assert_no_diagnostics(&diagnostics);
@@ -1099,10 +980,15 @@ mod tests {
 
     #[cfg(feature = "plugin")]
     #[test]
-    fn reads_returns_the_fn_signature() {
+    fn reads_returns_the_fn_signature_the_target_and_the_test_code() {
         let reads = stiles_plugin::DeclaresRules::reads(&PubAnyhowResult);
 
-        assert_eq!(reads, stiles_plugin::Reads::of::<FnSignature>());
+        assert_eq!(
+            reads,
+            stiles_plugin::Reads::of::<FnSignature>()
+                .and::<stiles_rust::decorations::Target>()
+                .and::<stiles_rust::decorations::TestCode>()
+        );
     }
 
     #[test]
@@ -1114,7 +1000,11 @@ mod tests {
 
     #[test]
     fn test_attribute_not_flagged() {
-        let diagnostics = run("#[tokio::test]\npub async fn f() -> Result<()> {}");
+        let diagnostics = run_decorated(
+            "#[tokio::test]\npub async fn f() -> Result<()> {}",
+            anyhow_signature(),
+            |tree| test_decorations::mark(tree, "pub async fn f"),
+        );
 
         assert_no_diagnostics(&diagnostics);
     }

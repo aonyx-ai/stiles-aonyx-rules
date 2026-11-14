@@ -1,0 +1,23 @@
+# A rule that spares tests reads the `TestCode` and `Target` decorations,
+# and its tests attach both by hand where the Rust provider would. This
+# crate finds the item a test names and attaches the decoration there, so
+# every rule's tests attach them the same way.
+#
+# A rule takes it as a dev-dependency only, so no plugin links it.
+[package]
+name = "test_decorations"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+stiles-rust = { workspace = true }
+stiles-types = { workspace = true }
+
+[dev-dependencies]
+stiles-testing = { workspace = true }
+
+[lints]
+workspace = true

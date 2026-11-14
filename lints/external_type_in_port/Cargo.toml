@@ -31,10 +31,10 @@ stiles-types = { workspace = true }
 [dev-dependencies]
 example_pair = { workspace = true }
 # The tests build a tree with a file path of their own, to place a file in a
-# workspace and to reach the exemption for the `tests` and `benches`
-# directories.
+# workspace.
 tree-sitter = { workspace = true }
 stiles-testing = { workspace = true }
+test_decorations = { workspace = true }
 
 [lints]
 workspace = true

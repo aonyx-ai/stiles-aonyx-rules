@@ -1,10 +1,8 @@
-mod test_code;
-
 use attribute::Builder;
-use stiles_rust::{RuleId, RustLintPass, RustLintPassAdapter};
+#[cfg(feature = "plugin")]
+use stiles_rust::ReadsTestCode as _;
+use stiles_rust::{RuleId, RustLintPass, RustLintPassAdapter, is_test_code};
 use stiles_types::{DecoratedNode, Diagnostic, LintPass, Severity};
-
-use crate::test_code::is_test_code;
 
 /// The id that every diagnostic of this rule carries
 ///
@@ -43,9 +41,11 @@ const WRAPPERS: [&str; 2] = ["Result", "Option"];
 /// other arguments of `#[builder]` leave the function hidden. A `const fn`
 /// counts like any other, because `#[builder(const)]` gives it a builder
 /// that runs in a const context. The rule skips a trait impl,
-/// because the trait fixes the signature. It skips test code, which is a
-/// function under a test attribute or under a `cfg` that holds only under
-/// `test`. Every file in a `tests` or `benches` directory is test code too.
+/// because the trait fixes the signature. It skips test code, which the
+/// Rust provider marks with the `TestCode` decoration. That is a function
+/// under a test attribute or under a `cfg` that holds only under `test`. A
+/// file is test code too when the kinds of its `Target` decoration are only
+/// integration tests and benches.
 /// Macro bodies are token trees, so the rule never sees a function inside
 /// one.
 ///
@@ -233,7 +233,7 @@ impl stiles_plugin::DeclaresRules for MultiParamConstructor {
     }
 
     fn reads(&self) -> stiles_plugin::Reads {
-        stiles_plugin::Reads::none()
+        stiles_plugin::Reads::none().and_test_code()
     }
 }
 
@@ -242,8 +242,7 @@ stiles_plugin::export_lints![rust: [MultiParamConstructor]];
 
 #[cfg(test)]
 mod tests {
-    use std::path::{Path, PathBuf};
-
+    use stiles_rust::decorations::TargetKind;
     use stiles_testing::{assert_diagnostic, assert_no_diagnostics, execute, parse};
     use stiles_types::{DecoratedTree, Language};
 
@@ -255,25 +254,17 @@ mod tests {
         execute(&tree, &mut passes)
     }
 
-    /// Runs the rule on `source` as if it were the file at `path`
-    ///
-    /// `parse` names every file `<test>`, so this parses with the grammar
-    /// of `stiles-rust` and a path of the test's own.
-    fn run_in_file(source: &str, path: &Path) -> Vec<Diagnostic> {
-        let mut parser = tree_sitter::Parser::new();
-        parser
-            .set_language(&stiles_rust::language())
-            .expect("the grammar should load");
-        let tree = parser.parse(source, None).expect("the source should parse");
-        let tree = DecoratedTree::builder()
-            .tree(tree)
-            .language(Language::Rust)
-            .source(source.to_owned())
-            .file(PathBuf::from(path))
-            .build();
-
+    /// Runs the rule after `attach` adds what the provider knows of test code
+    fn run_attaching(source: &str, attach: impl FnOnce(&mut DecoratedTree)) -> Vec<Diagnostic> {
+        let mut tree = parse(source, Language::Rust);
+        attach(&mut tree);
         let mut passes = vec![MultiParamConstructor::into_lint_pass()];
         execute(&tree, &mut passes)
+    }
+
+    /// Runs the rule on a file that only Cargo targets of `kinds` compile
+    fn run_in_target(source: &str, kinds: impl IntoIterator<Item = TargetKind>) -> Vec<Diagnostic> {
+        run_attaching(source, |tree| test_decorations::target(tree, kinds))
     }
 
     /// Wraps `function` in `impl Foo` and runs the rule
@@ -459,23 +450,28 @@ mod tests {
 
     #[test]
     fn cfg_test_function_not_flagged() {
-        let diagnostics = run_in_impl("#[cfg(test)]\n    fn new(a: u8, b: u8) -> Self { todo!() }");
+        let source =
+            "impl Foo {\n    #[cfg(test)]\n    fn new(a: u8, b: u8) -> Self { todo!() }\n}";
+
+        let diagnostics = run_attaching(source, |tree| test_decorations::mark(tree, "fn new"));
 
         assert_no_diagnostics(&diagnostics);
     }
 
     #[test]
     fn cfg_test_impl_not_flagged() {
-        let diagnostics =
-            run("#[cfg(test)]\nimpl Foo {\n    fn new(a: u8, b: u8) -> Self { todo!() }\n}");
+        let source = "#[cfg(test)]\nimpl Foo {\n    fn new(a: u8, b: u8) -> Self { todo!() }\n}";
+
+        let diagnostics = run_attaching(source, |tree| test_decorations::mark(tree, "impl Foo"));
 
         assert_no_diagnostics(&diagnostics);
     }
 
     #[test]
     fn cfg_test_module_not_flagged() {
-        let diagnostics = run(
+        let diagnostics = run_attaching(
             "#[cfg(test)]\nmod tests {\n    impl Foo {\n        fn new(a: u8, b: u8) -> Self { todo!() }\n    }\n}",
+            |tree| test_decorations::mark(tree, "mod tests"),
         );
 
         assert_no_diagnostics(&diagnostics);
@@ -496,13 +492,23 @@ mod tests {
     }
 
     #[test]
-    fn constructor_in_a_benches_file_not_flagged() {
-        let diagnostics = run_in_file(
+    fn constructor_in_a_bench_file_not_flagged() {
+        let diagnostics = run_in_target(
             "impl Foo {\n    fn new(a: u8, b: u8) -> Self { todo!() }\n}",
-            Path::new("crates/core/benches/walk.rs"),
+            [TargetKind::Bench],
         );
 
         assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn constructor_in_a_file_a_library_shares_with_a_test_flagged() {
+        let diagnostics = run_in_target(
+            "impl Foo {\n    fn new(a: u8, b: u8) -> Self { todo!() }\n}",
+            [TargetKind::IntegrationTest, TargetKind::Library],
+        );
+
+        assert_reports_one(&diagnostics);
     }
 
     #[test]
@@ -517,26 +523,6 @@ mod tests {
     fn constructor_in_a_macro_body_not_flagged() {
         let diagnostics = run(
             "macro_rules! m {\n    () => { impl Foo { fn new(a: u8, b: u8) -> Self { todo!() } } };\n}\nm! { impl Foo { fn new(a: u8, b: u8) -> Self { todo!() } } }",
-        );
-
-        assert_no_diagnostics(&diagnostics);
-    }
-
-    #[test]
-    fn constructor_in_a_source_file_named_tests_flagged() {
-        let diagnostics = run_in_file(
-            "impl Foo {\n    fn new(a: u8, b: u8) -> Self { todo!() }\n}",
-            Path::new("crates/core/src/tests.rs"),
-        );
-
-        assert_reports_one(&diagnostics);
-    }
-
-    #[test]
-    fn constructor_in_a_tests_directory_not_flagged() {
-        let diagnostics = run_in_file(
-            "impl Foo {\n    fn new(a: u8, b: u8) -> Self { todo!() }\n}",
-            Path::new("crates/core/tests/support/fixture.rs"),
         );
 
         assert_no_diagnostics(&diagnostics);
@@ -568,8 +554,19 @@ mod tests {
 
     #[test]
     fn constructor_in_an_impl_inside_a_test_function_not_flagged() {
-        let diagnostics = run(
+        let diagnostics = run_attaching(
             "#[test]\nfn outer() {\n    impl Foo {\n        fn new(a: u8, b: u8) -> Self { todo!() }\n    }\n}",
+            |tree| test_decorations::mark(tree, "fn outer"),
+        );
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn constructor_in_an_integration_test_file_not_flagged() {
+        let diagnostics = run_in_target(
+            "impl Foo {\n    fn new(a: u8, b: u8) -> Self { todo!() }\n}",
+            [TargetKind::IntegrationTest],
         );
 
         assert_no_diagnostics(&diagnostics);
@@ -769,6 +766,18 @@ mod tests {
         assert_diagnostic(&diagnostics[0]).message_contains("from 2 positional parameters");
     }
 
+    #[cfg(feature = "plugin")]
+    #[test]
+    fn reads_returns_the_target_and_the_test_code() {
+        let reads = stiles_plugin::DeclaresRules::reads(&MultiParamConstructor);
+
+        assert_eq!(
+            reads,
+            stiles_plugin::Reads::of::<stiles_rust::decorations::Target>()
+                .and::<stiles_rust::decorations::TestCode>()
+        );
+    }
+
     #[test]
     fn result_alias_with_a_lifetime_first_flagged() {
         let diagnostics = run(
@@ -847,7 +856,9 @@ mod tests {
 
     #[test]
     fn test_attribute_function_not_flagged() {
-        let diagnostics = run_in_impl("#[test]\n    fn new(a: u8, b: u8) -> Self { todo!() }");
+        let source = "impl Foo {\n    #[test]\n    fn new(a: u8, b: u8) -> Self { todo!() }\n}";
+
+        let diagnostics = run_attaching(source, |tree| test_decorations::mark(tree, "fn new"));
 
         assert_no_diagnostics(&diagnostics);
     }
