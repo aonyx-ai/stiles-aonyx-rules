@@ -1,9 +1,9 @@
 mod resolve;
-mod test_code;
 
-use std::path::Path;
-
-use stiles_rust::{RuleId, RustLintPass};
+#[cfg(feature = "plugin")]
+use stiles_rust::ReadsTestCode as _;
+use stiles_rust::decorations::{Target, TargetKind};
+use stiles_rust::{RuleId, RustLintPass, is_test_code};
 use stiles_types::{DecoratedNode, Diagnostic, Severity};
 
 use self::resolve::Namespace;
@@ -43,15 +43,19 @@ const PRINT_MACROS: [&str; 4] = ["print", "println", "eprint", "eprintln"];
 /// The rule reads `dbg!` as a debugging aid that Clippy already covers, so
 /// it leaves that macro alone.
 ///
-/// The rule skips the root of a program, where the program meets the
-/// terminal. That is a file named `main.rs` and a file directly in
-/// `src/bin`. It skips a build script, which talks to cargo through
-/// standard output. That is a file named `build.rs` outside `src`, so a
-/// module named `build` is still checked. It skips test code, which is an item with a test
-/// attribute or a `cfg(test)` scope, and the files under `tests`, `benches`,
-/// and `examples`. An example is a program that shows its output to a
-/// person, like `main.rs`. Code inside a macro argument or a macro body is
-/// invisible to the rule, because tree-sitter does not parse it as code.
+/// The rule skips the root of a binary, where the program meets the
+/// terminal. The kinds of the `Target` decoration of that file are only
+/// binaries, and the file declares `fn main`. The other modules of a binary
+/// are checked. The rule skips a file whose kinds are only build scripts
+/// and examples. A build script talks to cargo through standard output, and
+/// an example is a program that shows its output to a person.
+///
+/// The rule skips test code, which the Rust provider marks with the
+/// `TestCode` decoration, such as a test function or a `cfg(test)` module.
+/// A file is test code too when its kinds are only integration tests and
+/// benches. A `cfg(test)` on a statement marks no item, so the rule checks
+/// the statement. Code inside a macro argument or a macro body is invisible
+/// to the rule, because tree-sitter does not parse it as code.
 ///
 /// # Examples
 ///
@@ -136,7 +140,7 @@ impl stiles_plugin::DeclaresRules for TerminalOutput {
     }
 
     fn reads(&self) -> stiles_plugin::Reads {
-        stiles_plugin::Reads::none()
+        stiles_plugin::Reads::none().and_test_code()
     }
 }
 
@@ -169,10 +173,10 @@ fn segments_as_str(segments: &[String]) -> Vec<&str> {
 
 /// Returns the finding for `node`, unless its file or its scope is exempt
 fn report(node: &DecoratedNode<'_>, message: String) -> Vec<Diagnostic> {
-    if is_exempt_file(node.span().file()) {
+    if is_exempt_file(node) {
         return Vec::new();
     }
-    if self::test_code::is_test_code(node) {
+    if is_test_code(node) {
         return Vec::new();
     }
 
@@ -186,59 +190,36 @@ fn report(node: &DecoratedNode<'_>, message: String) -> Vec<Diagnostic> {
     ]
 }
 
-/// Returns whether the rule skips every node of the file at `path`
+/// Returns whether the rule skips every node of the file that holds `node`
 ///
-/// The nearest enclosing directory named `src`, `tests`, `benches`, or
-/// `examples` places the file in its package. Stiles can hand a rule an
-/// absolute path, so a `tests` directory above the project must not count.
-/// The nearest of the four names is the one inside the package.
-///
-/// A file named `main.rs` is a program's root wherever it sits, and so is a
-/// file directly in `src/bin`. A file named `build.rs` is a build script
-/// only outside `src`, because a module under `src` can carry that name.
-/// Cargo builds `tests`, `benches`, and `examples` only for test,
-/// benchmark, and example targets.
-fn is_exempt_file(path: &Path) -> bool {
-    let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
-        return false;
-    };
-    if name == "main.rs" {
-        return true;
-    }
-    let Some(parent) = path.parent() else {
-        return name == "build.rs";
-    };
-    if is_binary_directory(parent) {
+/// The root of a binary meets the terminal, as [`program_root`] decides. A
+/// file that only build scripts and examples compile talks to its reader
+/// through the terminal too. The kinds come from the `Target` decoration of
+/// the file, and a file without one is checked, because an exemption needs
+/// proof.
+fn is_exempt_file(node: &DecoratedNode<'_>) -> bool {
+    if program_root::is_binary_root(node) {
         return true;
     }
 
-    let nearest = parent
-        .components()
-        .rev()
-        .filter_map(|component| component.as_os_str().to_str())
-        .find(|directory| is_cargo_directory(directory));
-
-    match nearest {
-        Some("tests" | "benches" | "examples") => true,
-        Some(_) => false,
-        None => name == "build.rs",
+    let mut file = *node;
+    while let Some(parent) = file.parent() {
+        file = parent;
     }
+    file.decoration::<Target>().is_some_and(|target| {
+        let kinds = target.kinds();
+        !kinds.is_empty() && kinds.iter().all(talks_to_its_reader)
+    })
 }
 
-/// Returns whether a directory is a package's `src/bin`
-fn is_binary_directory(directory: &Path) -> bool {
-    let mut names = directory
-        .components()
-        .rev()
-        .map(|component| component.as_os_str().to_str());
-    names.next() == Some(Some("bin")) && names.next() == Some(Some("src"))
-}
-
-/// Returns whether a directory name is one that Cargo gives a meaning
-fn is_cargo_directory(directory: &str) -> bool {
-    match directory {
-        "src" | "tests" | "benches" | "examples" => true,
-        _ => false,
+/// Returns whether every file of a target of `kind` may write to the terminal
+fn talks_to_its_reader(kind: TargetKind) -> bool {
+    match kind {
+        TargetKind::BuildScript | TargetKind::Example => true,
+        TargetKind::Library
+        | TargetKind::Binary
+        | TargetKind::IntegrationTest
+        | TargetKind::Bench => false,
     }
 }
 
@@ -270,9 +251,11 @@ mod tests {
             .build()
     }
 
-    /// Returns the messages the rule reports for `source` at `path`
-    fn messages_at(path: &Path, source: &str) -> Vec<String> {
-        let tree = parse_at(path, source);
+    /// Returns the messages the rule reports for `source`, after `attach`
+    /// adds what the provider knows of test code and targets
+    fn messages_attaching(source: &str, attach: impl FnOnce(&mut DecoratedTree)) -> Vec<String> {
+        let mut tree = parse_at(Path::new(LIBRARY), source);
+        attach(&mut tree);
         let mut passes: Vec<Box<dyn LintPass>> =
             vec![Box::new(RustLintPassAdapter::new(TerminalOutput))];
         execute(&tree, &mut passes)
@@ -281,9 +264,26 @@ mod tests {
             .collect()
     }
 
-    /// Returns the messages the rule reports for `source` in a library file
+    /// Returns the messages the rule reports for `source` in a file that
+    /// the provider did not decorate
     fn messages(source: &str) -> Vec<String> {
-        messages_at(Path::new(LIBRARY), source)
+        messages_attaching(source, |_| {})
+    }
+
+    /// Returns the messages the rule reports for `source` in a file that
+    /// only Cargo targets of `kinds` compile
+    fn messages_in_target(
+        source: &str,
+        kinds: impl IntoIterator<Item = TargetKind>,
+    ) -> Vec<String> {
+        messages_attaching(source, |tree| test_decorations::target(tree, kinds))
+    }
+
+    /// Returns whether the rule skips the file `source` whose targets are `kinds`
+    fn exempt(source: &str, kinds: impl IntoIterator<Item = TargetKind>) -> bool {
+        let mut tree = parse_at(Path::new(LIBRARY), source);
+        test_decorations::target(&mut tree, kinds);
+        is_exempt_file(&tree.root_node())
     }
 
     /// Returns the finding text for a print macro
@@ -403,7 +403,9 @@ mod tests {
 
     #[test]
     fn bench_function_is_not_flagged() {
-        let messages = messages("#[bench]\nfn b(bencher: &mut Bencher) { println!(\"x\"); }");
+        let source = "#[bench]\nfn b(bencher: &mut Bencher) { println!(\"x\"); }";
+
+        let messages = messages_attaching(source, |tree| test_decorations::mark(tree, "fn b"));
 
         assert!(messages.is_empty());
     }
@@ -412,16 +414,16 @@ mod tests {
     fn binary_root_is_not_flagged() {
         let source = "fn main() { eprintln!(\"x\"); std::process::exit(2); }";
 
-        let messages = messages_at(Path::new("/work/project/src/bin/tool.rs"), source);
+        let messages = messages_in_target(source, [TargetKind::Binary]);
 
         assert!(messages.is_empty());
     }
 
     #[test]
-    fn build_module_in_src_is_flagged() {
+    fn build_module_of_a_library_is_flagged() {
         let source = "pub fn run() { println!(\"building\"); }";
 
-        let messages = messages_at(Path::new("/work/project/src/commands/build.rs"), source);
+        let messages = messages_in_target(source, [TargetKind::Library]);
 
         assert_eq!(messages, vec![print_message("println")]);
     }
@@ -430,7 +432,7 @@ mod tests {
     fn build_script_is_not_flagged() {
         let source = "fn main() { println!(\"cargo::rerun-if-changed=build.rs\"); }";
 
-        let messages = messages_at(Path::new("/work/project/crates/report/build.rs"), source);
+        let messages = messages_in_target(source, [TargetKind::BuildScript]);
 
         assert!(messages.is_empty());
     }
@@ -439,7 +441,7 @@ mod tests {
     fn cfg_all_with_test_is_not_flagged() {
         let source = "#[cfg(all(test, unix))]\nfn f() { println!(\"x\"); }";
 
-        let messages = messages(source);
+        let messages = messages_attaching(source, |tree| test_decorations::mark(tree, "fn f"));
 
         assert!(messages.is_empty());
     }
@@ -484,25 +486,25 @@ mod tests {
     fn cfg_test_module_is_not_flagged() {
         let source = "#[cfg(test)]\nmod tests {\n    fn helper() { println!(\"x\"); }\n}";
 
-        let messages = messages(source);
+        let messages = messages_attaching(source, |tree| test_decorations::mark(tree, "mod tests"));
 
         assert!(messages.is_empty());
     }
 
     #[test]
-    fn cfg_test_on_statement_is_not_flagged() {
+    fn cfg_test_on_statement_is_flagged() {
         let source = "fn f() {\n    #[cfg(test)]\n    println!(\"x\");\n    g();\n}";
 
         let messages = messages(source);
 
-        assert!(messages.is_empty());
+        assert_eq!(messages, vec![print_message("println")]);
     }
 
     #[test]
     fn cfg_test_with_comment_between_is_not_flagged() {
         let source = "#[cfg(test)]\n// Fixtures\nmod tests { fn f() { println!(\"x\"); } }";
 
-        let messages = messages(source);
+        let messages = messages_attaching(source, |tree| test_decorations::mark(tree, "mod tests"));
 
         assert!(messages.is_empty());
     }
@@ -581,7 +583,7 @@ mod tests {
     fn example_file_is_not_flagged() {
         let source = "fn main() { run(); }\nfn run() { println!(\"x\"); }";
 
-        let messages = messages_at(Path::new("/work/project/examples/demo.rs"), source);
+        let messages = messages_in_target(source, [TargetKind::Example]);
 
         assert!(messages.is_empty());
     }
@@ -648,7 +650,7 @@ mod tests {
     fn exit_in_cfg_test_impl_is_not_flagged() {
         let source = "#[cfg(test)]\nimpl App { fn quit(&self) { std::process::exit(0); } }";
 
-        let messages = messages(source);
+        let messages = messages_attaching(source, |tree| test_decorations::mark(tree, "impl App"));
 
         assert!(messages.is_empty());
     }
@@ -695,22 +697,11 @@ mod tests {
     }
 
     #[test]
-    fn file_in_tests_directory_is_not_flagged() {
-        let source = "fn helper() { println!(\"x\"); }";
-
-        let messages = messages_at(
-            Path::new("/work/project/crates/report/tests/support/mod.rs"),
-            source,
-        );
-
-        assert!(messages.is_empty());
-    }
-
-    #[test]
-    fn file_inside_src_below_tests_directory_is_flagged() {
+    fn file_that_a_library_shares_with_a_test_is_flagged() {
         let source = "fn f() { println!(\"x\"); }";
 
-        let messages = messages_at(Path::new("/home/tests/project/src/lib.rs"), source);
+        let messages =
+            messages_in_target(source, [TargetKind::IntegrationTest, TargetKind::Library]);
 
         assert_eq!(messages, vec![print_message("println")]);
     }
@@ -767,7 +758,7 @@ mod tests {
     fn inner_cfg_test_on_file_is_not_flagged() {
         let source = "#![cfg(test)]\n\nfn helper() { println!(\"x\"); }";
 
-        let messages = messages(source);
+        let messages = messages_attaching(source, test_decorations::enclose_file);
 
         assert!(messages.is_empty());
     }
@@ -776,124 +767,85 @@ mod tests {
     fn inner_cfg_test_on_module_is_not_flagged() {
         let source = "mod fixtures {\n    #![cfg(test)]\n    fn f() { println!(\"x\"); }\n}";
 
-        let messages = messages(source);
+        let messages =
+            messages_attaching(source, |tree| test_decorations::mark(tree, "mod fixtures"));
 
         assert!(messages.is_empty());
     }
 
     #[test]
-    fn is_exempt_file_with_bench_directory_returns_true() {
-        let path = Path::new("/work/project/benches/walk.rs");
+    fn integration_test_file_is_not_flagged() {
+        let source = "fn helper() { println!(\"x\"); }";
 
-        let exempt = is_exempt_file(path);
+        let messages = messages_in_target(source, [TargetKind::IntegrationTest]);
 
-        assert!(exempt);
+        assert!(messages.is_empty());
     }
 
     #[test]
-    fn is_exempt_file_with_bin_directory_outside_src_returns_false() {
-        let path = Path::new("/work/project/tools/bin/tool.rs");
-
-        let exempt = is_exempt_file(path);
+    fn is_exempt_file_with_a_binary_module_returns_false() {
+        let exempt = exempt("pub fn render() {}", [TargetKind::Binary]);
 
         assert!(!exempt);
     }
 
     #[test]
-    fn is_exempt_file_with_bin_directory_returns_true() {
-        let path = Path::new("/work/project/src/bin/tool.rs");
-
-        let exempt = is_exempt_file(path);
+    fn is_exempt_file_with_a_binary_root_returns_true() {
+        let exempt = exempt("fn main() {}", [TargetKind::Binary]);
 
         assert!(exempt);
     }
 
     #[test]
-    fn is_exempt_file_with_build_module_in_src_returns_false() {
-        let path = Path::new("/work/project/src/commands/build.rs");
+    fn is_exempt_file_with_a_build_script_returns_true() {
+        let exempt = exempt("fn main() {}", [TargetKind::BuildScript]);
 
-        let exempt = is_exempt_file(path);
+        assert!(exempt);
+    }
+
+    #[test]
+    fn is_exempt_file_with_a_library_returns_false() {
+        let exempt = exempt("pub fn render() {}", [TargetKind::Library]);
 
         assert!(!exempt);
     }
 
     #[test]
-    fn is_exempt_file_with_build_script_in_relative_root_returns_true() {
-        let path = Path::new("build.rs");
-
-        let exempt = is_exempt_file(path);
-
-        assert!(exempt);
-    }
-
-    #[test]
-    fn is_exempt_file_with_build_script_returns_true() {
-        let path = Path::new("/work/project/crates/report/build.rs");
-
-        let exempt = is_exempt_file(path);
-
-        assert!(exempt);
-    }
-
-    #[test]
-    fn is_exempt_file_with_file_named_tests_returns_false() {
-        let path = Path::new("/work/project/src/tests.rs");
-
-        let exempt = is_exempt_file(path);
+    fn is_exempt_file_with_an_example_a_library_shares_returns_false() {
+        let exempt = exempt(
+            "pub fn render() {}",
+            [TargetKind::Example, TargetKind::Library],
+        );
 
         assert!(!exempt);
     }
 
     #[test]
-    fn is_exempt_file_with_main_in_bin_directory_returns_true() {
-        let path = Path::new("/work/project/src/bin/tool/main.rs");
-
-        let exempt = is_exempt_file(path);
+    fn is_exempt_file_with_an_example_module_returns_true() {
+        let exempt = exempt("pub fn render() {}", [TargetKind::Example]);
 
         assert!(exempt);
     }
 
     #[test]
-    fn is_exempt_file_with_module_below_bin_directory_returns_false() {
-        let path = Path::new("/work/project/src/bin/tool/render.rs");
-
-        let exempt = is_exempt_file(path);
+    fn is_exempt_file_with_an_integration_test_returns_false() {
+        let exempt = exempt("fn helper() {}", [TargetKind::IntegrationTest]);
 
         assert!(!exempt);
     }
 
     #[test]
-    fn is_exempt_file_with_relative_path_returns_true() {
-        let path = Path::new("tests/check.rs");
-
-        let exempt = is_exempt_file(path);
-
-        assert!(exempt);
-    }
-
-    #[test]
-    fn is_exempt_file_with_src_below_examples_returns_false() {
-        let path = Path::new("/work/project/examples/sample/src/report.rs");
-
-        let exempt = is_exempt_file(path);
+    fn is_exempt_file_with_no_kinds_returns_false() {
+        let exempt = exempt("fn main() {}", []);
 
         assert!(!exempt);
     }
 
     #[test]
-    fn is_exempt_file_with_tests_below_src_returns_true() {
-        let path = Path::new("/work/project/src/tests/fixtures.rs");
+    fn is_exempt_file_without_a_target_returns_false() {
+        let tree = parse_at(Path::new(LIBRARY), "fn main() {}");
 
-        let exempt = is_exempt_file(path);
-
-        assert!(exempt);
-    }
-
-    #[test]
-    fn is_exempt_file_without_cargo_directory_returns_false() {
-        let path = Path::new("render.rs");
-
-        let exempt = is_exempt_file(path);
+        let exempt = is_exempt_file(&tree.root_node());
 
         assert!(!exempt);
     }
@@ -958,12 +910,12 @@ mod tests {
     }
 
     #[test]
-    fn main_file_is_not_flagged() {
-        let source = "fn main() { eprintln!(\"x\"); std::process::exit(1); }";
+    fn main_function_of_a_binary_module_is_flagged() {
+        let source = "mod cli {\n    fn main() { println!(\"x\"); }\n}";
 
-        let messages = messages_at(Path::new("/work/project/src/main.rs"), source);
+        let messages = messages_in_target(source, [TargetKind::Binary]);
 
-        assert!(messages.is_empty());
+        assert_eq!(messages, vec![print_message("println")]);
     }
 
     #[test]
@@ -1028,7 +980,7 @@ mod tests {
 
     #[test]
     fn print_in_main_function_of_library_file_is_flagged() {
-        let messages = messages("fn main() { println!(\"x\"); }");
+        let messages = messages_in_target("fn main() { println!(\"x\"); }", [TargetKind::Library]);
 
         assert_eq!(messages, vec![print_message("println")]);
     }
@@ -1055,6 +1007,18 @@ mod tests {
         let messages = messages("fn f() { std::println!(\"x\"); }");
 
         assert_eq!(messages, vec![print_message("println")]);
+    }
+
+    #[cfg(feature = "plugin")]
+    #[test]
+    fn reads_returns_the_target_and_the_test_code() {
+        let reads = stiles_plugin::DeclaresRules::reads(&TerminalOutput);
+
+        assert_eq!(
+            reads,
+            stiles_plugin::Reads::of::<stiles_rust::decorations::Target>()
+                .and::<stiles_rust::decorations::TestCode>()
+        );
     }
 
     #[test]
@@ -1098,7 +1062,7 @@ mod tests {
     fn test_attribute_after_doc_comment_is_not_flagged() {
         let source = "/// Checks the output\n#[test]\nfn t() { println!(\"x\"); }";
 
-        let messages = messages(source);
+        let messages = messages_attaching(source, |tree| test_decorations::mark(tree, "fn t"));
 
         assert!(messages.is_empty());
     }
@@ -1107,7 +1071,8 @@ mod tests {
     fn test_attribute_with_path_and_arguments_is_not_flagged() {
         let source = "#[tokio::test(flavor = \"multi_thread\")]\nasync fn t() { println!(\"x\"); }";
 
-        let messages = messages(source);
+        let messages =
+            messages_attaching(source, |tree| test_decorations::mark(tree, "async fn t"));
 
         assert!(messages.is_empty());
     }
@@ -1117,7 +1082,7 @@ mod tests {
         let source =
             "#[test]\n#[should_panic]\nfn t() { eprintln!(\"x\"); std::process::exit(1); }";
 
-        let messages = messages(source);
+        let messages = messages_attaching(source, |tree| test_decorations::mark(tree, "fn t"));
 
         assert!(messages.is_empty());
     }

@@ -43,7 +43,9 @@ bon = "3"
 boundary = { path = "crates/boundary" }
 doc_comment = { path = "crates/doc_comment" }
 example_pair = { path = "crates/example_pair" }
+program_root = { path = "crates/program_root" }
 proptest = "1"
+test_decorations = { path = "crates/test_decorations" }
 # Some rules and tests parse source with a tree-sitter parser of their own.
 # The version matches stiles's own, so that a test builds a `DecoratedTree`
 # from the tree it parses.

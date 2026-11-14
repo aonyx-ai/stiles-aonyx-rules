@@ -272,6 +272,7 @@ dependencies = [
  "stiles-rust",
  "stiles-testing",
  "stiles-types",
+ "test_decorations",
 ]
 
 [[package]]
@@ -314,6 +315,7 @@ dependencies = [
  "stiles-rust",
  "stiles-testing",
  "stiles-types",
+ "test_decorations",
  "tree-sitter",
 ]
 
@@ -426,6 +428,7 @@ dependencies = [
  "stiles-rust",
  "stiles-testing",
  "stiles-types",
+ "test_decorations",
 ]
 
 [[package]]
@@ -486,6 +489,7 @@ dependencies = [
  "stiles-rust",
  "stiles-testing",
  "stiles-types",
+ "test_decorations",
 ]
 
 [[package]]
@@ -509,7 +513,7 @@ dependencies = [
  "stiles-rust",
  "stiles-testing",
  "stiles-types",
- "tree-sitter",
+ "test_decorations",
 ]
 
 [[package]]
@@ -584,6 +588,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "program_root"
+version = "0.4.0"
+dependencies = [
+ "stiles-rust",
+ "stiles-testing",
+ "stiles-types",
+ "test_decorations",
+]
+
+[[package]]
 name = "proptest"
 version = "1.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -608,11 +622,12 @@ name = "pub_anyhow_result"
 version = "0.4.0"
 dependencies = [
  "example_pair",
+ "program_root",
  "stiles-plugin",
  "stiles-rust",
  "stiles-testing",
  "stiles-types",
- "tree-sitter",
+ "test_decorations",
 ]
 
 [[package]]
@@ -841,6 +856,7 @@ dependencies = [
  "stiles-rust",
  "stiles-testing",
  "stiles-types",
+ "test_decorations",
 ]
 
 [[package]]
@@ -1083,11 +1099,22 @@ name = "terminal_output"
 version = "0.4.0"
 dependencies = [
  "example_pair",
+ "program_root",
  "stiles-plugin",
  "stiles-rust",
  "stiles-testing",
  "stiles-types",
+ "test_decorations",
  "tree-sitter",
+]
+
+[[package]]
+name = "test_decorations"
+version = "0.4.0"
+dependencies = [
+ "stiles-rust",
+ "stiles-testing",
+ "stiles-types",
 ]
 
 [[package]]

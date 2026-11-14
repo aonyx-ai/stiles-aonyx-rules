@@ -1,12 +1,10 @@
-mod test_code;
-
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
-use stiles_rust::{RuleId, RustLintPass};
+#[cfg(feature = "plugin")]
+use stiles_rust::ReadsTestCode as _;
+use stiles_rust::{RuleId, RustLintPass, is_test_code};
 use stiles_types::{DecoratedNode, Diagnostic, RuleOptions, Severity};
-
-use crate::test_code::is_test_code;
 
 /// The id that every diagnostic of this rule carries
 ///
@@ -58,9 +56,10 @@ const ALLOWED_CRATES: &str = "allowed-crates";
 ///
 /// Inherent methods, restricted traits such as `pub(crate)`, the trait's own
 /// bounds, associated types, and macro bodies are out of scope. So is test
-/// code, which is an item under a test attribute or under a `cfg` that holds
-/// only under `test`. Every file in a `tests` or `benches` directory is test
-/// code too.
+/// code, which the Rust provider marks with the `TestCode` decoration. That
+/// is an item under a test attribute or under a `cfg` that holds only under
+/// `test`. A file is test code too when the kinds of its `Target`
+/// decoration are only integration tests and benches.
 ///
 /// A project can make a crate part of its own public API on purpose, and
 /// re-export it for its consumers. The `allowed-crates` option names such
@@ -692,7 +691,7 @@ impl stiles_plugin::DeclaresRules for ExternalTypeInPort {
     }
 
     fn reads(&self) -> stiles_plugin::Reads {
-        stiles_plugin::Reads::none()
+        stiles_plugin::Reads::none().and_test_code()
     }
 }
 
@@ -704,6 +703,7 @@ mod tests {
     use std::path::PathBuf;
 
     use stiles_rust::RustLintPassAdapter;
+    use stiles_rust::decorations::TargetKind;
     use stiles_testing::{assert_diagnostic, assert_no_diagnostics, execute, parse};
     use stiles_types::{DecoratedTree, Language, LintPass, RuleOption};
 
@@ -740,22 +740,37 @@ mod tests {
     /// `parse` names every file `<test>`, so this parses with the grammar
     /// of `stiles-rust` and a path of the test's own.
     fn run_at(path: &Path, source: &str) -> Vec<Diagnostic> {
+        execute_rule(&parse_at(path, source))
+    }
+
+    /// Parses `source` as the file at `path`
+    fn parse_at(path: &Path, source: &str) -> DecoratedTree {
         let mut parser = tree_sitter::Parser::new();
         parser
             .set_language(&stiles_rust::language())
             .expect("the grammar should load");
         let tree = parser.parse(source, None).expect("the source should parse");
-        let tree = DecoratedTree::builder()
+        DecoratedTree::builder()
             .tree(tree)
             .language(Language::Rust)
             .source(source.to_owned())
             .file(PathBuf::from(path))
-            .build();
+            .build()
+    }
 
+    /// Runs the rule after `attach` adds what the provider knows of test code
+    fn run_attaching(source: &str, attach: impl FnOnce(&mut DecoratedTree)) -> Vec<Diagnostic> {
+        let mut tree = parse(source, Language::Rust);
+        attach(&mut tree);
+        execute_rule(&tree)
+    }
+
+    /// Runs the rule on `tree` with the options left unset
+    fn execute_rule(tree: &DecoratedTree) -> Vec<Diagnostic> {
         let mut passes: Vec<Box<dyn LintPass>> = vec![Box::new(RustLintPassAdapter::new(
             ExternalTypeInPort::default(),
         ))];
-        execute(&tree, &mut passes)
+        execute(tree, &mut passes)
     }
 
     #[test]
@@ -1173,10 +1188,21 @@ pub trait Port {
     }
 
     #[test]
-    fn file_in_tests_directory_is_not_flagged() {
+    fn file_in_tests_directory_without_a_target_is_flagged() {
         let source = "pub trait Port { fn read(&self) -> anyhow::Result<()>; }";
 
         let diagnostics = run_at(Path::new("crates/stiles/tests/fixtures/src/lib.rs"), source);
+
+        assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn file_that_only_integration_tests_compile_is_not_flagged() {
+        let source = "pub trait Port { fn read(&self) -> anyhow::Result<()>; }";
+        let mut tree = parse_at(Path::new("crates/stiles/tests/fixtures/src/lib.rs"), source);
+        test_decorations::target(&mut tree, [TargetKind::IntegrationTest]);
+
+        let diagnostics = execute_rule(&tree);
 
         assert_no_diagnostics(&diagnostics);
     }
@@ -1347,7 +1373,9 @@ pub trait Port {
 }
 "#;
 
-        let diagnostics = run(source);
+        let diagnostics = run_attaching(source, |tree| {
+            test_decorations::mark(tree, "use anyhow::Result")
+        });
 
         assert_no_diagnostics(&diagnostics);
     }
@@ -1411,7 +1439,8 @@ mod fixtures {
 }
 "#;
 
-        let diagnostics = run(source);
+        let diagnostics =
+            run_attaching(source, |tree| test_decorations::mark(tree, "mod fixtures"));
 
         assert_no_diagnostics(&diagnostics);
     }
@@ -1554,7 +1583,7 @@ pub trait Port {
 }
 "#;
 
-        let diagnostics = run(source);
+        let diagnostics = run_attaching(source, |tree| test_decorations::mark(tree, "fn fake"));
 
         assert_no_diagnostics(&diagnostics);
     }
@@ -1675,6 +1704,18 @@ pub trait Port {
         );
     }
 
+    #[cfg(feature = "plugin")]
+    #[test]
+    fn reads_returns_the_target_and_the_test_code() {
+        let reads = stiles_plugin::DeclaresRules::reads(&ExternalTypeInPort::default());
+
+        assert_eq!(
+            reads,
+            stiles_plugin::Reads::of::<stiles_rust::decorations::Target>()
+                .and::<stiles_rust::decorations::TestCode>()
+        );
+    }
+
     #[test]
     fn restricted_trait_is_not_flagged() {
         let diagnostics = run("pub(crate) trait Port { fn read(&self) -> anyhow::Result<()>; }");
@@ -1753,7 +1794,7 @@ mod tests {
 }
 "#;
 
-        let diagnostics = run(source);
+        let diagnostics = run_attaching(source, |tree| test_decorations::mark(tree, "mod tests"));
 
         assert_no_diagnostics(&diagnostics);
     }
@@ -1870,7 +1911,9 @@ pub trait Port {
 }
 "#;
 
-        let diagnostics = run(source);
+        let diagnostics = run_attaching(source, |tree| {
+            test_decorations::mark(tree, "pub trait Port")
+        });
 
         assert_no_diagnostics(&diagnostics);
     }

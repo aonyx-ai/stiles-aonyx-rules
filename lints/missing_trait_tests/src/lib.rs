@@ -1,7 +1,8 @@
 use std::collections::{BTreeSet, HashMap};
-use std::path::Path;
 
-use stiles_rust::{RuleId, RustLintPass};
+#[cfg(feature = "plugin")]
+use stiles_rust::ReadsTestCode as _;
+use stiles_rust::{RuleId, RustLintPass, is_test_code};
 use stiles_types::{DecoratedNode, Diagnostic, Severity, Span};
 
 /// The id that every diagnostic of this rule carries
@@ -21,7 +22,7 @@ pub const RULE_ID: RuleId = RuleId::new("lint.missing-trait-tests");
 /// the field that caused it. The tests pin the traits, so the loss surfaces at
 /// the definition instead.
 ///
-/// A call proves a trait when it sits in a test and names the type in a
+/// A call proves a trait when it sits in test code and names the type in a
 /// turbofish. Its callee must also carry that bound on its generics.
 /// `assert_send::<Foo>()` inside a `#[test]` is the usual form. Shipped code
 /// that happens to require the bound does not count, because the lint asks for
@@ -29,8 +30,10 @@ pub const RULE_ID: RuleId = RuleId::new("lint.missing-trait-tests");
 /// `trait_not_send`, `trait_not_sync`, or `trait_not_unpin` counts too. It
 /// counts only when a comment gives the reason and puts the type in backticks.
 ///
-/// The lint skips types under a `#[cfg(test)]` module and types in the `tests`
-/// and `benches` directories, because those types are fixtures. It skips types
+/// The lint skips types in test code, because those types are fixtures. The
+/// Rust provider marks test code with the `TestCode` decoration, such as a
+/// `#[cfg(test)]` module. A file is test code too when the kinds of its
+/// `Target` decoration are only integration tests and benches. It skips types
 /// declared inside a function, because a sibling test module cannot name them.
 /// It also skips type aliases and unions. Stiles reads one file at a time, so
 /// the proof must sit in the same file as the type.
@@ -85,13 +88,13 @@ impl RustLintPass for MissingTraitTests {
 /// answer. `source_file` is the one node that sees the whole file, and the
 /// walker visits it once. The pass runs its own traversal from there.
 fn check_file<'a>(root: &DecoratedNode<'a>) -> Vec<Diagnostic> {
-    if is_test_target(root.span().file()) {
+    if is_test_code(root) {
         return Vec::new();
     }
 
     let mut scan = FileScan::default();
-    scan.collect_assertions(root, Scope::Shipped);
-    scan.walk_items(root, Scope::Shipped);
+    scan.collect_assertions(root);
+    scan.walk_items(root);
     scan.resolve_calls();
     scan.report()
 }
@@ -137,13 +140,6 @@ impl AutoTrait {
     }
 }
 
-/// Whether a container holds shipped items or items that only tests use
-#[derive(Copy, Clone, Eq, PartialEq, Debug)]
-enum Scope {
-    Shipped,
-    Test,
-}
-
 /// A type definition that needs trait tests
 #[derive(Clone, Eq, PartialEq, Debug)]
 struct Candidate<'a> {
@@ -179,7 +175,7 @@ impl<'a> FileScan<'a> {
     /// Tree-sitter leaves an item's attributes and comments beside it rather
     /// than inside it, so the walk carries them forward until it reaches that
     /// item.
-    fn walk_items(&mut self, container: &DecoratedNode<'a>, scope: Scope) {
+    fn walk_items(&mut self, container: &DecoratedNode<'a>) {
         let mut attributes: Vec<&'a str> = Vec::new();
         let mut comments: Vec<&'a str> = Vec::new();
 
@@ -193,14 +189,10 @@ impl<'a> FileScan<'a> {
                     attributes.push(child.text());
                     continue;
                 }
-                "struct_item" | "enum_item" => self.record_candidate(&child, scope, &attributes),
+                "struct_item" | "enum_item" => self.record_candidate(&child),
                 "mod_item" => {
-                    let inner = match attributes.iter().any(|a| cfg_mentions_test(a)) {
-                        true => Scope::Test,
-                        false => scope,
-                    };
                     if let Some(body) = child.child_by_field_name("body") {
-                        self.walk_items(&body, inner);
+                        self.walk_items(&body);
                     }
                 }
                 "function_item" => self.record_negative_test(&child, &attributes, &comments),
@@ -212,14 +204,9 @@ impl<'a> FileScan<'a> {
         }
     }
 
-    /// Records a type definition, unless `#[cfg(test)]` hides it from the build
-    fn record_candidate(&mut self, item: &DecoratedNode<'a>, scope: Scope, attributes: &[&str]) {
-        match scope {
-            Scope::Test => return,
-            Scope::Shipped => {}
-        }
-
-        if attributes.iter().any(|a| cfg_mentions_test(a)) {
+    /// Records a type definition, unless only a test build compiles it
+    fn record_candidate(&mut self, item: &DecoratedNode<'a>) {
+        if is_test_code(item) {
             return;
         }
 
@@ -237,38 +224,17 @@ impl<'a> FileScan<'a> {
     ///
     /// Helpers count wherever they are declared, since declaring one proves
     /// nothing on its own and a test may borrow a helper that shipped code
-    /// owns. Calls count only inside a test, so a shipped call that happens to
-    /// require the bound cannot stand in for the missing test. A `#[cfg(test)]`
-    /// module and a `#[test]` function both open test scope.
-    fn collect_assertions(&mut self, node: &DecoratedNode<'a>, scope: Scope) {
+    /// owns. Calls count only in test code, so a shipped call that happens to
+    /// require the bound cannot stand in for the missing test.
+    fn collect_assertions(&mut self, node: &DecoratedNode<'a>) {
         match node.kind() {
             "function_item" => self.record_helper(node),
-            "generic_function" => self.record_call(node, scope),
+            "generic_function" => self.record_call(node),
             _ => {}
         }
 
-        let mut attributes: Vec<&'a str> = Vec::new();
         for child in node.named_children() {
-            match child.kind() {
-                "line_comment" | "block_comment" => continue,
-                "attribute_item" => {
-                    attributes.push(child.text());
-                    continue;
-                }
-                "mod_item" | "function_item" => {
-                    let inner = match attributes
-                        .iter()
-                        .any(|a| cfg_mentions_test(a) || is_test_attribute(a))
-                    {
-                        true => Scope::Test,
-                        false => scope,
-                    };
-                    self.collect_assertions(&child, inner);
-                }
-                _ => self.collect_assertions(&child, scope),
-            }
-
-            attributes.clear();
+            self.collect_assertions(&child);
         }
     }
 
@@ -304,12 +270,11 @@ impl<'a> FileScan<'a> {
 
     /// Records a call that names types in a turbofish, such as `f::<Foo>()`
     ///
-    /// Only a call under [`Scope::Test`] is recorded, because the lint asks
-    /// for a test and shipped code cannot supply one.
-    fn record_call(&mut self, node: &DecoratedNode<'a>, scope: Scope) {
-        match scope {
-            Scope::Shipped => return,
-            Scope::Test => {}
+    /// Only a call in test code is recorded, because the lint asks for a
+    /// test and shipped code cannot supply one.
+    fn record_call(&mut self, node: &DecoratedNode<'a>) {
+        if !is_test_code(node) {
+            return;
         }
 
         let Some(function) = node.child_by_field_name("function") else {
@@ -434,41 +399,6 @@ impl<'a> FileScan<'a> {
 
         diagnostics
     }
-}
-
-/// Returns whether any component of a path is `tests` or `benches`
-///
-/// Cargo builds those directories only for test and benchmark targets, so the
-/// types there are fixtures. That matches the types under a `#[cfg(test)]`
-/// module.
-fn is_test_target(path: &Path) -> bool {
-    path.components()
-        .filter_map(|component| component.as_os_str().to_str())
-        .any(|name| name == "tests" || name == "benches")
-}
-
-/// Returns whether an attribute is a `cfg` that names the `test` predicate
-///
-/// The check skips string literals, so `#[cfg(feature = "test")]` does not
-/// count while `#[cfg(any(test, unix))]` does.
-fn cfg_mentions_test(attribute: &str) -> bool {
-    let Some(arguments) = cfg_arguments(attribute) else {
-        return false;
-    };
-
-    arguments
-        .split('"')
-        .step_by(2)
-        .flat_map(|segment| segment.split(|c: char| !c.is_alphanumeric() && c != '_'))
-        .any(|word| word == "test")
-}
-
-/// Returns the text inside `#[cfg(...)]`, if the attribute is a `cfg`
-fn cfg_arguments(attribute: &str) -> Option<&str> {
-    let inner = attribute.trim().strip_prefix("#[")?.strip_suffix(']')?;
-    let inner = inner.trim().strip_prefix("cfg")?;
-    let inner = inner.trim_start().strip_prefix('(')?;
-    inner.strip_suffix(')')
 }
 
 /// Returns whether an attribute marks a test, such as `#[test]`
@@ -622,7 +552,7 @@ impl stiles_plugin::DeclaresRules for MissingTraitTests {
     }
 
     fn reads(&self) -> stiles_plugin::Reads {
-        stiles_plugin::Reads::none()
+        stiles_plugin::Reads::none().and_test_code()
     }
 }
 
@@ -632,13 +562,20 @@ stiles_plugin::export_lints![rust: [MissingTraitTests]];
 #[cfg(test)]
 mod tests {
     use stiles_rust::RustLintPassAdapter;
+    use stiles_rust::decorations::TargetKind;
     use stiles_testing::{assert_diagnostic, assert_no_diagnostics, execute, parse};
-    use stiles_types::{Language, LintPass};
+    use stiles_types::{DecoratedTree, Language, LintPass};
 
     use super::*;
 
     fn run(source: &str) -> Vec<Diagnostic> {
-        let tree = parse(source, Language::Rust);
+        run_attaching(source, |_| {})
+    }
+
+    /// Runs the rule after `attach` adds what the provider knows of test code
+    fn run_attaching(source: &str, attach: impl FnOnce(&mut DecoratedTree)) -> Vec<Diagnostic> {
+        let mut tree = parse(source, Language::Rust);
+        attach(&mut tree);
         let mut passes: Vec<Box<dyn LintPass>> =
             vec![Box::new(RustLintPassAdapter::new(MissingTraitTests))];
         execute(&tree, &mut passes)
@@ -668,26 +605,6 @@ mod tests {
     }
 
     #[test]
-    fn cfg_mentions_test_with_feature_named_test_returns_false() {
-        assert!(!cfg_mentions_test("#[cfg(feature = \"test\")]"));
-    }
-
-    #[test]
-    fn cfg_mentions_test_with_nested_predicate_returns_true() {
-        assert!(cfg_mentions_test("#[cfg(any(test, unix))]"));
-    }
-
-    #[test]
-    fn cfg_mentions_test_with_plain_test_returns_true() {
-        assert!(cfg_mentions_test("#[cfg(test)]"));
-    }
-
-    #[test]
-    fn cfg_mentions_test_with_unrelated_attribute_returns_false() {
-        assert!(!cfg_mentions_test("#[derive(Debug)]"));
-    }
-
-    #[test]
     fn combined_bounds_prove_all_three_traits() {
         let source = r#"
 pub struct Foo;
@@ -702,7 +619,7 @@ mod tests {
 }
 "#;
 
-        let diagnostics = run(source);
+        let diagnostics = run_attaching(source, |tree| test_decorations::mark(tree, "mod tests"));
 
         assert_no_diagnostics(&diagnostics);
     }
@@ -763,7 +680,8 @@ mod tests {
     fn documented_fix_is_not_flagged() {
         let pair = example_pair::ExamplePair::read(include_str!("lib.rs"));
 
-        let diagnostics = run_documented(pair.fix());
+        let diagnostics =
+            run_attaching(pair.fix(), |tree| test_decorations::mark(tree, "mod tests"));
 
         stiles_testing::assert_no_diagnostics(&diagnostics);
     }
@@ -791,7 +709,7 @@ mod tests {
 }
 "#;
 
-        let diagnostics = run(source);
+        let diagnostics = run_attaching(source, |tree| test_decorations::mark(tree, "mod tests"));
 
         assert_no_diagnostics(&diagnostics);
     }
@@ -849,7 +767,7 @@ mod tests {
 }
 "#;
 
-        let diagnostics = run(source);
+        let diagnostics = run_attaching(source, |tree| test_decorations::mark(tree, "mod tests"));
 
         assert_no_diagnostics(&diagnostics);
     }
@@ -870,7 +788,7 @@ mod tests {
 }
 "#;
 
-        let diagnostics = run(source);
+        let diagnostics = run_attaching(source, |tree| test_decorations::mark(tree, "mod tests"));
 
         assert_no_diagnostics(&diagnostics);
     }
@@ -895,7 +813,7 @@ mod tests {
 }
 "#;
 
-        let diagnostics = run(source);
+        let diagnostics = run_attaching(source, |tree| test_decorations::mark(tree, "mod tests"));
 
         assert_no_diagnostics(&diagnostics);
     }
@@ -920,25 +838,6 @@ mod tests {
     #[test]
     fn is_test_attribute_with_qualified_test_returns_true() {
         assert!(is_test_attribute("#[tokio::test]"));
-    }
-
-    #[test]
-    fn is_test_target_with_benchmark_path_returns_true() {
-        assert!(is_test_target(Path::new("crates/stiles/benches/walk.rs")));
-    }
-
-    #[test]
-    fn is_test_target_with_integration_test_path_returns_true() {
-        assert!(is_test_target(Path::new(
-            "crates/stiles/tests/support/unreadable.rs"
-        )));
-    }
-
-    #[test]
-    fn is_test_target_with_source_path_returns_false() {
-        assert!(!is_test_target(Path::new(
-            "crates/stiles-testing/src/lib.rs"
-        )));
     }
 
     #[test]
@@ -987,7 +886,7 @@ mod tests {
 }
 "#;
 
-        let diagnostics = run(source);
+        let diagnostics = run_attaching(source, |tree| test_decorations::mark(tree, "mod tests"));
 
         assert_no_diagnostics(&diagnostics);
     }
@@ -1003,7 +902,7 @@ mod tests {
 }
 "#;
 
-        let diagnostics = run(source);
+        let diagnostics = run_attaching(source, |tree| test_decorations::mark(tree, "mod tests"));
 
         assert_no_diagnostics(&diagnostics);
     }
@@ -1023,7 +922,7 @@ mod tests {
 }
 "#;
 
-        let diagnostics = run(source);
+        let diagnostics = run_attaching(source, |tree| test_decorations::mark(tree, "mod tests"));
 
         assert_diagnostic(&diagnostics[0])
             .message_contains("`Foo` has no `Send`, `Sync`, or `Unpin` trait test");
@@ -1044,7 +943,7 @@ mod tests {
 }
 "#;
 
-        let diagnostics = run(source);
+        let diagnostics = run_attaching(source, |tree| test_decorations::mark(tree, "mod tests"));
 
         assert_eq!(diagnostics.len(), 1);
     }
@@ -1064,7 +963,7 @@ mod tests {
 }
 "#;
 
-        let diagnostics = run(source);
+        let diagnostics = run_attaching(source, |tree| test_decorations::mark(tree, "mod tests"));
 
         assert_eq!(diagnostics.len(), 1);
     }
@@ -1084,10 +983,22 @@ mod tests {
 }
 "#;
 
-        let diagnostics = run(source);
+        let diagnostics = run_attaching(source, |tree| test_decorations::mark(tree, "mod tests"));
 
         assert_diagnostic(&diagnostics[0])
             .message_contains("`Foo` has no `Sync` or `Unpin` trait test");
+    }
+
+    #[cfg(feature = "plugin")]
+    #[test]
+    fn reads_returns_the_target_and_the_test_code() {
+        let reads = stiles_plugin::DeclaresRules::reads(&MissingTraitTests);
+
+        assert_eq!(
+            reads,
+            stiles_plugin::Reads::of::<stiles_rust::decorations::Target>()
+                .and::<stiles_rust::decorations::TestCode>()
+        );
     }
 
     #[test]
@@ -1108,7 +1019,7 @@ mod tests {
 }
 "#;
 
-        let diagnostics = run(source);
+        let diagnostics = run_attaching(source, |tree| test_decorations::mark(tree, "mod tests"));
 
         assert_no_diagnostics(&diagnostics);
     }
@@ -1149,6 +1060,15 @@ pub fn run(value: Foo) {
     }
 
     #[test]
+    fn struct_in_an_integration_test_file_is_not_flagged() {
+        let diagnostics = run_attaching("pub struct Foo;", |tree| {
+            test_decorations::target(tree, [TargetKind::IntegrationTest]);
+        });
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
     fn struct_in_test_module_is_not_flagged() {
         let source = r#"
 #[cfg(test)]
@@ -1157,7 +1077,7 @@ mod tests {
 }
 "#;
 
-        let diagnostics = run(source);
+        let diagnostics = run_attaching(source, |tree| test_decorations::mark(tree, "mod tests"));
 
         assert_no_diagnostics(&diagnostics);
     }
@@ -1170,10 +1090,10 @@ mod tests {
     }
 
     #[test]
-    fn struct_under_cfg_any_test_is_not_flagged() {
+    fn struct_under_cfg_any_test_is_flagged() {
         let diagnostics = run("#[cfg(any(test, unix))]\npub struct Foo;");
 
-        assert_no_diagnostics(&diagnostics);
+        assert_eq!(diagnostics.len(), 1);
     }
 
     #[test]
@@ -1210,7 +1130,7 @@ mod tests {
 }
 "#;
 
-        let diagnostics = run(source);
+        let diagnostics = run_attaching(source, |tree| test_decorations::mark(tree, "mod tests"));
 
         assert_no_diagnostics(&diagnostics);
     }
@@ -1247,7 +1167,7 @@ mod tests {
 }
 "#;
 
-        let diagnostics = run(source);
+        let diagnostics = run_attaching(source, |tree| test_decorations::mark(tree, "mod tests"));
 
         assert_diagnostic(&diagnostics[0]).message_contains("`Foo`");
     }
@@ -1267,7 +1187,7 @@ mod tests {
 }
 "#;
 
-        let diagnostics = run(source);
+        let diagnostics = run_attaching(source, |tree| test_decorations::mark(tree, "mod tests"));
 
         assert_eq!(diagnostics.len(), 1);
     }
@@ -1303,12 +1223,6 @@ mod tests {
     }
 
     #[test]
-    fn trait_send_scope() {
-        fn assert_send<T: Send>() {}
-        assert_send::<Scope>();
-    }
-
-    #[test]
     fn trait_sync() {
         fn assert_sync<T: Sync>() {}
         assert_sync::<MissingTraitTests>();
@@ -1339,12 +1253,6 @@ mod tests {
     }
 
     #[test]
-    fn trait_sync_scope() {
-        fn assert_sync<T: Sync>() {}
-        assert_sync::<Scope>();
-    }
-
-    #[test]
     fn trait_unpin() {
         fn assert_unpin<T: Unpin>() {}
         assert_unpin::<MissingTraitTests>();
@@ -1372,12 +1280,6 @@ mod tests {
     fn trait_unpin_file_scan() {
         fn assert_unpin<T: Unpin>() {}
         assert_unpin::<FileScan<'_>>();
-    }
-
-    #[test]
-    fn trait_unpin_scope() {
-        fn assert_unpin<T: Unpin>() {}
-        assert_unpin::<Scope>();
     }
 
     #[test]
@@ -1432,7 +1334,7 @@ mod tests {
 }
 "#;
 
-        let diagnostics = run(source);
+        let diagnostics = run_attaching(source, |tree| test_decorations::mark(tree, "mod tests"));
 
         assert_diagnostic(&diagnostics[0]).message_contains("`Foo` has no `Send` trait test");
     }
@@ -1461,7 +1363,7 @@ mod tests {
 }
 "#;
 
-        let diagnostics = run(source);
+        let diagnostics = run_attaching(source, |tree| test_decorations::mark(tree, "mod tests"));
 
         assert_eq!(diagnostics.len(), 1);
     }

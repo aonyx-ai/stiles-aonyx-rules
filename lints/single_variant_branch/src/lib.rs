@@ -1,10 +1,8 @@
-mod test_code;
-
+#[cfg(feature = "plugin")]
+use stiles_rust::ReadsTestCode as _;
 use stiles_rust::decorations::{AdtFlags, AdtPath, EnumVariants, ResolvedType};
-use stiles_rust::{RuleId, RustLintPass};
+use stiles_rust::{RuleId, RustLintPass, is_test_code};
 use stiles_types::{DecoratedNode, Diagnostic, RuleOptions, Severity};
-
-use crate::test_code::is_test_code;
 
 /// The id that every diagnostic of this rule carries
 ///
@@ -62,7 +60,10 @@ const NON_EXHAUSTIVE: &str = "non-exhaustive";
 /// `#[non_exhaustive]`.
 ///
 /// A let-else in test code whose `else` panics is not reported either,
-/// because a new variant fails that test on its first run.
+/// because a new variant fails that test on its first run. The Rust
+/// provider marks test code with the `TestCode` decoration. A file is test
+/// code too when the kinds of its `Target` decoration are only integration
+/// tests and benches.
 ///
 /// # Examples
 ///
@@ -570,6 +571,7 @@ impl stiles_plugin::DeclaresRules for SingleVariantBranch {
             .and::<AdtFlags>()
             .and::<AdtPath>()
             .and::<EnumVariants>()
+            .and_test_code()
     }
 }
 
@@ -579,9 +581,11 @@ stiles_plugin::export_lints![rust: [SingleVariantBranch::default()]];
 #[cfg(test)]
 mod tests {
     use stiles_rust::RustLintPassAdapter;
-    use stiles_rust::decorations::{AdtKind, Exhaustiveness, OptionKind, ResultKind, TypePath};
+    use stiles_rust::decorations::{
+        AdtKind, Exhaustiveness, OptionKind, ResultKind, TargetKind, TypePath,
+    };
     use stiles_testing::{assert_no_diagnostics, decorate, execute, parse};
-    use stiles_types::{DecorationMap, Language, LintPass, RuleOption};
+    use stiles_types::{DecoratedTree, DecorationMap, Language, LintPass, RuleOption};
 
     use super::*;
 
@@ -694,6 +698,27 @@ mod tests {
 
     fn run(source: &str) -> Vec<Diagnostic> {
         run_with(source, kind(), Exhaustiveness::Exhaustive)
+    }
+
+    /// Runs the rule on a tested `Kind`, after `attach` adds what the
+    /// provider knows of test code
+    fn run_attaching(source: &str, attach: impl FnOnce(&mut DecoratedTree)) -> Vec<Diagnostic> {
+        let setup = Setup {
+            ty: kind(),
+            exhaustiveness: Exhaustiveness::Exhaustive,
+            path: Some(kind_path()),
+            non_exhaustive: &[],
+        };
+        let mut tree = parse(source, Language::Rust);
+        let mut map = DecorationMap::new();
+        mark(&tree.root_node(), &mut map, &setup);
+        decorate(&mut tree, map);
+        attach(&mut tree);
+        let mut passes: Vec<Box<dyn LintPass>> = vec![Box::new(RustLintPassAdapter::new(
+            SingleVariantBranch::default(),
+        ))];
+
+        execute(&tree, &mut passes)
     }
 
     #[test]
@@ -817,7 +842,29 @@ mod tests {
     fn let_else_that_panics_in_a_test_is_not_flagged() {
         let source = "#[test] fn f() { let Kind::Alpha = k else { panic!(); }; a(); }";
 
-        assert_no_diagnostics(&run(source));
+        let found = run_attaching(source, |tree| test_decorations::mark(tree, "fn f"));
+
+        assert_no_diagnostics(&found);
+    }
+
+    #[test]
+    fn let_else_that_panics_in_a_test_module_is_not_flagged() {
+        let source = "#[cfg(test)]\nmod tests {\n    fn f() { let Kind::Alpha = k else { panic!(); }; a(); }\n}";
+
+        let found = run_attaching(source, |tree| test_decorations::mark(tree, "mod tests"));
+
+        assert_no_diagnostics(&found);
+    }
+
+    #[test]
+    fn let_else_that_panics_in_an_integration_test_file_is_not_flagged() {
+        let source = "fn f() { let Kind::Alpha = k else { panic!(); }; a(); }";
+
+        let found = run_attaching(source, |tree| {
+            test_decorations::target(tree, [TargetKind::IntegrationTest]);
+        });
+
+        assert_no_diagnostics(&found);
     }
 
     #[test]
@@ -829,7 +876,9 @@ mod tests {
 
     #[test]
     fn let_else_that_returns_in_a_test_is_flagged() {
-        let found = run("#[test] fn f() { let Kind::Alpha = k else { return; }; a(); }");
+        let source = "#[test] fn f() { let Kind::Alpha = k else { return; }; a(); }";
+
+        let found = run_attaching(source, |tree| test_decorations::mark(tree, "fn f"));
 
         assert_eq!(found.len(), 1);
     }
@@ -1093,7 +1142,7 @@ mod tests {
 
     #[cfg(feature = "plugin")]
     #[test]
-    fn reads_returns_the_resolved_type_the_adt_flags_the_adt_path_and_the_enum_variants() {
+    fn reads_returns_the_type_decorations_the_target_and_the_test_code() {
         let reads = stiles_plugin::DeclaresRules::reads(&SingleVariantBranch::default());
 
         assert_eq!(
@@ -1102,6 +1151,8 @@ mod tests {
                 .and::<AdtFlags>()
                 .and::<AdtPath>()
                 .and::<EnumVariants>()
+                .and::<stiles_rust::decorations::Target>()
+                .and::<stiles_rust::decorations::TestCode>()
         );
     }
 

@@ -24,6 +24,7 @@ default = ["plugin"]
 plugin = []
 
 [dependencies]
+program_root = { workspace = true }
 stiles-plugin = { workspace = true }
 stiles-rust = { workspace = true }
 stiles-types = { workspace = true }
@@ -32,6 +33,7 @@ stiles-types = { workspace = true }
 example_pair = { workspace = true }
 tree-sitter = { workspace = true }
 stiles-testing = { workspace = true }
+test_decorations = { workspace = true }
 
 [lints]
 workspace = true

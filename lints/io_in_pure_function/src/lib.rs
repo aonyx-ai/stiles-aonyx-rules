@@ -1,11 +1,11 @@
 mod imports;
-mod test_code;
 
-use stiles_rust::{RuleId, RustLintPass, RustLintPassAdapter};
+#[cfg(feature = "plugin")]
+use stiles_rust::ReadsTestCode as _;
+use stiles_rust::{RuleId, RustLintPass, RustLintPassAdapter, is_test_code};
 use stiles_types::{DecoratedNode, Diagnostic, LintPass, Severity};
 
 use crate::imports::{resolve, strip_raw};
-use crate::test_code::is_test_code;
 
 /// The id that every diagnostic of this rule carries
 ///
@@ -83,8 +83,11 @@ const IO_FUNCTIONS: [&[&str]; 8] = [
 ///
 /// Only the function's own body counts, closures included. A call to
 /// another local function is invisible to the rule. So is a method call on a
-/// value and anything inside a macro invocation. Test code is exempt. The
-/// rule reads no options: the names are the convention, not a setting.
+/// value and anything inside a macro invocation. Test code is exempt, which
+/// the Rust provider marks with the `TestCode` decoration. A file is test
+/// code too when the kinds of its `Target` decoration are only integration
+/// tests and benches. The rule reads no options: the names are the
+/// convention, not a setting.
 ///
 /// # Examples
 ///
@@ -302,7 +305,7 @@ impl stiles_plugin::DeclaresRules for IoInPureFunction {
     }
 
     fn reads(&self) -> stiles_plugin::Reads {
-        stiles_plugin::Reads::none()
+        stiles_plugin::Reads::none().and_test_code()
     }
 }
 
@@ -311,13 +314,20 @@ stiles_plugin::export_lints![rust: [IoInPureFunction]];
 
 #[cfg(test)]
 mod tests {
+    use stiles_rust::decorations::TargetKind;
     use stiles_testing::{assert_diagnostic, assert_no_diagnostics, execute, parse};
-    use stiles_types::Language;
+    use stiles_types::{DecoratedTree, Language};
 
     use super::*;
 
     fn run(source: &str) -> Vec<Diagnostic> {
-        let tree = parse(source, Language::Rust);
+        run_attaching(source, |_| {})
+    }
+
+    /// Runs the rule after `attach` adds what the provider knows of test code
+    fn run_attaching(source: &str, attach: impl FnOnce(&mut DecoratedTree)) -> Vec<Diagnostic> {
+        let mut tree = parse(source, Language::Rust);
+        attach(&mut tree);
         let mut passes = vec![IoInPureFunction::into_lint_pass()];
         execute(&tree, &mut passes)
     }
@@ -425,30 +435,38 @@ mod tests {
 
     #[test]
     fn cfg_test_function_is_not_flagged() {
-        let diagnostics = run("#[cfg(test)]\nfn new() { std::fs::read(p); }");
+        let diagnostics = run_attaching("#[cfg(test)]\nfn new() { std::fs::read(p); }", |tree| {
+            test_decorations::mark(tree, "fn new")
+        });
 
         assert_no_diagnostics(&diagnostics);
     }
 
     #[test]
     fn cfg_test_impl_is_not_flagged() {
-        let diagnostics = run("#[cfg(test)]\nimpl Fixture { fn new() { std::fs::read(p); } }");
+        let source = "#[cfg(test)]\nimpl Fixture { fn new() { std::fs::read(p); } }";
+
+        let diagnostics =
+            run_attaching(source, |tree| test_decorations::mark(tree, "impl Fixture"));
 
         assert_no_diagnostics(&diagnostics);
     }
 
     #[test]
     fn cfg_test_module_is_not_flagged() {
-        let diagnostics =
-            run("#[cfg(test)]\nmod tests {\n    use std::fs;\n    fn new() { fs::read(p); }\n}");
+        let source =
+            "#[cfg(test)]\nmod tests {\n    use std::fs;\n    fn new() { fs::read(p); }\n}";
+
+        let diagnostics = run_attaching(source, |tree| test_decorations::mark(tree, "mod tests"));
 
         assert_no_diagnostics(&diagnostics);
     }
 
     #[test]
     fn cfg_test_with_other_predicate_is_not_flagged() {
-        let diagnostics =
-            run("#[cfg(all(test, unix))]\nmod tests {\n    fn new() { std::fs::read(p); }\n}");
+        let source = "#[cfg(all(test, unix))]\nmod tests {\n    fn new() { std::fs::read(p); }\n}";
+
+        let diagnostics = run_attaching(source, |tree| test_decorations::mark(tree, "mod tests"));
 
         assert_no_diagnostics(&diagnostics);
     }
@@ -615,7 +633,19 @@ mod tests {
 
     #[test]
     fn inner_cfg_test_on_file_is_not_flagged() {
-        let diagnostics = run("#![cfg(test)]\nfn new() { std::fs::read(p); }");
+        let diagnostics = run_attaching(
+            "#![cfg(test)]\nfn new() { std::fs::read(p); }",
+            test_decorations::enclose_file,
+        );
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn integration_test_file_is_not_flagged() {
+        let diagnostics = run_attaching("fn new() { std::fs::read(p); }", |tree| {
+            test_decorations::target(tree, [TargetKind::IntegrationTest]);
+        });
 
         assert_no_diagnostics(&diagnostics);
     }
@@ -799,6 +829,18 @@ mod tests {
         assert_eq!(diagnostics.len(), 1);
     }
 
+    #[cfg(feature = "plugin")]
+    #[test]
+    fn reads_returns_the_target_and_the_test_code() {
+        let reads = stiles_plugin::DeclaresRules::reads(&IoInPureFunction);
+
+        assert_eq!(
+            reads,
+            stiles_plugin::Reads::of::<stiles_rust::decorations::Target>()
+                .and::<stiles_rust::decorations::TestCode>()
+        );
+    }
+
     #[test]
     fn reqwest_client_is_flagged() {
         let diagnostics = run(
@@ -826,7 +868,11 @@ mod tests {
 
     #[test]
     fn test_attribute_is_not_flagged() {
-        let diagnostics = run("#[tokio::test]\nasync fn parse() { std::fs::read(p); }");
+        let source = "#[tokio::test]\nasync fn parse() { std::fs::read(p); }";
+
+        let diagnostics = run_attaching(source, |tree| {
+            test_decorations::mark(tree, "async fn parse")
+        });
 
         assert_no_diagnostics(&diagnostics);
     }
