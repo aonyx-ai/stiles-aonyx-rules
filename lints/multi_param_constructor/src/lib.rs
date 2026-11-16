@@ -610,9 +610,7 @@ mod tests {
     fn documented_example_is_flagged() {
         let pair = example_pair::ExamplePair::read(include_str!("lib.rs"));
 
-        let diagnostics = run_documented(pair.example());
-
-        assert!(!diagnostics.is_empty());
+        pair.assert_example(run_documented);
     }
 
     #[test]

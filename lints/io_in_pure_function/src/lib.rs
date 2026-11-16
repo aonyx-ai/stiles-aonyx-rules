@@ -531,12 +531,9 @@ mod tests {
     fn documented_example_is_flagged() {
         let pair = example_pair::ExamplePair::read(include_str!("lib.rs"));
 
-        let diagnostics = run(
-            pair.example(),
-            &[("fs::read_to_string", "std::fs::read_to_string")],
-        );
-
-        assert!(!diagnostics.is_empty());
+        pair.assert_example(|source| {
+            run(source, &[("fs::read_to_string", "std::fs::read_to_string")])
+        });
     }
 
     #[test]

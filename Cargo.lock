@@ -305,6 +305,10 @@ dependencies = [
 [[package]]
 name = "example_pair"
 version = "0.4.0"
+dependencies = [
+ "stiles-core",
+ "stiles-types",
+]
 
 [[package]]
 name = "external_type_in_port"
