@@ -2,7 +2,7 @@ mod fix;
 
 use stiles_rust::decorations::ImportSource;
 use stiles_rust::{RuleId, RustLintPass, RustLintPassAdapter};
-use stiles_types::{DecoratedNode, Diagnostic, LintPass, Severity};
+use stiles_types::{AttachFixError, DecoratedNode, Diagnostic, LintPass, Severity};
 
 /// The id that every diagnostic of this rule carries
 ///
@@ -227,9 +227,15 @@ impl RustLintPass for FunctionScopedImport {
             .message("`use` sits inside a function body; move it to the top of the module")
             .span(node.span())
             .build();
-        let fixed = self::fix::fix(node).and_then(|fix| diagnostic.clone().with_fix(fix).ok());
+        let Some(fix) = self::fix::fix(node) else {
+            return vec![diagnostic];
+        };
 
-        vec![fixed.unwrap_or(diagnostic)]
+        vec![
+            diagnostic
+                .with_fix(fix)
+                .unwrap_or_else(AttachFixError::into_diagnostic),
+        ]
     }
 }
 
@@ -252,7 +258,7 @@ mod tests {
     use stiles_testing::{
         assert_diagnostic, assert_fix, assert_no_diagnostics, decorate, execute, parse,
     };
-    use stiles_types::{DecorationMap, Language};
+    use stiles_types::{DecoratedTree, DecorationMap, Language};
 
     use super::*;
 
@@ -297,6 +303,28 @@ mod tests {
 
         let mut passes = vec![FunctionScopedImport::into_lint_pass()];
         execute(&tree, &mut passes)
+    }
+
+    /// Attaches [`ImportSource::Enum`] to each `use` in `tree` whose path
+    /// names `Message`, and [`ImportSource::Module`] to every other `use`
+    fn mark_enum_imports(tree: &mut DecoratedTree) {
+        let mut map = DecorationMap::new();
+        mark_uses(&tree.root_node(), &mut map);
+        decorate(tree, map);
+    }
+
+    /// Adds the [`ImportSource`] of each `use` under `node` to `map`
+    fn mark_uses(node: &DecoratedNode<'_>, map: &mut DecorationMap) {
+        if node.kind() == "use_declaration" {
+            let source = match node.text().contains("Message::") {
+                true => ImportSource::Enum,
+                false => ImportSource::Module,
+            };
+            map.insert(node.id(), source);
+        }
+        for child in node.named_children() {
+            mark_uses(&child, map);
+        }
     }
 
     fn collect_use_declaration_ids(node: &DecoratedNode<'_>, ids: &mut Vec<usize>) {
@@ -446,10 +474,10 @@ mod tests {
     #[test]
     fn fix_collapses_the_same_import_of_two_bodies() {
         assert_fix()
-            .tree(parse(
+            .source(
                 "fn f() {\n    use a::b;\n}\n\nfn g() {\n    use a::b;\n}\n",
                 Language::Rust,
-            ))
+            )
             .passes(passes)
             .produces("use a::b;\n\nfn f() {\n}\n\nfn g() {\n}\n");
     }
@@ -457,10 +485,7 @@ mod tests {
     #[test]
     fn fix_deletes_the_blank_line_after_an_import_that_opens_the_block() {
         assert_fix()
-            .tree(parse(
-                "fn f() {\n    use a::b;\n\n    b();\n}\n",
-                Language::Rust,
-            ))
+            .source("fn f() {\n    use a::b;\n\n    b();\n}\n", Language::Rust)
             .passes(passes)
             .produces("use a::b;\n\nfn f() {\n    b();\n}\n");
     }
@@ -475,10 +500,10 @@ mod tests {
     #[test]
     fn fix_keeps_the_blank_line_after_an_import_below_a_statement() {
         assert_fix()
-            .tree(parse(
+            .source(
                 "fn f() {\n    a();\n    use a::b;\n\n    b();\n}\n",
                 Language::Rust,
-            ))
+            )
             .passes(passes)
             .produces("use a::b;\n\nfn f() {\n    a();\n\n    b();\n}\n");
     }
@@ -486,10 +511,10 @@ mod tests {
     #[test]
     fn fix_moves_a_renamed_import() {
         assert_fix()
-            .tree(parse(
+            .source(
                 "use std::io::Write;\n\nfn f() {\n    use std::fmt::Write as FmtWrite;\n}\n",
                 Language::Rust,
-            ))
+            )
             .passes(passes)
             .produces("use std::io::Write;\nuse std::fmt::Write as FmtWrite;\n\nfn f() {\n}\n");
     }
@@ -497,10 +522,10 @@ mod tests {
     #[test]
     fn fix_moves_an_import_below_a_plain_comment() {
         assert_fix()
-            .tree(parse(
+            .source(
                 "fn f() {\n    a();\n    // note\n    use a::b;\n}\n",
                 Language::Rust,
-            ))
+            )
             .passes(passes)
             .produces("use a::b;\n\nfn f() {\n    a();\n    // note\n}\n");
     }
@@ -508,10 +533,10 @@ mod tests {
     #[test]
     fn fix_moves_an_import_out_of_an_impl_method() {
         assert_fix()
-            .tree(parse(
+            .source(
                 "use a::b;\n\nimpl S {\n    fn f(&self) {\n        use c::{self, d};\n    }\n}\n",
                 Language::Rust,
-            ))
+            )
             .passes(passes)
             .produces("use a::b;\nuse c::{self, d};\n\nimpl S {\n    fn f(&self) {\n    }\n}\n");
     }
@@ -519,7 +544,7 @@ mod tests {
     #[test]
     fn fix_moves_an_import_that_shares_its_line() {
         assert_fix()
-            .tree(parse("fn f() { use a::b; }", Language::Rust))
+            .source("fn f() { use a::b; }", Language::Rust)
             .passes(passes)
             .produces("use a::b;\n\nfn f() { }");
     }
@@ -527,10 +552,10 @@ mod tests {
     #[test]
     fn fix_moves_the_import_above_the_docs_of_the_first_item() {
         assert_fix()
-            .tree(parse(
+            .source(
                 "//! Crate\n\n/// Docs\n#[inline]\nfn f() {\n    use a::b;\n}\n",
                 Language::Rust,
-            ))
+            )
             .passes(passes)
             .produces("//! Crate\n\nuse a::b;\n\n/// Docs\n#[inline]\nfn f() {\n}\n");
     }
@@ -538,10 +563,10 @@ mod tests {
     #[test]
     fn fix_moves_the_import_after_the_imports_of_the_module() {
         assert_fix()
-            .tree(parse(
+            .source(
                 "use std::io;\n\nfn f() {\n    use std::fmt::Write;\n    g();\n}\n",
                 Language::Rust,
-            ))
+            )
             .passes(passes)
             .produces("use std::io;\nuse std::fmt::Write;\n\nfn f() {\n    g();\n}\n");
     }
@@ -549,10 +574,7 @@ mod tests {
     #[test]
     fn fix_moves_the_import_below_a_comment_set_apart_by_a_blank_line() {
         assert_fix()
-            .tree(parse(
-                "// Header\n\nfn f() {\n    use a::b;\n}\n",
-                Language::Rust,
-            ))
+            .source("// Header\n\nfn f() {\n    use a::b;\n}\n", Language::Rust)
             .passes(passes)
             .produces("// Header\n\nuse a::b;\n\nfn f() {\n}\n");
     }
@@ -560,33 +582,44 @@ mod tests {
     #[test]
     fn fix_moves_the_import_below_a_trailing_comment() {
         assert_fix()
-            .tree(parse(
+            .source(
                 "use a::b; // why\nfn f() {\n    use c::d;\n}\n",
                 Language::Rust,
-            ))
+            )
             .passes(passes)
             .produces("use a::b; // why\nuse c::d;\nfn f() {\n}\n");
     }
 
     #[test]
+    fn fix_moves_the_import_beside_an_enum_variant_import() {
+        assert_fix()
+            .source(
+                "fn f() {\n    use a::b;\n    use self::Message::Ping;\n}\n",
+                Language::Rust,
+            )
+            .passes(passes)
+            .decorate(mark_enum_imports)
+            .produces("use a::b;\n\nfn f() {\n    use self::Message::Ping;\n}\n");
+    }
+
+    #[test]
     fn fix_moves_the_import_into_an_inline_module() {
         assert_fix()
-            .tree(parse(
+            .source(
                 "mod m {\n    fn f() {\n        use a::b;\n        b();\n    }\n}\n",
                 Language::Rust,
-            ))
+            )
             .passes(passes)
             .produces("mod m {\n    use a::b;\n\n    fn f() {\n        b();\n    }\n}\n");
     }
 
     #[test]
     fn fix_moves_the_movable_imports_and_leaves_the_rest() {
-        let source = "use std::io::Write;\n\nfn f() {\n    use a::b;\n}\n\nfn g() {\n    use std::fmt::Write;\n}\n\nfn h() {\n    use c::*;\n}\n";
-
-        assert_eq!(
-            fixed_once(source),
-            "use std::io::Write;\nuse a::b;\n\nfn f() {\n}\n\nfn g() {\n    use std::fmt::Write;\n}\n\nfn h() {\n    use c::*;\n}\n"
-        );
+        assert_fix()
+            .source("use std::io::Write;\n\nfn f() {\n    use a::b;\n}\n\nfn g() {\n    use std::fmt::Write;\n}\n\nfn h() {\n    use c::*;\n}\n", Language::Rust)
+            .passes(passes)
+            .remaining(2)
+            .produces("use std::io::Write;\nuse a::b;\n\nfn f() {\n}\n\nfn g() {\n    use std::fmt::Write;\n}\n\nfn h() {\n    use c::*;\n}\n");
     }
 
     #[test]
@@ -607,10 +640,10 @@ mod tests {
     #[test]
     fn fix_moves_two_imports_in_source_order() {
         assert_fix()
-            .tree(parse(
+            .source(
                 "fn f() {\n    use a::b;\n    use c::d;\n}\n",
                 Language::Rust,
-            ))
+            )
             .passes(passes)
             .produces("use a::b;\nuse c::d;\n\nfn f() {\n}\n");
     }
@@ -618,7 +651,7 @@ mod tests {
     #[test]
     fn fix_reindents_a_use_list() {
         assert_fix()
-            .tree(parse("mod m {\n    fn f() {\n        use a::{\n            b,\n            c,\n        };\n    }\n}\n", Language::Rust))
+            .source("mod m {\n    fn f() {\n        use a::{\n            b,\n            c,\n        };\n    }\n}\n", Language::Rust)
             .passes(passes)
             .produces("mod m {\n    use a::{\n        b,\n        c,\n    };\n\n    fn f() {\n    }\n}\n");
     }
@@ -626,10 +659,10 @@ mod tests {
     #[test]
     fn fix_with_the_same_import_in_the_module_only_deletes_it() {
         assert_fix()
-            .tree(parse(
+            .source(
                 "use std::fmt::Write;\n\nfn f() {\n    use std::fmt::Write;\n    g();\n}\n",
                 Language::Rust,
-            ))
+            )
             .passes(passes)
             .produces("use std::fmt::Write;\n\nfn f() {\n    g();\n}\n");
     }
@@ -637,10 +670,10 @@ mod tests {
     #[test]
     fn fix_with_the_same_unnamed_import_in_the_module_only_deletes_it() {
         assert_fix()
-            .tree(parse(
+            .source(
                 "use std::fmt::Write as _;\n\nfn f() {\n    use std::fmt :: Write as _;\n}\n",
                 Language::Rust,
-            ))
+            )
             .passes(passes)
             .produces("use std::fmt::Write as _;\n\nfn f() {\n}\n");
     }
@@ -664,9 +697,14 @@ mod tests {
 
     #[test]
     fn glob_import_beside_a_movable_import_has_no_fix() {
-        let diagnostics = run("fn f() {\n    use a::b;\n}\n\nfn g() {\n    use c::*;\n}\n");
-
-        assert_diagnostic(&diagnostics[1]).has_no_fix();
+        assert_fix()
+            .source(
+                "fn f() {\n    use a::b;\n}\n\nfn g() {\n    use c::*;\n}\n",
+                Language::Rust,
+            )
+            .passes(passes)
+            .remaining(1)
+            .produces("use a::b;\n\nfn f() {\n}\n\nfn g() {\n    use c::*;\n}\n");
     }
 
     #[test]

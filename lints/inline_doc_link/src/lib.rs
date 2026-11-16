@@ -4,7 +4,7 @@ mod inline_link;
 
 use doc_comment::DocLine;
 use stiles_rust::{RuleId, RustLintPass};
-use stiles_types::{DecoratedNode, Diagnostic, Severity};
+use stiles_types::{AttachFixError, DecoratedNode, Diagnostic, Severity};
 use stiles_typescript::TypeScriptLintPass;
 
 use self::doc_block::DocBlock;
@@ -143,11 +143,12 @@ fn report(comment: Comment<'_, '_>, block: &DocBlock) -> Vec<Diagnostic> {
                 .message(link.kind().message())
                 .span(block.span(link.start()..link.end()))
                 .build();
-            let fixed = fix
-                .as_ref()
-                .and_then(|fix| fix.covering(index))
-                .and_then(|fix| diagnostic.clone().with_fix(fix.clone()).ok());
-            fixed.unwrap_or(diagnostic)
+            let Some(fix) = fix.as_ref().and_then(|fix| fix.covering(index)) else {
+                return diagnostic;
+            };
+            diagnostic
+                .with_fix(fix.clone())
+                .unwrap_or_else(AttachFixError::into_diagnostic)
         })
         .collect()
 }
@@ -278,10 +279,10 @@ mod tests {
     #[test]
     fn fix_adds_a_definition_after_a_blank_line_that_ends_the_comment() {
         assert_fix()
-            .tree(parse(
+            .source(
                 "/// See [a](https://example.com)\n///\nfn f() {}",
                 Language::Rust,
-            ))
+            )
             .passes(passes)
             .produces("/// See [a]\n///\n/// [a]: https://example.com\nfn f() {}");
     }
@@ -289,10 +290,7 @@ mod tests {
     #[test]
     fn fix_adds_a_definition_after_a_closed_code_fence() {
         assert_fix()
-            .tree(parse(
-                "/// See [a](https://example.com)\n///\n/// ```\n/// f();\n/// ```\nfn f() {}",
-                Language::Rust,
-            ))
+            .source("/// See [a](https://example.com)\n///\n/// ```\n/// f();\n/// ```\nfn f() {}", Language::Rust)
             .passes(passes)
             .produces("/// See [a]\n///\n/// ```\n/// f();\n/// ```\n///\n/// [a]: https://example.com\nfn f() {}");
     }
@@ -300,10 +298,7 @@ mod tests {
     #[test]
     fn fix_adds_a_definition_after_the_existing_definitions() {
         assert_fix()
-            .tree(parse(
-                "/// See [a](https://example.com/a) and [b]\n///\n/// [b]: https://example.com/b\nfn f() {}",
-                Language::Rust,
-            ))
+            .source("/// See [a](https://example.com/a) and [b]\n///\n/// [b]: https://example.com/b\nfn f() {}", Language::Rust)
             .passes(passes)
             .produces("/// See [a] and [b]\n///\n/// [b]: https://example.com/b\n/// [a]: https://example.com/a\nfn f() {}");
     }
@@ -311,10 +306,10 @@ mod tests {
     #[test]
     fn fix_adds_one_definition_for_two_links_with_the_same_text_and_url() {
         assert_fix()
-            .tree(parse(
+            .source(
                 "/// See [a](https://example.com) and [a](https://example.com)\nfn f() {}",
                 Language::Rust,
-            ))
+            )
             .passes(passes)
             .produces("/// See [a] and [a]\n///\n/// [a]: https://example.com\nfn f() {}");
     }
@@ -322,10 +317,7 @@ mod tests {
     #[test]
     fn fix_adds_the_definitions_of_every_link_in_one_round() {
         assert_fix()
-            .tree(parse(
-                "/// See [a](https://example.com/a)\n/// and [b](https://example.com/b)\nfn f() {}",
-                Language::Rust,
-            ))
+            .source("/// See [a](https://example.com/a)\n/// and [b](https://example.com/b)\nfn f() {}", Language::Rust)
             .passes(passes)
             .produces("/// See [a]\n/// and [b]\n///\n/// [a]: https://example.com/a\n/// [b]: https://example.com/b\nfn f() {}");
     }
@@ -333,10 +325,10 @@ mod tests {
     #[test]
     fn fix_keeps_a_crlf_line_ending() {
         assert_fix()
-            .tree(parse(
+            .source(
                 "/// See [a](https://example.com)\r\nfn f() {}\r\n",
                 Language::Rust,
-            ))
+            )
             .passes(passes)
             .produces("/// See [a]\r\n///\r\n/// [a]: https://example.com\r\nfn f() {}\r\n");
     }
@@ -344,10 +336,10 @@ mod tests {
     #[test]
     fn fix_keeps_an_angle_bracket_destination() {
         assert_fix()
-            .tree(parse(
+            .source(
                 "/// See [a](<https://example.com/a b>)\nfn f() {}",
                 Language::Rust,
-            ))
+            )
             .passes(passes)
             .produces("/// See [a]\n///\n/// [a]: <https://example.com/a b>\nfn f() {}");
     }
@@ -355,10 +347,7 @@ mod tests {
     #[test]
     fn fix_keeps_the_indentation_of_a_field_doc() {
         assert_fix()
-            .tree(parse(
-                "struct S {\n    /// See [a](https://example.com)\n    field: u32,\n}",
-                Language::Rust,
-            ))
+            .source("struct S {\n    /// See [a](https://example.com)\n    field: u32,\n}", Language::Rust)
             .passes(passes)
             .produces("struct S {\n    /// See [a]\n    ///\n    /// [a]: https://example.com\n    field: u32,\n}");
     }
@@ -366,10 +355,10 @@ mod tests {
     #[test]
     fn fix_keeps_the_title_of_the_link() {
         assert_fix()
-            .tree(parse(
+            .source(
                 "/// See [a](https://example.com \"The site\")\nfn f() {}",
                 Language::Rust,
-            ))
+            )
             .passes(passes)
             .produces("/// See [a]\n///\n/// [a]: https://example.com \"The site\"\nfn f() {}");
     }
@@ -377,10 +366,10 @@ mod tests {
     #[test]
     fn fix_only_rewrites_a_link_whose_definition_exists() {
         assert_fix()
-            .tree(parse(
+            .source(
                 "/// See [a](https://example.com)\n///\n/// [a]: https://example.com\nfn f() {}",
                 Language::Rust,
-            ))
+            )
             .passes(passes)
             .produces("/// See [a]\n///\n/// [a]: https://example.com\nfn f() {}");
     }
@@ -388,10 +377,10 @@ mod tests {
     #[test]
     fn fix_rewrites_a_block_doc_comment() {
         assert_fix()
-            .tree(parse(
+            .source(
                 "/**\n * See [a](https://example.com)\n */\nfn f() {}",
                 Language::Rust,
-            ))
+            )
             .passes(passes)
             .produces("/**\n * See [a]\n *\n * [a]: https://example.com\n */\nfn f() {}");
     }
@@ -399,10 +388,10 @@ mod tests {
     #[test]
     fn fix_rewrites_a_block_doc_comment_with_prose_on_the_first_line() {
         assert_fix()
-            .tree(parse(
+            .source(
                 "/** See [a](https://example.com)\n */\nfn f() {}",
                 Language::Rust,
-            ))
+            )
             .passes(passes)
             .produces("/** See [a]\n *\n * [a]: https://example.com\n */\nfn f() {}");
     }
@@ -410,10 +399,10 @@ mod tests {
     #[test]
     fn fix_rewrites_an_image_link() {
         assert_fix()
-            .tree(parse(
+            .source(
                 "/// ![diagram](https://example.com/d.png)\nfn f() {}",
                 Language::Rust,
-            ))
+            )
             .passes(passes)
             .produces("/// ![diagram]\n///\n/// [diagram]: https://example.com/d.png\nfn f() {}");
     }
@@ -421,7 +410,7 @@ mod tests {
     #[test]
     fn fix_rewrites_an_inner_doc_comment() {
         assert_fix()
-            .tree(parse("//! See [a](https://example.com)\n", Language::Rust))
+            .source("//! See [a](https://example.com)\n", Language::Rust)
             .passes(passes)
             .produces("//! See [a]\n//!\n//! [a]: https://example.com\n");
     }
@@ -429,10 +418,7 @@ mod tests {
     #[test]
     fn fix_rewrites_each_doc_comment_on_its_own() {
         assert_fix()
-            .tree(parse(
-                "/// [a](https://example.com/a)\nfn f() {}\n\n/// [b](https://example.com/b)\nfn g() {}",
-                Language::Rust,
-            ))
+            .source("/// [a](https://example.com/a)\nfn f() {}\n\n/// [b](https://example.com/b)\nfn g() {}", Language::Rust)
             .passes(passes)
             .produces("/// [a]\n///\n/// [a]: https://example.com/a\nfn f() {}\n\n/// [b]\n///\n/// [b]: https://example.com/b\nfn g() {}");
     }
@@ -583,19 +569,15 @@ mod tests {
     }
 
     #[test]
-    fn link_beside_a_link_with_a_fix_keeps_no_fix() {
-        let diagnostics =
-            run("/// See [`a`](https://example.com/a) and [b](https://example.com/b)\nfn f() {}");
-
-        assert_diagnostic(&diagnostics[0]).has_no_fix();
-    }
-
-    #[test]
     fn link_beside_a_link_without_a_fix_takes_the_fix() {
-        let diagnostics =
-            run("/// See [`a`](https://example.com/a) and [b](https://example.com/b)\nfn f() {}");
-
-        assert_diagnostic(&diagnostics[1]).has_fix();
+        assert_fix()
+            .source(
+                "/// See [`a`](https://example.com/a) and [b](https://example.com/b)\nfn f() {}",
+                Language::Rust,
+            )
+            .passes(passes)
+            .remaining(1)
+            .produces("/// See [`a`](https://example.com/a) and [b]\n///\n/// [b]: https://example.com/b\nfn f() {}");
     }
 
     #[test]

@@ -3,7 +3,7 @@ use std::fmt;
 
 use stiles_rust::decorations::{DefinitionKind, PublicPath, Reexports, Resolution};
 use stiles_rust::{RuleId, RustLintPass};
-use stiles_types::{DecoratedNode, Diagnostic, Edit, Fix, Severity};
+use stiles_types::{AttachFixError, DecoratedNode, Diagnostic, Edit, Fix, Severity};
 
 /// The id that every diagnostic of this rule carries
 ///
@@ -394,10 +394,14 @@ impl<'a> FileImports<'a> {
             .iter()
             .filter_map(|imported| {
                 let (diagnostic, facade) = bypass(imported, &self.roots)?;
-                let fixed = self
-                    .rewrite(imported, facade)
-                    .and_then(|fix| diagnostic.clone().with_fix(fix).ok());
-                Some(fixed.unwrap_or(diagnostic))
+                let Some(fix) = self.rewrite(imported, facade) else {
+                    return Some(diagnostic);
+                };
+                Some(
+                    diagnostic
+                        .with_fix(fix)
+                        .unwrap_or_else(AttachFixError::into_diagnostic),
+                )
             })
             .collect()
     }
@@ -568,20 +572,21 @@ mod tests {
         decorations: &[(&str, &[&str])],
         names: &[(&str, Option<Resolution>)],
     ) -> Vec<Diagnostic> {
-        execute(&decorated(source, decorations, names), &mut passes())
+        let mut tree = parse(source, Language::Rust);
+        attach(&mut tree, decorations, names);
+        execute(&tree, &mut passes())
     }
 
     fn passes() -> Vec<Box<dyn LintPass>> {
         vec![Box::new(RustLintPassAdapter::new(FacadeBypassImport))]
     }
 
-    /// Parses `source` with the decorations that [`run_naming`] attaches
-    fn decorated(
-        source: &str,
+    /// Attaches the decorations that [`run_naming`] describes to `tree`
+    fn attach(
+        tree: &mut DecoratedTree,
         decorations: &[(&str, &[&str])],
         names: &[(&str, Option<Resolution>)],
-    ) -> DecoratedTree {
-        let mut tree = parse(source, Language::Rust);
+    ) {
         let mut map = DecorationMap::new();
         resolve(&tree.root_node(), names, &mut map);
         for (text, paths) in decorations {
@@ -591,8 +596,7 @@ mod tests {
                 map.insert(id, reexports(paths));
             }
         }
-        decorate(&mut tree, map);
-        tree
+        decorate(tree, map);
     }
 
     /// Asserts that the rule reports one path in `source` and attaches no
@@ -1008,11 +1012,14 @@ mod tests {
     #[test]
     fn fix_adds_a_rename_when_the_facade_exports_another_name() {
         assert_fix()
-            .tree(decorated(
-                "use facade::x;\nuse facade_core::Context;",
-                &[("facade_core::Context", &["facade::ErrorContext"])],
-                &[],
-            ))
+            .source("use facade::x;\nuse facade_core::Context;", Language::Rust)
+            .decorate(|tree| {
+                attach(
+                    tree,
+                    &[("facade_core::Context", &["facade::ErrorContext"])],
+                    &[],
+                )
+            })
             .passes(passes)
             .produces("use facade::x;\nuse facade::ErrorContext as Context;");
     }
@@ -1020,11 +1027,11 @@ mod tests {
     #[test]
     fn fix_imports_through_the_facade() {
         assert_fix()
-            .tree(decorated(
+            .source(
                 "use facade::x;\nuse facade_core::thing::Thing;",
-                &[THING],
-                &[],
-            ))
+                Language::Rust,
+            )
+            .decorate(|tree| attach(tree, &[THING], &[]))
             .passes(passes)
             .produces("use facade::x;\nuse facade::thing::Thing;");
     }
@@ -1032,11 +1039,11 @@ mod tests {
     #[test]
     fn fix_imports_through_the_facade_of_a_list_self() {
         assert_fix()
-            .tree(decorated(
+            .source(
                 "use facade::{self};\nuse facade_core::thing::Thing;",
-                &[THING],
-                &[],
-            ))
+                Language::Rust,
+            )
+            .decorate(|tree| attach(tree, &[THING], &[]))
             .passes(passes)
             .produces("use facade::{self};\nuse facade::thing::Thing;");
     }
@@ -1044,11 +1051,11 @@ mod tests {
     #[test]
     fn fix_imports_through_the_facade_of_a_wildcard() {
         assert_fix()
-            .tree(decorated(
+            .source(
                 "use facade::prelude::*;\nuse facade_core::thing::Thing;",
-                &[THING],
-                &[],
-            ))
+                Language::Rust,
+            )
+            .decorate(|tree| attach(tree, &[THING], &[]))
             .passes(passes)
             .produces("use facade::prelude::*;\nuse facade::thing::Thing;");
     }
@@ -1056,14 +1063,20 @@ mod tests {
     #[test]
     fn fix_imports_through_the_name_of_a_manifest_rename() {
         assert_fix()
-            .tree(decorated(
+            .source(
                 "use bevy_alias::prelude::*;\nuse bevy_ecs::system::Query;",
-                &[(
-                    "bevy_ecs::system::Query",
-                    &["bevy_alias::ecs::system::Query"],
-                )],
-                &[("bevy_alias", Some(crate_named("bevy")))],
-            ))
+                Language::Rust,
+            )
+            .decorate(|tree| {
+                attach(
+                    tree,
+                    &[(
+                        "bevy_ecs::system::Query",
+                        &["bevy_alias::ecs::system::Query"],
+                    )],
+                    &[("bevy_alias", Some(crate_named("bevy")))],
+                )
+            })
             .passes(passes)
             .produces("use bevy_alias::prelude::*;\nuse bevy_alias::ecs::system::Query;");
     }
@@ -1071,11 +1084,17 @@ mod tests {
     #[test]
     fn fix_keeps_a_raw_facade_name() {
         assert_fix()
-            .tree(decorated(
+            .source(
                 "use r#facade::x;\nuse r#facade_core::thing::Thing;",
-                &[("r#facade_core::thing::Thing", &["facade::thing::Thing"])],
-                &[],
-            ))
+                Language::Rust,
+            )
+            .decorate(|tree| {
+                attach(
+                    tree,
+                    &[("r#facade_core::thing::Thing", &["facade::thing::Thing"])],
+                    &[],
+                )
+            })
             .passes(passes)
             .produces("use r#facade::x;\nuse r#facade::thing::Thing;");
     }
@@ -1083,11 +1102,11 @@ mod tests {
     #[test]
     fn fix_keeps_an_as_rename() {
         assert_fix()
-            .tree(decorated(
+            .source(
                 "use facade::x;\nuse facade_core::thing::Thing as Other;",
-                &[THING],
-                &[],
-            ))
+                Language::Rust,
+            )
+            .decorate(|tree| attach(tree, &[THING], &[]))
             .passes(passes)
             .produces("use facade::x;\nuse facade::thing::Thing as Other;");
     }
@@ -1095,11 +1114,17 @@ mod tests {
     #[test]
     fn fix_keeps_an_underscore_rename() {
         assert_fix()
-            .tree(decorated(
+            .source(
                 "use facade::x;\nuse facade_core::Context as _;",
-                &[("facade_core::Context", &["facade::ErrorContext"])],
-                &[],
-            ))
+                Language::Rust,
+            )
+            .decorate(|tree| {
+                attach(
+                    tree,
+                    &[("facade_core::Context", &["facade::ErrorContext"])],
+                    &[],
+                )
+            })
             .passes(passes)
             .produces("use facade::x;\nuse facade::ErrorContext as _;");
     }
@@ -1107,11 +1132,11 @@ mod tests {
     #[test]
     fn fix_keeps_the_global_anchor_of_the_facade() {
         assert_fix()
-            .tree(decorated(
+            .source(
                 "use ::facade::x;\nuse facade_core::thing::Thing;",
-                &[THING],
-                &[],
-            ))
+                Language::Rust,
+            )
+            .decorate(|tree| attach(tree, &[THING], &[]))
             .passes(passes)
             .produces("use ::facade::x;\nuse ::facade::thing::Thing;");
     }
@@ -1119,11 +1144,11 @@ mod tests {
     #[test]
     fn fix_keeps_the_visibility() {
         assert_fix()
-            .tree(decorated(
+            .source(
                 "use facade::x;\npub use facade_core::thing::Thing;",
-                &[THING],
-                &[],
-            ))
+                Language::Rust,
+            )
+            .decorate(|tree| attach(tree, &[THING], &[]))
             .passes(passes)
             .produces("use facade::x;\npub use facade::thing::Thing;");
     }
@@ -1131,11 +1156,17 @@ mod tests {
     #[test]
     fn fix_replaces_a_path_through_a_crate_alias() {
         assert_fix()
-            .tree(decorated(
+            .source(
                 "use facade_core as fc;\nuse facade::x;\nuse fc::thing::Thing;",
-                &[("fc::thing::Thing", &["facade::thing::Thing"])],
-                &[("fc", Some(crate_named("facade_core")))],
-            ))
+                Language::Rust,
+            )
+            .decorate(|tree| {
+                attach(
+                    tree,
+                    &[("fc::thing::Thing", &["facade::thing::Thing"])],
+                    &[("fc", Some(crate_named("facade_core")))],
+                )
+            })
             .passes(passes)
             .produces("use facade_core as fc;\nuse facade::x;\nuse facade::thing::Thing;");
     }
@@ -1143,11 +1174,11 @@ mod tests {
     #[test]
     fn fix_rewrites_a_path_in_a_function_body() {
         assert_fix()
-            .tree(decorated(
+            .source(
                 "fn f() {\n    use facade::x;\n    use facade_core::thing::Thing;\n}",
-                &[THING],
-                &[],
-            ))
+                Language::Rust,
+            )
+            .decorate(|tree| attach(tree, &[THING], &[]))
             .passes(passes)
             .produces("fn f() {\n    use facade::x;\n    use facade::thing::Thing;\n}");
     }
@@ -1155,11 +1186,17 @@ mod tests {
     #[test]
     fn fix_rewrites_each_bypassing_path() {
         assert_fix()
-            .tree(decorated(
+            .source(
                 "use facade::x;\nuse facade_core::thing::Thing;\nuse facade_cli::Args;",
-                &[THING, ("facade_cli::Args", &["facade::cli::Args"])],
-                &[],
-            ))
+                Language::Rust,
+            )
+            .decorate(|tree| {
+                attach(
+                    tree,
+                    &[THING, ("facade_cli::Args", &["facade::cli::Args"])],
+                    &[],
+                )
+            })
             .passes(passes)
             .produces("use facade::x;\nuse facade::thing::Thing;\nuse facade::cli::Args;");
     }

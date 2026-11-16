@@ -31,7 +31,6 @@ stiles-types = { workspace = true }
 
 [dev-dependencies]
 example_pair = { workspace = true }
-tree-sitter = { workspace = true }
 stiles-testing = { workspace = true }
 test_decorations = { workspace = true }
 

@@ -1,6 +1,6 @@
 use stiles_rust::decorations::{Edition, Target};
 use stiles_rust::{RuleId, RustLintPass, RustLintPassAdapter};
-use stiles_types::{DecoratedNode, Diagnostic, Edit, Fix, LintPass, Severity, Span};
+use stiles_types::{AttachFixError, DecoratedNode, Diagnostic, Edit, Fix, LintPass, Severity};
 
 /// The id that every diagnostic of this rule carries
 ///
@@ -191,21 +191,24 @@ fn check_identifier(identifier: &DecoratedNode<'_>, submodules: &[&str]) -> Opti
         Outcome::Unfixed => return Some(diagnostic),
     }
 
-    let start = identifier.span().start();
-    let span = Span::builder()
+    let insertion = Edit::insert()
         .file(identifier.span().file_path().clone())
-        .start(start)
-        .end(start)
+        .offset(identifier.span().start())
+        .text("self::")
         .build();
-    let insertion = Edit::builder().span(span).replacement("self::").build();
-    let fixed = Fix::builder()
+    let Ok(fix) = Fix::builder()
         .message("prefix the path with `self::`")
         .edits(vec![insertion])
         .build()
-        .ok()
-        .and_then(|fix| diagnostic.clone().with_fix(fix).ok());
+    else {
+        return Some(diagnostic);
+    };
 
-    Some(fixed.unwrap_or(diagnostic))
+    Some(
+        diagnostic
+            .with_fix(fix)
+            .unwrap_or_else(AttachFixError::into_diagnostic),
+    )
 }
 
 /// Where a path sits, which decides what its first segment resolves against
@@ -234,11 +237,7 @@ fn placement(identifier: &DecoratedNode<'_>) -> Placement {
 /// Returns the edition of the crate that compiles the file, when the
 /// `Target` decoration of the file names it
 fn edition(node: &DecoratedNode<'_>) -> Option<Edition> {
-    let mut root = *node;
-    while let Some(parent) = root.parent() {
-        root = parent;
-    }
-    root.decoration::<Target>().map(Target::edition)
+    node.file_decoration::<Target>().map(Target::edition)
 }
 
 /// What the rule does with a path into a submodule
@@ -467,12 +466,11 @@ mod tests {
         vec![UnprefixedSubmodulePath::into_lint_pass()]
     }
 
-    /// Parses `source` as a file of a crate in `edition`
+    /// Marks `tree` as a file of a crate in `edition`
     ///
     /// The provider puts the edition on the `Target` decoration of the file.
     /// These tests run no provider, so they attach it by hand.
-    fn parse_in(source: &str, edition: Edition) -> DecoratedTree {
-        let mut tree = parse(source, Language::Rust);
+    fn mark_edition(tree: &mut DecoratedTree, edition: Edition) {
         let target = Target::builder()
             .krate("sample")
             .kinds(stiles_rust::decorations::TargetKinds::default())
@@ -480,11 +478,12 @@ mod tests {
             .build();
         let root = tree.root_node().id();
         tree.decorations_mut().insert(root, target);
-        tree
     }
 
     fn run_in(source: &str, edition: Edition) -> Vec<Diagnostic> {
-        execute(&parse_in(source, edition), &mut passes())
+        let mut tree = parse(source, Language::Rust);
+        mark_edition(&mut tree, edition);
+        execute(&tree, &mut passes())
     }
 
     /// Returns the source text under each diagnostic, in order
@@ -707,10 +706,8 @@ mod tests {
     #[test]
     fn edition_2015_path_outside_a_use_tree_is_fixed() {
         assert_fix()
-            .tree(parse_in(
-                "mod error;\nfn f() { error::Kind::new(); }",
-                Edition::Edition2015,
-            ))
+            .source("mod error;\nfn f() { error::Kind::new(); }", Language::Rust)
+            .decorate(|tree| mark_edition(tree, Edition::Edition2015))
             .passes(passes)
             .produces("mod error;\nfn f() { self::error::Kind::new(); }");
     }
@@ -732,7 +729,8 @@ mod tests {
     #[test]
     fn fix_prefixes_a_glob_import() {
         assert_fix()
-            .tree(parse_in("mod error;\nuse error::*;", Edition::Edition2021))
+            .source("mod error;\nuse error::*;", Language::Rust)
+            .decorate(|tree| mark_edition(tree, Edition::Edition2021))
             .passes(passes)
             .produces("mod error;\nuse self::error::*;");
     }
@@ -740,10 +738,7 @@ mod tests {
     #[test]
     fn fix_prefixes_a_macro_invocation_path() {
         assert_fix()
-            .tree(parse(
-                "mod macros;\nfn f() { macros::make!(); }",
-                Language::Rust,
-            ))
+            .source("mod macros;\nfn f() { macros::make!(); }", Language::Rust)
             .passes(passes)
             .produces("mod macros;\nfn f() { self::macros::make!(); }");
     }
@@ -751,10 +746,10 @@ mod tests {
     #[test]
     fn fix_prefixes_a_path_in_a_block() {
         assert_fix()
-            .tree(parse(
+            .source(
                 "mod error;\nfn f() { let k: error::Kind = error::Kind::new(); }",
                 Language::Rust,
-            ))
+            )
             .passes(passes)
             .produces(
                 "mod error;\nfn f() { let k: self::error::Kind = self::error::Kind::new(); }",
@@ -764,10 +759,11 @@ mod tests {
     #[test]
     fn fix_prefixes_a_path_in_an_inline_module() {
         assert_fix()
-            .tree(parse_in(
+            .source(
                 "mod outer {\n    mod error;\n    use error::Kind;\n}",
-                Edition::Edition2024,
-            ))
+                Language::Rust,
+            )
+            .decorate(|tree| mark_edition(tree, Edition::Edition2024))
             .passes(passes)
             .produces("mod outer {\n    mod error;\n    use self::error::Kind;\n}");
     }
@@ -775,10 +771,10 @@ mod tests {
     #[test]
     fn fix_prefixes_a_pattern() {
         assert_fix()
-            .tree(parse(
+            .source(
                 "mod error;\nfn f(k: K) { match k { error::Kind::A => {} } }",
                 Language::Rust,
-            ))
+            )
             .passes(passes)
             .produces("mod error;\nfn f(k: K) { match k { self::error::Kind::A => {} } }");
     }
@@ -786,10 +782,7 @@ mod tests {
     #[test]
     fn fix_prefixes_a_raw_identifier() {
         assert_fix()
-            .tree(parse(
-                "mod r#match;\nfn f() { r#match::x(); }",
-                Language::Rust,
-            ))
+            .source("mod r#match;\nfn f() { r#match::x(); }", Language::Rust)
             .passes(passes)
             .produces("mod r#match;\nfn f() { self::r#match::x(); }");
     }
@@ -797,10 +790,8 @@ mod tests {
     #[test]
     fn fix_prefixes_a_renamed_import() {
         assert_fix()
-            .tree(parse_in(
-                "mod error;\nuse error as e;",
-                Edition::Edition2018,
-            ))
+            .source("mod error;\nuse error as e;", Language::Rust)
+            .decorate(|tree| mark_edition(tree, Edition::Edition2018))
             .passes(passes)
             .produces("mod error;\nuse self::error as e;");
     }
@@ -808,10 +799,10 @@ mod tests {
     #[test]
     fn fix_prefixes_a_struct_expression() {
         assert_fix()
-            .tree(parse(
+            .source(
                 "mod error;\nfn f() { error::Kind { code: 1 }; }",
                 Language::Rust,
-            ))
+            )
             .passes(passes)
             .produces("mod error;\nfn f() { self::error::Kind { code: 1 }; }");
     }
@@ -819,10 +810,7 @@ mod tests {
     #[test]
     fn fix_prefixes_an_attribute_path() {
         assert_fix()
-            .tree(parse(
-                "mod attrs;\n#[attrs::marker]\nfn f() {}",
-                Language::Rust,
-            ))
+            .source("mod attrs;\n#[attrs::marker]\nfn f() {}", Language::Rust)
             .passes(passes)
             .produces("mod attrs;\n#[self::attrs::marker]\nfn f() {}");
     }
@@ -830,10 +818,8 @@ mod tests {
     #[test]
     fn fix_prefixes_each_path_of_a_list_without_a_prefix() {
         assert_fix()
-            .tree(parse_in(
-                "mod a;\nmod b;\nuse {a::X, b::Y};",
-                Edition::Edition2021,
-            ))
+            .source("mod a;\nmod b;\nuse {a::X, b::Y};", Language::Rust)
+            .decorate(|tree| mark_edition(tree, Edition::Edition2021))
             .passes(passes)
             .produces("mod a;\nmod b;\nuse {self::a::X, self::b::Y};");
     }
@@ -841,10 +827,11 @@ mod tests {
     #[test]
     fn fix_prefixes_the_path_of_a_grouped_import() {
         assert_fix()
-            .tree(parse_in(
+            .source(
                 "mod error;\npub use error::{Kind, ParseError};",
-                Edition::Edition2021,
-            ))
+                Language::Rust,
+            )
+            .decorate(|tree| mark_edition(tree, Edition::Edition2021))
             .passes(passes)
             .produces("mod error;\npub use self::error::{Kind, ParseError};");
     }

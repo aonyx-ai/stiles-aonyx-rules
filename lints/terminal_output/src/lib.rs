@@ -243,11 +243,7 @@ fn is_exempt_file(node: &DecoratedNode<'_>) -> bool {
         return true;
     }
 
-    let mut file = *node;
-    while let Some(parent) = file.parent() {
-        file = parent;
-    }
-    file.decoration::<Target>().is_some_and(|target| {
+    node.file_decoration::<Target>().is_some_and(|target| {
         let kinds = target.kinds();
         !kinds.is_empty() && kinds.iter().all(talks_to_its_reader)
     })
@@ -266,32 +262,15 @@ fn talks_to_its_reader(kind: TargetKind) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use std::path::Path;
-
     use stiles_rust::RustLintPassAdapter;
     use stiles_rust::decorations::{DefinitionOrigin, TypePath};
-    use stiles_testing::{assert_diagnostic, execute};
+    use stiles_testing::{assert_diagnostic, execute, parse_at};
     use stiles_types::{DecoratedTree, Language, LintPass};
 
     use super::*;
 
     /// The path the tests give a file the rule checks
     const LIBRARY: &str = "/work/project/crates/report/src/render.rs";
-
-    /// Parses `source` as the file at `path`
-    fn parse_at(path: &Path, source: &str) -> DecoratedTree {
-        let mut parser = tree_sitter::Parser::new();
-        parser
-            .set_language(&stiles_rust::language())
-            .expect("should load the Rust grammar");
-        let tree = parser.parse(source, None).expect("should parse");
-        DecoratedTree::builder()
-            .tree(tree)
-            .language(Language::Rust)
-            .source(source.to_owned())
-            .file(path.to_path_buf())
-            .build()
-    }
 
     /// Returns what the provider attaches to a name of the item that `path` spells
     ///
@@ -411,7 +390,7 @@ mod tests {
         names: &[(&str, Resolution)],
         attach: impl FnOnce(&mut DecoratedTree),
     ) -> Vec<String> {
-        let mut tree = parse_at(Path::new(LIBRARY), source);
+        let mut tree = parse_at(LIBRARY, source, Language::Rust);
         let mut all = standard_names();
         all.extend(names.iter().cloned());
         resolve(&mut tree, &all);
@@ -447,7 +426,7 @@ mod tests {
 
     /// Returns whether the rule skips the file `source` whose targets are `kinds`
     fn exempt(source: &str, kinds: impl IntoIterator<Item = TargetKind>) -> bool {
-        let mut tree = parse_at(Path::new(LIBRARY), source);
+        let mut tree = parse_at(LIBRARY, source, Language::Rust);
         test_decorations::target(&mut tree, kinds);
         is_exempt_file(&tree.root_node())
     }
@@ -621,7 +600,7 @@ mod tests {
     #[test]
     fn diagnostic_has_rule_id_severity_and_span() {
         let source = "fn f() { println!(\"x\"); }";
-        let mut tree = parse_at(Path::new(LIBRARY), source);
+        let mut tree = parse_at(LIBRARY, source, Language::Rust);
         resolve(&mut tree, &standard_names());
         let mut passes: Vec<Box<dyn LintPass>> =
             vec![Box::new(RustLintPassAdapter::new(TerminalOutput))];
@@ -637,7 +616,7 @@ mod tests {
     #[test]
     fn diagnostic_is_reported_once() {
         let source = "fn f() { println!(\"x\"); }";
-        let mut tree = parse_at(Path::new(LIBRARY), source);
+        let mut tree = parse_at(LIBRARY, source, Language::Rust);
         resolve(&mut tree, &standard_names());
         let mut passes: Vec<Box<dyn LintPass>> =
             vec![Box::new(RustLintPassAdapter::new(TerminalOutput))];
@@ -853,7 +832,7 @@ mod tests {
 
     #[test]
     fn is_exempt_file_without_a_target_returns_false() {
-        let tree = parse_at(Path::new(LIBRARY), "fn main() {}");
+        let tree = parse_at(LIBRARY, "fn main() {}", Language::Rust);
 
         let exempt = is_exempt_file(&tree.root_node());
 

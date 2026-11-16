@@ -1,6 +1,6 @@
 use doc_comment::DocLine;
 use stiles_rust::{RuleId, RustLintPass};
-use stiles_types::{DecoratedNode, Diagnostic, Edit, Fix, Severity, Span};
+use stiles_types::{AttachFixError, DecoratedNode, Diagnostic, Edit, Fix, Severity, Span};
 
 /// The id that every diagnostic of this rule carries
 ///
@@ -137,15 +137,20 @@ fn report(node: &DecoratedNode<'_>) -> Option<Diagnostic> {
         return Some(diagnostic);
     }
 
-    let deletion = Edit::builder().span(span).replacement("").build();
-    let fixed = Fix::builder()
+    let deletion = Edit::delete(span);
+    let Ok(fix) = Fix::builder()
         .message("delete the period")
         .edits(vec![deletion])
         .build()
-        .ok()
-        .and_then(|fix| diagnostic.clone().with_fix(fix).ok());
+    else {
+        return Some(diagnostic);
+    };
 
-    Some(fixed.unwrap_or(diagnostic))
+    Some(
+        diagnostic
+            .with_fix(fix)
+            .unwrap_or_else(AttachFixError::into_diagnostic),
+    )
 }
 
 /// Returns the placement of a doc comment or a doc attribute, or [`None`]
@@ -588,7 +593,7 @@ mod tests {
     #[test]
     fn fix_deletes_the_period_after_a_code_span() {
         assert_fix()
-            .tree(parse("/// Reads `Cargo.toml`.\nfn f() {}", Language::Rust))
+            .source("/// Reads `Cargo.toml`.\nfn f() {}", Language::Rust)
             .passes(passes)
             .produces("/// Reads `Cargo.toml`\nfn f() {}");
     }
@@ -596,10 +601,7 @@ mod tests {
     #[test]
     fn fix_deletes_the_period_of_a_block_comment() {
         assert_fix()
-            .tree(parse(
-                "/** Returns the length. */\nfn f() {}",
-                Language::Rust,
-            ))
+            .source("/** Returns the length. */\nfn f() {}", Language::Rust)
             .passes(passes)
             .produces("/** Returns the length */\nfn f() {}");
     }
@@ -607,7 +609,7 @@ mod tests {
     #[test]
     fn fix_deletes_the_period_of_a_wrapped_summary() {
         assert_fix()
-            .tree(parse("/// Returns the length of the string, counted\n/// in bytes.\n///\n/// More.\nfn f() {}", Language::Rust))
+            .source("/// Returns the length of the string, counted\n/// in bytes.\n///\n/// More.\nfn f() {}", Language::Rust)
             .passes(passes)
             .produces("/// Returns the length of the string, counted\n/// in bytes\n///\n/// More.\nfn f() {}");
     }
@@ -615,7 +617,7 @@ mod tests {
     #[test]
     fn fix_deletes_the_period_of_an_inner_doc_comment() {
         assert_fix()
-            .tree(parse("//! Holds the parser.\n", Language::Rust))
+            .source("//! Holds the parser.\n", Language::Rust)
             .passes(passes)
             .produces("//! Holds the parser\n");
     }
@@ -623,10 +625,10 @@ mod tests {
     #[test]
     fn fix_deletes_the_period_of_every_item() {
         assert_fix()
-            .tree(parse(
+            .source(
                 "/// Returns one.\nfn f() {}\n/// Returns two.\nfn g() {}",
                 Language::Rust,
-            ))
+            )
             .passes(passes)
             .produces("/// Returns one\nfn f() {}\n/// Returns two\nfn g() {}");
     }
@@ -634,10 +636,7 @@ mod tests {
     #[test]
     fn fix_keeps_the_whitespace_after_the_period() {
         assert_fix()
-            .tree(parse(
-                "/// Returns the length.   \nfn f() {}",
-                Language::Rust,
-            ))
+            .source("/// Returns the length.   \nfn f() {}", Language::Rust)
             .passes(passes)
             .produces("/// Returns the length   \nfn f() {}");
     }
