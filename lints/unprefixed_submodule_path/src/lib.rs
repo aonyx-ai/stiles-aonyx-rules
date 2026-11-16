@@ -1,5 +1,6 @@
+use stiles_rust::decorations::{Edition, Target};
 use stiles_rust::{RuleId, RustLintPass, RustLintPassAdapter};
-use stiles_types::{DecoratedNode, Diagnostic, LintPass, Severity};
+use stiles_types::{DecoratedNode, Diagnostic, Edit, Fix, LintPass, Severity, Span};
 
 /// The id that every diagnostic of this rule carries
 ///
@@ -51,6 +52,14 @@ const TYPE_NAMESPACE_ITEMS: [&str; 6] = [
 /// block. A `use` in the module itself never hides a submodule. Two bindings
 /// of one name among modules and types do not compile, and `self::` reaches
 /// an import as well as a declaration.
+///
+/// The edition 2015 starts a `use` path at the crate root, not at the
+/// module. The rule reads the edition from the `Target` decoration, and
+/// stays silent on a `use` path of a 2015 crate.
+///
+/// `stiles check --fix` inserts `self::` before the segment. Outside a `use`
+/// tree, `self::` means the same in every edition. Inside one, the rule
+/// attaches the fix only when the decoration proves the edition 2018 or later.
 ///
 /// # Examples
 ///
@@ -105,7 +114,7 @@ impl stiles_plugin::DeclaresRules for UnprefixedSubmodulePath {
     }
 
     fn reads(&self) -> stiles_plugin::Reads {
-        stiles_plugin::Reads::none()
+        stiles_plugin::Reads::of::<Target>()
     }
 }
 
@@ -165,18 +174,101 @@ fn check_identifier(identifier: &DecoratedNode<'_>, submodules: &[&str]) -> Opti
     if !starts_path(identifier) || continues_use_prefix(identifier) {
         return None;
     }
+    let outcome = outcome(placement(identifier), edition(identifier));
 
-    Some(
-        Diagnostic::builder()
-            .rule_id(RULE_ID)
-            .severity(Severity::Error)
-            .message(format!(
-                "`{name}` names a submodule, so the path reads like a crate; write `self::{name}`",
-                name = identifier.text(),
-            ))
-            .span(identifier.span())
-            .build(),
-    )
+    let diagnostic = Diagnostic::builder()
+        .rule_id(RULE_ID)
+        .severity(Severity::Error)
+        .message(format!(
+            "`{name}` names a submodule, so the path reads like a crate; write `self::{name}`",
+            name = identifier.text(),
+        ))
+        .span(identifier.span())
+        .build();
+    match outcome {
+        Outcome::Fixed => {}
+        Outcome::Silent => return None,
+        Outcome::Unfixed => return Some(diagnostic),
+    }
+
+    let start = identifier.span().start();
+    let span = Span::builder()
+        .file(identifier.span().file_path().clone())
+        .start(start)
+        .end(start)
+        .build();
+    let insertion = Edit::builder().span(span).replacement("self::").build();
+    let fixed = Fix::builder()
+        .message("prefix the path with `self::`")
+        .edits(vec![insertion])
+        .build()
+        .ok()
+        .and_then(|fix| diagnostic.clone().with_fix(fix).ok());
+
+    Some(fixed.unwrap_or(diagnostic))
+}
+
+/// Where a path sits, which decides what its first segment resolves against
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+enum Placement {
+    /// Anywhere outside a `use` tree, such as an expression or a type
+    Elsewhere,
+    /// Inside the tree of a `use` declaration
+    UseTree,
+}
+
+/// Returns whether the identifier lies in the tree of a `use` declaration
+fn placement(identifier: &DecoratedNode<'_>) -> Placement {
+    let mut current = *identifier;
+    while let Some(parent) = current.parent() {
+        match parent.kind() {
+            "use_declaration" => return Placement::UseTree,
+            "scoped_identifier" | "scoped_use_list" | "use_as_clause" | "use_list"
+            | "use_wildcard" => current = parent,
+            _ => return Placement::Elsewhere,
+        }
+    }
+    Placement::Elsewhere
+}
+
+/// Returns the edition of the crate that compiles the file, when the
+/// `Target` decoration of the file names it
+fn edition(node: &DecoratedNode<'_>) -> Option<Edition> {
+    let mut root = *node;
+    while let Some(parent) = root.parent() {
+        root = parent;
+    }
+    root.decoration::<Target>().map(Target::edition)
+}
+
+/// What the rule does with a path into a submodule
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+enum Outcome {
+    /// Reports the path and attaches the fix that inserts `self::`
+    Fixed,
+    /// Reports nothing, because the path does not name the submodule
+    Silent,
+    /// Reports the path without a fix
+    Unfixed,
+}
+
+/// Returns what the rule does with a path at `placement` in `edition`
+///
+/// Outside a `use` tree, a path starts at the module in every edition, so
+/// `self::` keeps what it names. A `use` path does that from the edition
+/// 2018 on. In the edition 2015 it starts at the crate root, so it does not
+/// name the submodule. Without an edition, the rule cannot tell.
+fn outcome(placement: Placement, edition: Option<Edition>) -> Outcome {
+    match placement {
+        Placement::Elsewhere => Outcome::Fixed,
+        Placement::UseTree => match edition {
+            Some(Edition::Edition2015) => Outcome::Silent,
+            Some(Edition::Edition2018 | Edition::Edition2021 | Edition::Edition2024) => {
+                Outcome::Fixed
+            }
+            None => Outcome::Unfixed,
+        },
+    }
 }
 
 /// Returns whether the identifier is the first segment of a path
@@ -359,7 +451,8 @@ fn unraw(identifier: &str) -> &str {
 
 #[cfg(test)]
 mod tests {
-    use stiles_testing::{assert_diagnostic, assert_no_diagnostics, execute, parse};
+    use stiles_testing::{assert_diagnostic, assert_fix, assert_no_diagnostics, execute, parse};
+    use stiles_types::DecoratedTree;
     use stiles_types::Language;
 
     use super::*;
@@ -368,6 +461,30 @@ mod tests {
         let tree = parse(source, Language::Rust);
         let mut passes = vec![UnprefixedSubmodulePath::into_lint_pass()];
         execute(&tree, &mut passes)
+    }
+
+    fn passes() -> Vec<Box<dyn LintPass>> {
+        vec![UnprefixedSubmodulePath::into_lint_pass()]
+    }
+
+    /// Parses `source` as a file of a crate in `edition`
+    ///
+    /// The provider puts the edition on the `Target` decoration of the file.
+    /// These tests run no provider, so they attach it by hand.
+    fn parse_in(source: &str, edition: Edition) -> DecoratedTree {
+        let mut tree = parse(source, Language::Rust);
+        let target = Target::builder()
+            .krate("sample")
+            .kinds(stiles_rust::decorations::TargetKinds::default())
+            .edition(edition)
+            .build();
+        let root = tree.root_node().id();
+        tree.decorations_mut().insert(root, target);
+        tree
+    }
+
+    fn run_in(source: &str, edition: Edition) -> Vec<Diagnostic> {
+        execute(&parse_in(source, edition), &mut passes())
     }
 
     /// Returns the source text under each diagnostic, in order
@@ -569,8 +686,7 @@ mod tests {
     }
 
     fn run_documented(source: &str) -> Vec<stiles_types::Diagnostic> {
-        let tree = stiles_testing::parse(source, stiles_types::Language::Rust);
-        stiles_testing::execute(&tree, &mut [UnprefixedSubmodulePath::into_lint_pass()])
+        run_in(source, Edition::Edition2021)
     }
 
     #[test]
@@ -589,10 +705,148 @@ mod tests {
         stiles_testing::assert_no_diagnostics(&diagnostics);
     }
     #[test]
+    fn edition_2015_path_outside_a_use_tree_is_fixed() {
+        assert_fix()
+            .tree(parse_in(
+                "mod error;\nfn f() { error::Kind::new(); }",
+                Edition::Edition2015,
+            ))
+            .passes(passes)
+            .produces("mod error;\nfn f() { self::error::Kind::new(); }");
+    }
+
+    #[test]
+    fn edition_2015_use_path_is_not_flagged() {
+        let diagnostics = run_in("mod error;\nuse error::Kind;", Edition::Edition2015);
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
     fn enum_variant_pattern_is_flagged() {
         let source = "mod error;\nfn f(k: K) { match k { error::Kind::A => {} _ => {} } }";
 
         assert_eq!(flagged(source), ["error"]);
+    }
+
+    #[test]
+    fn fix_prefixes_a_glob_import() {
+        assert_fix()
+            .tree(parse_in("mod error;\nuse error::*;", Edition::Edition2021))
+            .passes(passes)
+            .produces("mod error;\nuse self::error::*;");
+    }
+
+    #[test]
+    fn fix_prefixes_a_macro_invocation_path() {
+        assert_fix()
+            .tree(parse(
+                "mod macros;\nfn f() { macros::make!(); }",
+                Language::Rust,
+            ))
+            .passes(passes)
+            .produces("mod macros;\nfn f() { self::macros::make!(); }");
+    }
+
+    #[test]
+    fn fix_prefixes_a_path_in_a_block() {
+        assert_fix()
+            .tree(parse(
+                "mod error;\nfn f() { let k: error::Kind = error::Kind::new(); }",
+                Language::Rust,
+            ))
+            .passes(passes)
+            .produces(
+                "mod error;\nfn f() { let k: self::error::Kind = self::error::Kind::new(); }",
+            );
+    }
+
+    #[test]
+    fn fix_prefixes_a_path_in_an_inline_module() {
+        assert_fix()
+            .tree(parse_in(
+                "mod outer {\n    mod error;\n    use error::Kind;\n}",
+                Edition::Edition2024,
+            ))
+            .passes(passes)
+            .produces("mod outer {\n    mod error;\n    use self::error::Kind;\n}");
+    }
+
+    #[test]
+    fn fix_prefixes_a_pattern() {
+        assert_fix()
+            .tree(parse(
+                "mod error;\nfn f(k: K) { match k { error::Kind::A => {} } }",
+                Language::Rust,
+            ))
+            .passes(passes)
+            .produces("mod error;\nfn f(k: K) { match k { self::error::Kind::A => {} } }");
+    }
+
+    #[test]
+    fn fix_prefixes_a_raw_identifier() {
+        assert_fix()
+            .tree(parse(
+                "mod r#match;\nfn f() { r#match::x(); }",
+                Language::Rust,
+            ))
+            .passes(passes)
+            .produces("mod r#match;\nfn f() { self::r#match::x(); }");
+    }
+
+    #[test]
+    fn fix_prefixes_a_renamed_import() {
+        assert_fix()
+            .tree(parse_in(
+                "mod error;\nuse error as e;",
+                Edition::Edition2018,
+            ))
+            .passes(passes)
+            .produces("mod error;\nuse self::error as e;");
+    }
+
+    #[test]
+    fn fix_prefixes_a_struct_expression() {
+        assert_fix()
+            .tree(parse(
+                "mod error;\nfn f() { error::Kind { code: 1 }; }",
+                Language::Rust,
+            ))
+            .passes(passes)
+            .produces("mod error;\nfn f() { self::error::Kind { code: 1 }; }");
+    }
+
+    #[test]
+    fn fix_prefixes_an_attribute_path() {
+        assert_fix()
+            .tree(parse(
+                "mod attrs;\n#[attrs::marker]\nfn f() {}",
+                Language::Rust,
+            ))
+            .passes(passes)
+            .produces("mod attrs;\n#[self::attrs::marker]\nfn f() {}");
+    }
+
+    #[test]
+    fn fix_prefixes_each_path_of_a_list_without_a_prefix() {
+        assert_fix()
+            .tree(parse_in(
+                "mod a;\nmod b;\nuse {a::X, b::Y};",
+                Edition::Edition2021,
+            ))
+            .passes(passes)
+            .produces("mod a;\nmod b;\nuse {self::a::X, self::b::Y};");
+    }
+
+    #[test]
+    fn fix_prefixes_the_path_of_a_grouped_import() {
+        assert_fix()
+            .tree(parse_in(
+                "mod error;\npub use error::{Kind, ParseError};",
+                Edition::Edition2021,
+            ))
+            .passes(passes)
+            .produces("mod error;\npub use self::error::{Kind, ParseError};");
     }
 
     #[test]
@@ -882,6 +1136,14 @@ mod tests {
         assert_eq!(diagnostics.len(), 1);
     }
 
+    #[cfg(feature = "plugin")]
+    #[test]
+    fn reads_returns_the_target() {
+        let reads = stiles_plugin::DeclaresRules::reads(&UnprefixedSubmodulePath);
+
+        assert_eq!(reads, stiles_plugin::Reads::of::<Target>());
+    }
+
     #[test]
     fn return_type_is_flagged() {
         let source = "mod error;\nfn f() -> Result<(), error::Kind> { Ok(()) }";
@@ -938,15 +1200,51 @@ mod tests {
     }
 
     #[test]
+    fn trait_send_outcome() {
+        fn assert_send<T: Send>() {}
+        assert_send::<Outcome>();
+    }
+
+    #[test]
+    fn trait_send_placement() {
+        fn assert_send<T: Send>() {}
+        assert_send::<Placement>();
+    }
+
+    #[test]
     fn trait_sync() {
         fn assert_sync<T: Sync>() {}
         assert_sync::<UnprefixedSubmodulePath>();
     }
 
     #[test]
+    fn trait_sync_outcome() {
+        fn assert_sync<T: Sync>() {}
+        assert_sync::<Outcome>();
+    }
+
+    #[test]
+    fn trait_sync_placement() {
+        fn assert_sync<T: Sync>() {}
+        assert_sync::<Placement>();
+    }
+
+    #[test]
     fn trait_unpin() {
         fn assert_unpin<T: Unpin>() {}
         assert_unpin::<UnprefixedSubmodulePath>();
+    }
+
+    #[test]
+    fn trait_unpin_outcome() {
+        fn assert_unpin<T: Unpin>() {}
+        assert_unpin::<Outcome>();
+    }
+
+    #[test]
+    fn trait_unpin_placement() {
+        fn assert_unpin<T: Unpin>() {}
+        assert_unpin::<Placement>();
     }
 
     #[test]
@@ -975,5 +1273,12 @@ mod tests {
         let source = "mod error;\nfn f() -> error::Unit { error::Unit }";
 
         assert_eq!(flagged(source), ["error", "error"]);
+    }
+
+    #[test]
+    fn use_path_without_an_edition_has_no_fix() {
+        let diagnostics = run("mod error;\nuse error::Kind;");
+
+        assert_diagnostic(&diagnostics[0]).has_no_fix();
     }
 }

@@ -3,7 +3,7 @@ use std::fmt;
 
 use stiles_rust::decorations::{DefinitionKind, PublicPath, Reexports, Resolution};
 use stiles_rust::{RuleId, RustLintPass};
-use stiles_types::{DecoratedNode, Diagnostic, Severity};
+use stiles_types::{DecoratedNode, Diagnostic, Edit, Fix, Severity};
 
 /// The id that every diagnostic of this rule carries
 ///
@@ -22,6 +22,18 @@ pub const RULE_ID: RuleId = RuleId::new("lint.facade-bypass-import");
 /// `use core::fmt` lists `std::fmt`. That is not a facade bypass, and
 /// neither is a `std` path beside a crate that re-exports `std` items.
 const SYSROOT: &[&str] = &["std", "core", "alloc"];
+
+/// The keywords of every edition, which a path segment cannot spell bare
+///
+/// A public path names a segment without an `r#` prefix. The fix leaves a
+/// path with such a segment alone rather than guess the prefix it needs.
+const KEYWORDS: &[&str] = &[
+    "Self", "abstract", "as", "async", "await", "become", "box", "break", "const", "continue",
+    "crate", "do", "dyn", "else", "enum", "extern", "false", "final", "fn", "for", "gen", "if",
+    "impl", "in", "let", "loop", "macro", "match", "mod", "move", "mut", "override", "priv", "pub",
+    "ref", "return", "self", "static", "struct", "super", "trait", "true", "try", "type", "typeof",
+    "unsafe", "unsized", "use", "virtual", "where", "while", "yield",
+];
 
 /// Flags an import that goes around a facade the same file imports from
 ///
@@ -47,6 +59,16 @@ const SYSROOT: &[&str] = &["std", "core", "alloc"];
 /// The keywords `crate`, `self`, and `super` name none. The rule reads `use`
 /// declarations anywhere in the file, but not in a macro body. It never
 /// treats `std`, `core`, or `alloc` as either side.
+///
+/// `stiles check --fix` replaces the imported path with the path through the
+/// facade. It keeps an `as` rename, and it adds one when the facade exports
+/// the item under another name.
+///
+/// The rule attaches no fix inside a grouped `use` tree, because the new
+/// path can need its own `use`. It attaches none unless another `use` in the
+/// same scope spells the name of the facade and resolves to that crate. A
+/// rename in the file that binds that name also leaves the finding without a
+/// fix, and so does a keyword in the new path.
 ///
 /// # Examples
 ///
@@ -241,6 +263,19 @@ impl fmt::Display for UsePath<'_> {
 struct ImportedPath<'a> {
     node: DecoratedNode<'a>,
     path: UsePath<'a>,
+    /// The node that holds the `use`, such as a module body or a block
+    scope: Option<usize>,
+}
+
+/// The first segment of a `use` path that resolves to a crate
+///
+/// It proves that the name it spells names that crate in its scope.
+#[derive(Clone, Debug)]
+struct Spelling<'a> {
+    first: DecoratedNode<'a>,
+    anchor: Anchor,
+    /// The node that holds the `use`, such as a module body or a block
+    scope: Option<usize>,
 }
 
 /// The paths a file imports and the crates it imports from
@@ -248,6 +283,11 @@ struct ImportedPath<'a> {
 struct FileImports<'a> {
     imported: Vec<ImportedPath<'a>>,
     roots: BTreeSet<&'a str>,
+    spellings: Vec<Spelling<'a>>,
+    /// The names that a rename in the file binds
+    aliases: BTreeSet<&'a str>,
+    /// The node that holds the `use` that the walk is in
+    scope: Option<usize>,
 }
 
 impl<'a> FileImports<'a> {
@@ -256,11 +296,16 @@ impl<'a> FileImports<'a> {
     /// A macro body is a token tree to tree-sitter, so a `use` inside one
     /// is not seen.
     fn walk(&mut self, node: &DecoratedNode<'a>) {
-        if node.kind() == "use_declaration" {
-            if let Some(argument) = node.child_by_field_name("argument") {
-                self.walk_use_tree(&argument, &UsePath::default());
+        match node.kind() {
+            "use_declaration" => {
+                self.scope = node.parent().map(|parent| parent.id());
+                if let Some(argument) = node.child_by_field_name("argument") {
+                    self.walk_use_tree(&argument, &UsePath::default());
+                }
+                return;
             }
-            return;
+            "extern_crate_declaration" => self.add_alias(node),
+            _ => {}
         }
 
         for child in node.named_children() {
@@ -279,6 +324,7 @@ impl<'a> FileImports<'a> {
                 self.import(*node, path);
             }
             "use_as_clause" => {
+                self.add_alias(node);
                 let Some(target) = node.child_by_field_name("path") else {
                     return;
                 };
@@ -315,13 +361,29 @@ impl<'a> FileImports<'a> {
     /// Records a path a `use` imports and the crate it starts at
     fn import(&mut self, node: DecoratedNode<'a>, path: UsePath<'a>) {
         self.add_root(&path);
-        self.imported.push(ImportedPath { node, path });
+        let scope = self.scope;
+        self.imported.push(ImportedPath { node, path, scope });
     }
 
     /// Records the crate a path starts at, if it starts at one
     fn add_root(&mut self, path: &UsePath<'a>) {
-        if let Some(root) = path.root() {
-            self.roots.extend(root.both());
+        let Some(root) = path.root() else {
+            return;
+        };
+        self.roots.extend(root.both());
+        if let Some(first) = path.segments.first() {
+            self.spellings.push(Spelling {
+                first: *first,
+                anchor: path.anchor,
+                scope: self.scope,
+            });
+        }
+    }
+
+    /// Records the name that a rename binds
+    fn add_alias(&mut self, node: &DecoratedNode<'a>) {
+        if let Some(alias) = node.child_by_field_name("alias") {
+            self.aliases.insert(unraw(alias.text()));
         }
     }
 
@@ -330,14 +392,97 @@ impl<'a> FileImports<'a> {
     fn report(&self) -> Vec<Diagnostic> {
         self.imported
             .iter()
-            .filter_map(|imported| bypass(imported, &self.roots))
+            .filter_map(|imported| {
+                let (diagnostic, facade) = bypass(imported, &self.roots)?;
+                let fixed = self
+                    .rewrite(imported, facade)
+                    .and_then(|fix| diagnostic.clone().with_fix(fix).ok());
+                Some(fixed.unwrap_or(diagnostic))
+            })
             .collect()
+    }
+
+    /// Returns the fix that imports the path through the facade, or [`None`]
+    /// when the new path could fail or name something else
+    ///
+    /// The import must stand alone, because a path inside a group shares its
+    /// prefix with the rest of the group. The same scope must spell the
+    /// facade's name in another `use` that resolves to a crate. No rename in
+    /// the file may bind that name. A keyword in the facade path gets no fix.
+    /// The fix keeps the name the import binds. It keeps an `as` rename, and
+    /// it adds one when the facade exports the item under another name.
+    ///
+    /// [`None`]: std::option::Option::None
+    fn rewrite(&self, imported: &ImportedPath<'a>, facade: &PublicPath) -> Option<Fix> {
+        let ImportedPath { node, path, scope } = imported;
+        let krate = facade.krate();
+        let segments: Vec<&str> = facade.segments().collect();
+        let parent = node.parent()?;
+        let stands_alone = |clause: &DecoratedNode<'_>| {
+            clause
+                .parent()
+                .is_some_and(|owner| owner.kind() == "use_declaration")
+        };
+        let renamed = match parent.kind() {
+            "use_declaration" => Renamed::No,
+            "use_as_clause" if stands_alone(&parent) => Renamed::Yes,
+            _ => return None,
+        };
+        if segments.is_empty()
+            || segments.iter().any(|segment| KEYWORDS.contains(segment))
+            || self.aliases.contains(krate)
+        {
+            return None;
+        }
+        let spelling = self
+            .spellings
+            .iter()
+            .find(|spelling| spelling.scope == *scope && unraw(spelling.first.text()) == krate)?;
+
+        let mut replacement = match spelling.anchor {
+            Anchor::Global => String::from("::"),
+            Anchor::Bare => String::new(),
+        };
+        replacement.push_str(spelling.first.text());
+        for segment in &segments {
+            replacement.push_str("::");
+            replacement.push_str(segment);
+        }
+        let bound = path.segments.last()?.text();
+        let exported = segments.last()?;
+        match (renamed, unraw(bound) == *exported) {
+            (Renamed::No, false) => replacement.push_str(&format!(" as {bound}")),
+            (Renamed::No, true) | (Renamed::Yes, true | false) => {}
+        }
+
+        let edit = Edit::builder()
+            .span(node.span())
+            .replacement(replacement)
+            .build();
+        Fix::builder()
+            .message(format!("import it through `{krate}`"))
+            .edits(vec![edit])
+            .build()
+            .ok()
     }
 }
 
-/// Returns a diagnostic when an imported path bypasses a facade in `crates`
-fn bypass(imported: &ImportedPath<'_>, crates: &BTreeSet<&str>) -> Option<Diagnostic> {
-    let ImportedPath { node, path } = imported;
+/// Whether an import renames what it binds with `as`
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+enum Renamed {
+    /// The import binds the last segment of its path
+    No,
+    /// The import binds the name after `as`
+    Yes,
+}
+
+/// Returns a diagnostic when an imported path bypasses a facade in
+/// `crates`, with the path through the facade
+fn bypass<'r>(
+    imported: &ImportedPath<'r>,
+    crates: &BTreeSet<&str>,
+) -> Option<(Diagnostic, &'r PublicPath)> {
+    let ImportedPath { node, path, .. } = imported;
     let root = path.root()?;
     if root.both().iter().any(|name| SYSROOT.contains(name)) {
         return None;
@@ -353,17 +498,16 @@ fn bypass(imported: &ImportedPath<'_>, crates: &BTreeSet<&str>) -> Option<Diagno
     let facade = facade_path(reexports, crates)?;
     let krate = facade.krate();
 
-    Some(
-        Diagnostic::builder()
-            .rule_id(RULE_ID)
-            .severity(Severity::Error)
-            .message(format!(
-                "`{path}` is also exported as `{facade}`, and this file already imports from \
-                 `{krate}`; import it through `{krate}`"
-            ))
-            .span(node.span())
-            .build(),
-    )
+    let diagnostic = Diagnostic::builder()
+        .rule_id(RULE_ID)
+        .severity(Severity::Error)
+        .message(format!(
+            "`{path}` is also exported as `{facade}`, and this file already imports from \
+             `{krate}`; import it through `{krate}`"
+        ))
+        .span(node.span())
+        .build();
+    Some((diagnostic, facade))
 }
 
 /// Returns the first listed path through a crate the file imports from
@@ -399,8 +543,10 @@ stiles_plugin::export_lints![rust: [FacadeBypassImport]];
 mod tests {
     use stiles_rust::RustLintPassAdapter;
     use stiles_rust::decorations::DefinitionOrigin;
-    use stiles_testing::{assert_diagnostic, assert_no_diagnostics, decorate, execute, parse};
-    use stiles_types::{DecorationMap, Language, LintPass};
+    use stiles_testing::{
+        assert_diagnostic, assert_fix, assert_no_diagnostics, decorate, execute, parse,
+    };
+    use stiles_types::{DecoratedTree, DecorationMap, Language, LintPass};
 
     use super::*;
 
@@ -422,6 +568,19 @@ mod tests {
         decorations: &[(&str, &[&str])],
         names: &[(&str, Option<Resolution>)],
     ) -> Vec<Diagnostic> {
+        execute(&decorated(source, decorations, names), &mut passes())
+    }
+
+    fn passes() -> Vec<Box<dyn LintPass>> {
+        vec![Box::new(RustLintPassAdapter::new(FacadeBypassImport))]
+    }
+
+    /// Parses `source` with the decorations that [`run_naming`] attaches
+    fn decorated(
+        source: &str,
+        decorations: &[(&str, &[&str])],
+        names: &[(&str, Option<Resolution>)],
+    ) -> DecoratedTree {
         let mut tree = parse(source, Language::Rust);
         let mut map = DecorationMap::new();
         resolve(&tree.root_node(), names, &mut map);
@@ -433,10 +592,16 @@ mod tests {
             }
         }
         decorate(&mut tree, map);
+        tree
+    }
 
-        let mut passes: Vec<Box<dyn LintPass>> =
-            vec![Box::new(RustLintPassAdapter::new(FacadeBypassImport))];
-        execute(&tree, &mut passes)
+    /// Asserts that the rule reports one path in `source` and attaches no
+    /// fix to it
+    fn assert_unfixed(source: &str, decorations: &[(&str, &[&str])]) {
+        let diagnostics = run(source, decorations);
+
+        assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+        assert_diagnostic(&diagnostics[0]).has_no_fix();
     }
 
     /// Returns the source text under each diagnostic, in order
@@ -776,6 +941,23 @@ mod tests {
     }
 
     #[test]
+    fn facade_name_bound_by_a_rename_has_no_fix() {
+        let source = "use other as facade;\nuse facade::x;\nuse facade_core::thing::Thing;";
+
+        let diagnostics = run(source, &[THING]);
+
+        assert_diagnostic(&diagnostics[0]).has_no_fix();
+    }
+
+    #[test]
+    fn facade_only_in_another_scope_has_no_fix() {
+        assert_unfixed(
+            "use facade_core::thing::Thing;\nfn f() { use facade::x; }",
+            &[THING],
+        );
+    }
+
+    #[test]
     fn facade_renamed_in_the_manifest_counts_as_an_import() {
         let source = "use bevy_alias::prelude::*;\nuse bevy_ecs::system::Query;";
 
@@ -824,6 +1006,165 @@ mod tests {
     }
 
     #[test]
+    fn fix_adds_a_rename_when_the_facade_exports_another_name() {
+        assert_fix()
+            .tree(decorated(
+                "use facade::x;\nuse facade_core::Context;",
+                &[("facade_core::Context", &["facade::ErrorContext"])],
+                &[],
+            ))
+            .passes(passes)
+            .produces("use facade::x;\nuse facade::ErrorContext as Context;");
+    }
+
+    #[test]
+    fn fix_imports_through_the_facade() {
+        assert_fix()
+            .tree(decorated(
+                "use facade::x;\nuse facade_core::thing::Thing;",
+                &[THING],
+                &[],
+            ))
+            .passes(passes)
+            .produces("use facade::x;\nuse facade::thing::Thing;");
+    }
+
+    #[test]
+    fn fix_imports_through_the_facade_of_a_list_self() {
+        assert_fix()
+            .tree(decorated(
+                "use facade::{self};\nuse facade_core::thing::Thing;",
+                &[THING],
+                &[],
+            ))
+            .passes(passes)
+            .produces("use facade::{self};\nuse facade::thing::Thing;");
+    }
+
+    #[test]
+    fn fix_imports_through_the_facade_of_a_wildcard() {
+        assert_fix()
+            .tree(decorated(
+                "use facade::prelude::*;\nuse facade_core::thing::Thing;",
+                &[THING],
+                &[],
+            ))
+            .passes(passes)
+            .produces("use facade::prelude::*;\nuse facade::thing::Thing;");
+    }
+
+    #[test]
+    fn fix_imports_through_the_name_of_a_manifest_rename() {
+        assert_fix()
+            .tree(decorated(
+                "use bevy_alias::prelude::*;\nuse bevy_ecs::system::Query;",
+                &[(
+                    "bevy_ecs::system::Query",
+                    &["bevy_alias::ecs::system::Query"],
+                )],
+                &[("bevy_alias", Some(crate_named("bevy")))],
+            ))
+            .passes(passes)
+            .produces("use bevy_alias::prelude::*;\nuse bevy_alias::ecs::system::Query;");
+    }
+
+    #[test]
+    fn fix_keeps_a_raw_facade_name() {
+        assert_fix()
+            .tree(decorated(
+                "use r#facade::x;\nuse r#facade_core::thing::Thing;",
+                &[("r#facade_core::thing::Thing", &["facade::thing::Thing"])],
+                &[],
+            ))
+            .passes(passes)
+            .produces("use r#facade::x;\nuse r#facade::thing::Thing;");
+    }
+
+    #[test]
+    fn fix_keeps_an_as_rename() {
+        assert_fix()
+            .tree(decorated(
+                "use facade::x;\nuse facade_core::thing::Thing as Other;",
+                &[THING],
+                &[],
+            ))
+            .passes(passes)
+            .produces("use facade::x;\nuse facade::thing::Thing as Other;");
+    }
+
+    #[test]
+    fn fix_keeps_an_underscore_rename() {
+        assert_fix()
+            .tree(decorated(
+                "use facade::x;\nuse facade_core::Context as _;",
+                &[("facade_core::Context", &["facade::ErrorContext"])],
+                &[],
+            ))
+            .passes(passes)
+            .produces("use facade::x;\nuse facade::ErrorContext as _;");
+    }
+
+    #[test]
+    fn fix_keeps_the_global_anchor_of_the_facade() {
+        assert_fix()
+            .tree(decorated(
+                "use ::facade::x;\nuse facade_core::thing::Thing;",
+                &[THING],
+                &[],
+            ))
+            .passes(passes)
+            .produces("use ::facade::x;\nuse ::facade::thing::Thing;");
+    }
+
+    #[test]
+    fn fix_keeps_the_visibility() {
+        assert_fix()
+            .tree(decorated(
+                "use facade::x;\npub use facade_core::thing::Thing;",
+                &[THING],
+                &[],
+            ))
+            .passes(passes)
+            .produces("use facade::x;\npub use facade::thing::Thing;");
+    }
+
+    #[test]
+    fn fix_replaces_a_path_through_a_crate_alias() {
+        assert_fix()
+            .tree(decorated(
+                "use facade_core as fc;\nuse facade::x;\nuse fc::thing::Thing;",
+                &[("fc::thing::Thing", &["facade::thing::Thing"])],
+                &[("fc", Some(crate_named("facade_core")))],
+            ))
+            .passes(passes)
+            .produces("use facade_core as fc;\nuse facade::x;\nuse facade::thing::Thing;");
+    }
+
+    #[test]
+    fn fix_rewrites_a_path_in_a_function_body() {
+        assert_fix()
+            .tree(decorated(
+                "fn f() {\n    use facade::x;\n    use facade_core::thing::Thing;\n}",
+                &[THING],
+                &[],
+            ))
+            .passes(passes)
+            .produces("fn f() {\n    use facade::x;\n    use facade::thing::Thing;\n}");
+    }
+
+    #[test]
+    fn fix_rewrites_each_bypassing_path() {
+        assert_fix()
+            .tree(decorated(
+                "use facade::x;\nuse facade_core::thing::Thing;\nuse facade_cli::Args;",
+                &[THING, ("facade_cli::Args", &["facade::cli::Args"])],
+                &[],
+            ))
+            .passes(passes)
+            .produces("use facade::x;\nuse facade::thing::Thing;\nuse facade::cli::Args;");
+    }
+
+    #[test]
     fn global_group_is_flagged() {
         let source = "use ::{facade::x, facade_core::thing::Thing};";
 
@@ -843,10 +1184,23 @@ mod tests {
     }
 
     #[test]
+    fn group_at_the_root_has_no_fix() {
+        assert_unfixed("use {facade::x, facade_core::thing::Thing};", &[THING]);
+    }
+
+    #[test]
     fn group_at_the_root_is_flagged() {
         let source = "use {facade::x, facade_core::thing::Thing};";
 
         assert_eq!(flagged(source, &[THING]), ["facade_core::thing::Thing"]);
+    }
+
+    #[test]
+    fn grouped_path_has_no_fix() {
+        assert_unfixed(
+            "use facade::x;\nuse facade_core::{thing::Thing, Other};",
+            &[("thing::Thing", &["facade::thing::Thing"])],
+        );
     }
 
     #[test]
@@ -858,6 +1212,14 @@ mod tests {
         assert_diagnostic(&diagnostics[0])
             .message_contains("`facade_core::thing::Thing` is also exported")
             .has_span("<test>", 33..45);
+    }
+
+    #[test]
+    fn grouped_rename_has_no_fix() {
+        assert_unfixed(
+            "use facade::x;\nuse facade_core::{thing::Thing as T};",
+            &[("thing::Thing", &["facade::thing::Thing"])],
+        );
     }
 
     #[test]
@@ -880,6 +1242,14 @@ mod tests {
         );
 
         assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn keyword_in_the_facade_path_has_no_fix() {
+        assert_unfixed(
+            "use facade::x;\nuse facade_core::kind::Thing;",
+            &[("facade_core::kind::Thing", &["facade::type::Thing"])],
+        );
     }
 
     #[test]
@@ -962,6 +1332,14 @@ mod tests {
         );
 
         assert_diagnostic(&diagnostics[0]).message_contains("`fc::thing::Thing` is also exported");
+    }
+
+    #[test]
+    fn path_to_the_facade_root_has_no_fix() {
+        assert_unfixed(
+            "use facade::x;\nuse facade_core;",
+            &[("facade_core", &["facade"])],
+        );
     }
 
     #[test]
@@ -1080,6 +1458,18 @@ mod tests {
     }
 
     #[test]
+    fn trait_send_holds_for_renamed() {
+        fn assert_send<T: Send>() {}
+        assert_send::<Renamed>();
+    }
+
+    #[test]
+    fn trait_send_holds_for_spelling() {
+        fn assert_send<T: Send>() {}
+        assert_send::<Spelling<'_>>();
+    }
+
+    #[test]
     fn trait_send_holds_for_use_path() {
         fn assert_send<T: Send>() {}
         assert_send::<UsePath<'_>>();
@@ -1116,6 +1506,18 @@ mod tests {
     }
 
     #[test]
+    fn trait_sync_holds_for_renamed() {
+        fn assert_sync<T: Sync>() {}
+        assert_sync::<Renamed>();
+    }
+
+    #[test]
+    fn trait_sync_holds_for_spelling() {
+        fn assert_sync<T: Sync>() {}
+        assert_sync::<Spelling<'_>>();
+    }
+
+    #[test]
     fn trait_sync_holds_for_use_path() {
         fn assert_sync<T: Sync>() {}
         assert_sync::<UsePath<'_>>();
@@ -1149,6 +1551,18 @@ mod tests {
     fn trait_unpin_holds_for_imported_path() {
         fn assert_unpin<T: Unpin>() {}
         assert_unpin::<ImportedPath<'_>>();
+    }
+
+    #[test]
+    fn trait_unpin_holds_for_renamed() {
+        fn assert_unpin<T: Unpin>() {}
+        assert_unpin::<Renamed>();
+    }
+
+    #[test]
+    fn trait_unpin_holds_for_spelling() {
+        fn assert_unpin<T: Unpin>() {}
+        assert_unpin::<Spelling<'_>>();
     }
 
     #[test]
