@@ -1,8 +1,9 @@
-use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 #[cfg(feature = "plugin")]
 use stiles_rust::ReadsTestCode as _;
+use stiles_rust::decorations::TypePath;
+use stiles_rust::decorations::{DefinitionKind, DefinitionOrigin, Resolution};
 use stiles_rust::{RuleId, RustLintPass, is_test_code};
 use stiles_types::{DecoratedNode, Diagnostic, RuleOptions, Severity};
 
@@ -20,14 +21,6 @@ pub const RULE_ID: RuleId = RuleId::new("lint.external-type-in-port");
 /// The crates every Rust toolchain ships, which a port may name freely
 const TOOLCHAIN_CRATES: [&str; 3] = ["std", "core", "alloc"];
 
-/// How many `use` declarations one name may pass through before the lookup
-/// gives up
-///
-/// Rust rejects a cycle of imports, but the rule reads one file and cannot
-/// rely on the compiler having seen it. The bound keeps a cycle from
-/// looping and leaves the name unreported.
-const MAX_IMPORT_HOPS: usize = 16;
-
 /// The option that names the crates a port may name freely
 const ALLOWED_CRATES: &str = "allowed-crates";
 
@@ -39,20 +32,19 @@ const ALLOWED_CRATES: &str = "allowed-crates";
 /// toolchain on the adapter's side, and the compiler does not object.
 ///
 /// The rule reads the parameter types, the return type, and the bounds a
-/// method puts on its generics or in its `where` clause. It resolves the
-/// first segment of each type path against the `use` declarations of the
-/// module that holds the trait. So `anyhow::Result`, an imported `VfsPath`,
-/// and an alias of either all count. A bare name that no `use` imports is a
-/// local type. A qualified path names an external crate when no `use` or
-/// `mod` explains its first segment. A glob import could supply any
-/// such segment, so a module with one reports only what its imports prove.
+/// method puts on its generics or in its `where` clause. The `Resolution`
+/// decoration of each type names the crate of its definition. It follows a
+/// `use`, a glob, a rename, and a re-export, so `anyhow::Result`, an
+/// imported `VfsPath`, and an alias of either all count. A type that the
+/// crate of the file defines is not external. Neither is a type parameter,
+/// an associated type of one or of `Self`, nor a name without the decoration.
 ///
-/// `std`, `core`, `alloc`, `crate`, `self`, and `super` are not external.
-/// Nor is a workspace sibling, whose name shares its prefix before the
-/// first `-` or `_` with the directory above the file's `src`. In
-/// `crates/stiles-rust/src`, `stiles_types` is therefore not external. That
-/// is a naming convention, and a workspace that does not follow it gets false
-/// positives.
+/// `std`, `core`, and `alloc` are not external. Nor is a workspace sibling,
+/// whose name shares its prefix before the first `-` or `_` with the
+/// directory above the file's `src`. In `crates/stiles-rust/src`,
+/// `stiles_types` is therefore not external. That is a naming convention,
+/// and a workspace that does not follow it gets false positives. A sibling
+/// that re-exports a type of another crate does not hide that crate.
 ///
 /// Inherent methods, restricted traits such as `pub(crate)`, the trait's own
 /// bounds, associated types, and macro bodies are out of scope. So is test
@@ -64,7 +56,13 @@ const ALLOWED_CRATES: &str = "allowed-crates";
 /// A project can make a crate part of its own public API on purpose, and
 /// re-export it for its consumers. The `allowed-crates` option names such
 /// crates, as Rust writes them in a path. The rule then treats each one like
-/// `std`.
+/// `std`. A type is allowed when the crate that defines it is allowed. It is
+/// allowed too when the path names an allowed crate first, as in
+/// `facade::Thing`. A bare name is allowed when a `use` of the same file
+/// imports its definition through an allowed crate. A glob import names no
+/// definition, so a name it brings in counts by its defining crate alone.
+/// The finding prints the crate as the path writes it, or else the defining
+/// crate.
 ///
 /// # Examples
 ///
@@ -80,10 +78,40 @@ const ALLOWED_CRATES: &str = "allowed-crates";
 /// }
 /// ```
 ///
-/// ```ignore
-/// pub trait DecorationProvider {
-///     fn decorate(&self, tree: &DecoratedTree) -> anyhow::Result<Coverage>;
-/// }
+/// The rule reads the resolution of each type, which the Rust provider
+/// attaches as a decoration. This example attaches it by hand.
+///
+/// ```
+/// use external_type_in_port::ExternalTypeInPort;
+/// use stiles_rust::RustLintPassAdapter;
+/// use stiles_rust::decorations::{DefinitionKind, DefinitionOrigin, Resolution, TypePath};
+/// use stiles_testing::{decorate, execute, parse};
+/// use stiles_types::{DecorationMap, Language, LintPass};
+///
+/// let source = "pub trait Provider { fn decorate(&self) -> anyhow::Result<()>; }";
+/// let mut tree = parse(source, Language::Rust);
+/// let port = tree.root_node().named_child(0).unwrap();
+/// let method = port.child_by_field_name("body").unwrap().named_child(0).unwrap();
+/// let returned = method.child_by_field_name("return_type").unwrap();
+/// let path = returned.child_by_field_name("type").unwrap().id();
+/// let result = TypePath::builder().krate("anyhow").modules(["error"]).name("Result").build();
+/// let mut decorations = DecorationMap::new();
+/// decorations.insert(
+///     path,
+///     Resolution::builder()
+///         .kind(DefinitionKind::TypeAlias)
+///         .origin(DefinitionOrigin::OtherCrate)
+///         .krate("anyhow")
+///         .path(result)
+///         .build(),
+/// );
+/// decorate(&mut tree, decorations);
+/// let pass: Box<dyn LintPass> = Box::new(RustLintPassAdapter::new(ExternalTypeInPort::default()));
+/// let mut passes = vec![pass];
+///
+/// let diagnostics = execute(&tree, &mut passes);
+///
+/// assert_eq!(diagnostics.len(), 1);
 /// ```
 ///
 /// The rule reports `anyhow::Result`. A `DecorateError` that the domain
@@ -106,39 +134,153 @@ impl RustLintPass for ExternalTypeInPort {
 
 /// Reports every external type in the ports one file declares
 ///
-/// A trait resolves names against the module that holds it, and only
-/// `source_file` sees every module of the file. The walker visits it once,
-/// and the pass runs its own traversal from there.
+/// The walk reaches the traits of the file and of its inline modules, and no
+/// trait inside a function body.
 fn check_file(root: &DecoratedNode<'_>, allowed: &[String]) -> Vec<Diagnostic> {
-    let mut diagnostics = Vec::new();
-    check_module(
-        root,
-        workspace_prefix(root.span().file()),
+    let mut imports = Vec::new();
+    collect_imports(root, &mut imports);
+    let span = root.span();
+    let context = Context {
+        prefix: workspace_prefix(span.file()),
         allowed,
-        &mut diagnostics,
-    );
+        imports,
+    };
+    let mut diagnostics = Vec::new();
+    check_module(root, &context, &mut diagnostics);
     diagnostics
 }
 
-/// Checks the traits of one module and recurses into its inline modules
+/// What the ports of one file are checked against
+struct Context<'s> {
+    /// The crate prefix of the workspace sibling crates
+    prefix: Option<&'s str>,
+    /// The crates that `allowed-crates` names
+    allowed: &'s [String],
+    /// The definitions that the `use` declarations of the file import
+    imports: Vec<Import>,
+}
+
+/// A definition that a `use` imports, and the crate the `use` names first
+#[derive(Clone, Eq, PartialEq, Debug)]
+struct Import {
+    definition: TypePath,
+    written: WrittenCrate,
+}
+
+/// A crate as the first segment of a path names it
+#[derive(Clone, Eq, PartialEq, Debug)]
+struct WrittenCrate {
+    /// The name of the crate that the segment resolves to
+    krate: String,
+    /// The segment as written, without its `r#` prefix
+    name: String,
+}
+
+/// Collects every definition that a `use` of the file imports by its path
 ///
-/// A module does not inherit its parent's imports, so each one builds its
-/// own [`Scope`].
+/// A glob imports no single definition, and a `self` entry imports a module,
+/// so neither adds one.
+fn collect_imports(node: &DecoratedNode<'_>, imports: &mut Vec<Import>) {
+    if node.kind() == "use_declaration" {
+        if let Some(argument) = node.child_by_field_name("argument") {
+            collect_use(&argument, None, imports);
+        }
+        return;
+    }
+    for child in node.named_children() {
+        collect_imports(&child, imports);
+    }
+}
+
+/// Collects the imports of one node of a `use` tree
+///
+/// `root` is the first segment of the enclosing `a::{...}` list, which every
+/// entry in it shares.
+fn collect_use<'a>(
+    node: &DecoratedNode<'a>,
+    root: Option<DecoratedNode<'a>>,
+    imports: &mut Vec<Import>,
+) {
+    match node.kind() {
+        "identifier" | "scoped_identifier" => {
+            let definition = node
+                .decoration::<Resolution>()
+                .and_then(|resolution| resolution.path().cloned());
+            let written = root
+                .or_else(|| Some(first_segment(node)))
+                .and_then(|first| written_crate(&first));
+            if let (Some(definition), Some(written)) = (definition, written) {
+                imports.push(Import {
+                    definition,
+                    written,
+                });
+            }
+        }
+        "use_as_clause" => {
+            if let Some(path) = node.child_by_field_name("path") {
+                collect_use(&path, root, imports);
+            }
+        }
+        "scoped_use_list" => {
+            let root = root.or_else(|| {
+                node.child_by_field_name("path")
+                    .map(|path| first_segment(&path))
+            });
+            if let Some(list) = node.child_by_field_name("list") {
+                collect_use(&list, root, imports);
+            }
+        }
+        "use_list" => {
+            for entry in node.named_children() {
+                collect_use(&entry, root, imports);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Returns the first segment of a path
+///
+/// A path that starts with `::` holds its first segment as the name of its
+/// innermost part.
+fn first_segment<'a>(path: &DecoratedNode<'a>) -> DecoratedNode<'a> {
+    let mut root = *path;
+    while let Some(qualifier) = root.child_by_field_name("path") {
+        root = qualifier;
+    }
+    match root.kind() {
+        "scoped_identifier" | "scoped_type_identifier" => {
+            root.child_by_field_name("name").unwrap_or(root)
+        }
+        _ => root,
+    }
+}
+
+/// Returns the crate that a first segment names, when it resolves to one
+fn written_crate(segment: &DecoratedNode<'_>) -> Option<WrittenCrate> {
+    let resolution = segment
+        .decoration::<Resolution>()
+        .filter(|resolution| resolution.kind() == DefinitionKind::Crate)?;
+    let text = segment.text();
+
+    Some(WrittenCrate {
+        krate: resolution.krate()?.to_owned(),
+        name: text.strip_prefix("r#").unwrap_or(text).to_owned(),
+    })
+}
+
+/// Checks the traits of one module and recurses into its inline modules
 fn check_module(
     module: &DecoratedNode<'_>,
-    prefix: Option<&str>,
-    allowed: &[String],
+    context: &Context<'_>,
     diagnostics: &mut Vec<Diagnostic>,
 ) {
-    let items = shipped_items(module);
-    let scope = Scope::of(&items);
-
-    for item in &items {
+    for item in shipped_items(module) {
         match item.kind() {
-            "trait_item" => check_trait(item, &scope, prefix, allowed, diagnostics),
+            "trait_item" => check_trait(&item, context, diagnostics),
             "mod_item" => {
                 if let Some(body) = item.child_by_field_name("body") {
-                    check_module(&body, prefix, allowed, diagnostics);
+                    check_module(&body, context, diagnostics);
                 }
             }
             _ => {}
@@ -151,21 +293,13 @@ fn check_module(
 /// A method with a default body is still part of the contract, so the rule
 /// reads its signature like any other. The body itself is not part of the
 /// port.
-fn check_trait<'a>(
-    item: &DecoratedNode<'a>,
-    scope: &Scope<'a>,
-    prefix: Option<&str>,
-    allowed: &[String],
-    diagnostics: &mut Vec<Diagnostic>,
-) {
+fn check_trait(item: &DecoratedNode<'_>, context: &Context<'_>, diagnostics: &mut Vec<Diagnostic>) {
     if !is_bare_pub(item) {
         return;
     }
     let Some(body) = item.child_by_field_name("body") else {
         return;
     };
-
-    let trait_generics = generic_names(item);
 
     for method in shipped_items(&body) {
         match method.kind() {
@@ -176,15 +310,9 @@ fn check_trait<'a>(
             continue;
         };
 
-        let mut generics = trait_generics.clone();
-        generics.extend(generic_names(&method));
-
         let signature = Signature {
-            scope,
-            generics,
             method: name.text(),
-            prefix,
-            allowed,
+            context,
         };
         signature.check(&method, diagnostics);
     }
@@ -193,7 +321,7 @@ fn check_trait<'a>(
 /// Returns the items of a module or trait body that a normal build compiles
 ///
 /// An attribute or a comment is no item. An item that only a test build
-/// compiles is neither a port nor an import that a port can name.
+/// compiles is no port.
 fn shipped_items<'a>(container: &DecoratedNode<'a>) -> Vec<DecoratedNode<'a>> {
     container
         .named_children()
@@ -216,232 +344,54 @@ fn is_bare_pub(item: &DecoratedNode<'_>) -> bool {
         .any(|child| child.kind() == "visibility_modifier" && child.named_child_count() == 0)
 }
 
-/// Returns the names of the type parameters an item declares
+/// Returns whether a path projects an associated type out of a parameter
 ///
-/// A parameter named `T` shadows any `T` a `use` imports, and `T::Output`
-/// names an associated type rather than a crate.
-fn generic_names<'a>(item: &DecoratedNode<'a>) -> HashSet<&'a str> {
-    let Some(parameters) = item.child_by_field_name("type_parameters") else {
-        return HashSet::new();
-    };
-
-    parameters
-        .named_children()
-        .iter()
-        .filter(|parameter| parameter.kind() == "type_parameter")
-        .filter_map(|parameter| parameter.child_by_field_name("name"))
-        .map(|name| name.text())
-        .collect()
-}
-
-/// Where the first segment of a path points before the scope resolves it
-#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
-enum Root<'a> {
-    /// `crate`, `self`, or `super`, which stay inside the crate
-    Local,
-    /// A name after a leading `::` or in an `extern crate`, which only a
-    /// crate answers to
-    Crate(&'a str),
-    /// A name the scope has to look up
-    Name(&'a str),
-}
-
-/// Whether a module imports with a glob such as `use super::*`
-///
-/// A glob can bring any name into scope, so a module with one leaves an
-/// unexplained first segment unreported.
-#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug, Default)]
-enum Glob {
-    /// Every `use` in the module names what it imports
-    #[default]
-    Absent,
-    /// At least one `use` in the module ends in `*`
-    Present,
-}
-
-/// The names one module brings into scope
-///
-/// Rust resolves a path's first segment against the module it is written
-/// in. A scope therefore covers one module's direct items and nothing from
-/// its parent.
-#[derive(Clone, Eq, PartialEq, Debug, Default)]
-struct Scope<'a> {
-    imports: HashMap<&'a str, Root<'a>>,
-    modules: HashSet<&'a str>,
-    glob: Glob,
-}
-
-impl<'a> Scope<'a> {
-    /// Builds the scope of a module from its shipped items
-    fn of(items: &[DecoratedNode<'a>]) -> Self {
-        let mut scope = Scope::default();
-
-        for item in items {
-            match item.kind() {
-                "use_declaration" => {
-                    if let Some(argument) = item.child_by_field_name("argument") {
-                        scope.collect_use(&argument, None, None);
-                    }
-                }
-                "extern_crate_declaration" => scope.collect_extern_crate(item),
-                "mod_item" => {
-                    if let Some(name) = item.child_by_field_name("name") {
-                        scope.modules.insert(name.text());
-                    }
-                }
-                _ => {}
-            }
-        }
-
-        scope
+/// `T::Item`, `Self::Ref`, and `<T as Trait>::Output` name a type through
+/// a parameter of the port, not a type of another crate. The bound that
+/// gives the parameter its trait is checked on its own.
+fn is_projection(path: &DecoratedNode<'_>) -> bool {
+    let mut root = *path;
+    while let Some(qualifier) = root.child_by_field_name("path") {
+        root = qualifier;
     }
 
-    /// Records the names one node of a `use` tree imports
-    ///
-    /// `inherited` is the root of the enclosing `a::{...}` list, which every
-    /// entry in it shares. `parent` is that list's own path, which names the
-    /// module a `self` entry imports.
-    fn collect_use(
-        &mut self,
-        node: &DecoratedNode<'a>,
-        inherited: Option<Root<'a>>,
-        parent: Option<&DecoratedNode<'a>>,
-    ) {
-        match node.kind() {
-            "identifier" => {
-                let name = node.text();
-                self.imports
-                    .insert(name, inherited.unwrap_or(Root::Name(name)));
-            }
-            "scoped_identifier" => {
-                let Some(name) = node.child_by_field_name("name") else {
-                    return;
-                };
-                let Some(root) = inherited.or_else(|| path_root(node)) else {
-                    return;
-                };
-                self.imports.insert(name.text(), root);
-            }
-            "self" => {
-                let Some(name) = parent.and_then(last_segment) else {
-                    return;
-                };
-                let Some(root) = inherited else {
-                    return;
-                };
-                self.imports.insert(name, root);
-            }
-            "use_as_clause" => self.collect_alias(node, inherited),
-            "scoped_use_list" => {
-                let path = node.child_by_field_name("path");
-                let root = inherited.or_else(|| path.as_ref().and_then(path_root));
-                let Some(list) = node.child_by_field_name("list") else {
-                    return;
-                };
-                for entry in list.named_children() {
-                    self.collect_use(&entry, root, path.as_ref());
-                }
-            }
-            "use_list" => {
-                for entry in node.named_children() {
-                    self.collect_use(&entry, inherited, parent);
-                }
-            }
-            "use_wildcard" => self.glob = Glob::Present,
-            _ => {}
-        }
-    }
+    root.kind() == "bracketed_type"
+        || root
+            .decoration::<Resolution>()
+            .is_some_and(|resolution| names_a_parameter(resolution.kind()))
+}
 
-    /// Records the alias of a `use ... as name` entry
-    ///
-    /// `as _` imports a trait's methods without a name, so it binds nothing a
-    /// signature could write.
-    fn collect_alias(&mut self, node: &DecoratedNode<'a>, inherited: Option<Root<'a>>) {
-        let Some(alias) = node.child_by_field_name("alias") else {
-            return;
-        };
-        let Some(path) = node.child_by_field_name("path") else {
-            return;
-        };
-        if alias.text() == "_" {
-            return;
-        }
-
-        let root = match path.kind() {
-            "self" => inherited,
-            _ => inherited.or_else(|| path_root(&path)),
-        };
-        let Some(root) = root else {
-            return;
-        };
-        self.imports.insert(alias.text(), root);
-    }
-
-    /// Records the name an `extern crate` declaration binds
-    fn collect_extern_crate(&mut self, item: &DecoratedNode<'a>) {
-        let Some(name) = item.child_by_field_name("name") else {
-            return;
-        };
-        let crate_name = name.text();
-        let bound = match item.child_by_field_name("alias") {
-            Some(alias) => alias.text(),
-            None => crate_name,
-        };
-        let root = match crate_name {
-            "self" => Root::Local,
-            _ => Root::Crate(crate_name),
-        };
-        self.imports.insert(bound, root);
-    }
-
-    /// Returns the crate a root resolves to, or [`None`] when it stays local
-    ///
-    /// The lookup follows imports until it reaches `crate`, `self`, `super`,
-    /// a local module, or a name nothing in the module explains. That last name
-    /// is a crate, because Rust 2018 resolves an unexplained first segment
-    /// against the crates the package depends on. A glob import could explain
-    /// it as well, so a module with one yields [`None`] there. The result may
-    /// be a toolchain crate or a sibling; [`Signature::is_external`] decides.
-    fn crate_of(&self, root: Root<'a>) -> Option<&'a str> {
-        let mut root = root;
-
-        for _ in 0..MAX_IMPORT_HOPS {
-            let name = match root {
-                Root::Local => return None,
-                Root::Crate(name) => return Some(name),
-                Root::Name(name) => name,
-            };
-
-            if self.modules.contains(name) {
-                return None;
-            }
-
-            match self.imports.get(name) {
-                Some(Root::Name(next)) if *next == name => return Some(name),
-                Some(next) => {
-                    root = *next;
-                    continue;
-                }
-                None => {}
-            }
-
-            return match self.glob {
-                Glob::Present => None,
-                Glob::Absent => Some(name),
-            };
-        }
-
-        None
+/// Returns whether a kind of definition stands for a parameter of the port
+fn names_a_parameter(kind: DefinitionKind) -> bool {
+    match kind {
+        DefinitionKind::TypeParameter | DefinitionKind::SelfType => true,
+        DefinitionKind::Crate
+        | DefinitionKind::Module
+        | DefinitionKind::Struct
+        | DefinitionKind::Enum
+        | DefinitionKind::Union
+        | DefinitionKind::EnumVariant
+        | DefinitionKind::Trait
+        | DefinitionKind::TypeAlias
+        | DefinitionKind::Function
+        | DefinitionKind::AssociatedFunction
+        | DefinitionKind::Method
+        | DefinitionKind::Const
+        | DefinitionKind::Static
+        | DefinitionKind::Macro
+        | DefinitionKind::LocalBinding
+        | DefinitionKind::ConstParameter
+        | DefinitionKind::BuiltinType
+        | DefinitionKind::BuiltinAttribute
+        | DefinitionKind::ToolModule
+        | DefinitionKind::DeriveHelper => false,
     }
 }
 
-/// The names one port method's signature resolves against
+/// What one port method's findings name and which crates they skip
 struct Signature<'s, 'a> {
-    scope: &'s Scope<'a>,
-    generics: HashSet<&'a str>,
     method: &'a str,
-    prefix: Option<&'s str>,
-    allowed: &'s [String],
+    context: &'s Context<'s>,
 }
 
 impl<'a> Signature<'_, 'a> {
@@ -500,15 +450,17 @@ impl<'a> Signature<'_, 'a> {
     /// in type position is opaque, so the walk stops there.
     fn visit_type(&self, node: &DecoratedNode<'a>, diagnostics: &mut Vec<Diagnostic>) {
         match node.kind() {
-            "type_identifier" => self.check_bare(node, diagnostics),
+            "type_identifier" => self.check_name(node, diagnostics),
             "scoped_type_identifier" | "scoped_identifier" => {
-                self.check_qualified(node, diagnostics);
+                if !is_projection(node) {
+                    self.check_name(node, diagnostics);
+                }
                 self.visit_path_arguments(node, diagnostics);
             }
             "generic_type" => {
                 if let Some(base) = node.child_by_field_name("type") {
                     match base.kind() {
-                        "identifier" => self.check_bare(&base, diagnostics),
+                        "identifier" => self.check_name(&base, diagnostics),
                         _ => self.visit_type(&base, diagnostics),
                     }
                 }
@@ -541,8 +493,8 @@ impl<'a> Signature<'_, 'a> {
     /// Checks the type arguments written inside a path, such as the `X` in
     /// `<T as Trait<X>>::Output`
     ///
-    /// The path's root was already checked with the whole path, so the walk
-    /// visits only what sits in brackets or angle brackets along the way.
+    /// The path itself was already checked whole, so the walk visits only
+    /// what sits in brackets or angle brackets along the way.
     fn visit_path_arguments(&self, node: &DecoratedNode<'a>, diagnostics: &mut Vec<Diagnostic>) {
         match node.kind() {
             "scoped_type_identifier" | "scoped_identifier" => {
@@ -563,46 +515,30 @@ impl<'a> Signature<'_, 'a> {
         }
     }
 
-    /// Reports a bare name that a `use` imports from an external crate
+    /// Reports a type whose definition lies in an external crate
     ///
-    /// A bare name that no `use` imports is defined in the module or comes
-    /// from the prelude, so it stays unreported.
-    fn check_bare(&self, node: &DecoratedNode<'a>, diagnostics: &mut Vec<Diagnostic>) {
-        let name = node.text();
-        if self.is_parameter(name) {
-            return;
-        }
-        let Some(root) = self.scope.imports.get(name) else {
+    /// A name without a resolution stays unreported, as does one that the
+    /// crate of the file or the language defines.
+    fn check_name(&self, node: &DecoratedNode<'a>, diagnostics: &mut Vec<Diagnostic>) {
+        let Some(resolution) = node.decoration::<Resolution>() else {
             return;
         };
-        self.report_if_external(node, *root, diagnostics);
-    }
-
-    /// Reports a qualified path whose first segment is an external crate
-    fn check_qualified(&self, node: &DecoratedNode<'a>, diagnostics: &mut Vec<Diagnostic>) {
-        let Some(root) = path_root(node) else {
+        let defining = match resolution.origin() {
+            DefinitionOrigin::OtherCrate => resolution.krate(),
+            DefinitionOrigin::SameCrate | DefinitionOrigin::Builtin => None,
+        };
+        let Some(defining) = defining.filter(|krate| self.is_external(krate)) else {
             return;
         };
-        match root {
-            Root::Name(name) if self.is_parameter(name) => return,
-            Root::Local | Root::Crate(_) | Root::Name(_) => {}
-        }
-        self.report_if_external(node, root, diagnostics);
-    }
-
-    /// Pushes a diagnostic when a root resolves to an external crate
-    fn report_if_external(
-        &self,
-        node: &DecoratedNode<'a>,
-        root: Root<'a>,
-        diagnostics: &mut Vec<Diagnostic>,
-    ) {
-        let Some(krate) = self.scope.crate_of(root) else {
-            return;
-        };
-        if !self.is_external(krate) {
+        let written = self.written_crate(node, resolution.path());
+        if written.as_ref().is_some_and(|written| self.allows(written)) {
             return;
         }
+        let krate = written
+            .as_ref()
+            .map(|written| written.krate.as_str())
+            .filter(|krate| self.is_external(krate))
+            .unwrap_or(defining);
 
         diagnostics.push(Diagnostic::builder().rule_id(RULE_ID).severity(Severity::Error).message(format!(
                 "port method `{}` names `{}` from the external crate `{krate}`; use a type the domain owns",
@@ -611,9 +547,37 @@ impl<'a> Signature<'_, 'a> {
             )).span(node.span()).build());
     }
 
-    /// Returns whether a name is `Self` or a type parameter in scope
-    fn is_parameter(&self, name: &str) -> bool {
-        name == "Self" || self.generics.contains(name)
+    /// Returns the crate through which the file names a type
+    ///
+    /// A qualified path names it in place by its first segment. A `use` that
+    /// imports the same definition names it otherwise.
+    fn written_crate(
+        &self,
+        node: &DecoratedNode<'a>,
+        definition: Option<&TypePath>,
+    ) -> Option<WrittenCrate> {
+        let in_place = node
+            .child_by_field_name("path")
+            .and_then(|path| written_crate(&first_segment(&path)));
+
+        in_place.or_else(|| {
+            let definition = definition?;
+            self.context
+                .imports
+                .iter()
+                .find(|import| import.definition == *definition)
+                .map(|import| import.written.clone())
+        })
+    }
+
+    /// Returns whether `allowed-crates` names a written crate
+    fn allows(&self, written: &WrittenCrate) -> bool {
+        let WrittenCrate { krate, name } = written;
+
+        self.context
+            .allowed
+            .iter()
+            .any(|allowed| allowed == krate || allowed == name)
     }
 
     /// Returns whether a crate is not a toolchain crate, not an allowed crate,
@@ -623,42 +587,16 @@ impl<'a> Signature<'_, 'a> {
     /// directory of the crate being checked. Without that directory there is
     /// no proof of a sibling, so every other crate is external.
     fn is_external(&self, krate: &str) -> bool {
-        if TOOLCHAIN_CRATES.contains(&krate) || self.allowed.iter().any(|name| name == krate) {
+        if TOOLCHAIN_CRATES.contains(&krate)
+            || self.context.allowed.iter().any(|name| name == krate)
+        {
             return false;
         }
 
-        match self.prefix {
+        match self.context.prefix {
             Some(prefix) => crate_prefix(krate) != prefix,
             None => true,
         }
-    }
-}
-
-/// Returns the first segment of a path, unless a macro or a bracketed type
-/// stands there
-fn path_root<'a>(node: &DecoratedNode<'a>) -> Option<Root<'a>> {
-    match node.kind() {
-        "identifier" | "type_identifier" => Some(Root::Name(node.text())),
-        "crate" | "self" | "super" => Some(Root::Local),
-        "scoped_identifier" | "scoped_type_identifier" => match node.child_by_field_name("path") {
-            Some(path) => path_root(&path),
-            None => node
-                .child_by_field_name("name")
-                .map(|name| Root::Crate(name.text())),
-        },
-        "generic_type" => node
-            .child_by_field_name("type")
-            .and_then(|base| path_root(&base)),
-        _ => None,
-    }
-}
-
-/// Returns the last segment of a `use` path, which a `self` entry imports
-fn last_segment<'a>(node: &DecoratedNode<'a>) -> Option<&'a str> {
-    match node.kind() {
-        "identifier" => Some(node.text()),
-        "scoped_identifier" => node.child_by_field_name("name").map(|name| name.text()),
-        _ => None,
     }
 }
 
@@ -691,7 +629,7 @@ impl stiles_plugin::DeclaresRules for ExternalTypeInPort {
     }
 
     fn reads(&self) -> stiles_plugin::Reads {
-        stiles_plugin::Reads::none().and_test_code()
+        stiles_plugin::Reads::of::<Resolution>().and_test_code()
     }
 }
 
@@ -704,22 +642,105 @@ mod tests {
 
     use stiles_rust::RustLintPassAdapter;
     use stiles_rust::decorations::TargetKind;
-    use stiles_testing::{assert_diagnostic, assert_no_diagnostics, execute, parse};
-    use stiles_types::{DecoratedTree, Language, LintPass, RuleOption};
+    use stiles_testing::{assert_diagnostic, assert_no_diagnostics, decorate, execute, parse};
+    use stiles_types::{DecoratedTree, DecorationMap, Language, LintPass, RuleOption};
 
     use super::*;
 
-    fn run(source: &str) -> Vec<Diagnostic> {
-        let tree = parse(source, Language::Rust);
-        let mut passes: Vec<Box<dyn LintPass>> = vec![Box::new(RustLintPassAdapter::new(
-            ExternalTypeInPort::default(),
-        ))];
-        execute(&tree, &mut passes)
+    /// A name as the source spells it, and the definition it resolves to
+    ///
+    /// The definition is a path whose first segment is its crate, where
+    /// `sample` is the crate of the file. `<param>` stands for a type
+    /// parameter, `<self>` for `Self`, and `<crate:name>` for the root of
+    /// the crate `name`.
+    type Resolved<'a> = (&'a str, &'a str);
+
+    const ANYHOW_RESULT: Resolved<'static> = ("anyhow::Result", "anyhow::Result");
+
+    /// Returns the resolution the provider gives a name with this definition
+    fn resolution(definition: &str) -> Resolution {
+        let parameter = match definition {
+            "<param>" => Some(DefinitionKind::TypeParameter),
+            "<self>" => Some(DefinitionKind::SelfType),
+            _ => None,
+        };
+        if let Some(krate) = definition
+            .strip_prefix("<crate:")
+            .and_then(|rest| rest.strip_suffix('>'))
+        {
+            return Resolution::builder()
+                .kind(DefinitionKind::Crate)
+                .origin(DefinitionOrigin::OtherCrate)
+                .krate(krate)
+                .build();
+        }
+        if let Some(kind) = parameter {
+            return Resolution::builder()
+                .kind(kind)
+                .origin(DefinitionOrigin::SameCrate)
+                .krate("sample")
+                .build();
+        }
+        let segments: Vec<&str> = definition.split("::").collect();
+        let (krate, rest) = segments.split_first().expect("split yields a segment");
+        let (name, modules) = rest.split_last().expect("a definition has a name");
+        let origin = match *krate == "sample" {
+            true => DefinitionOrigin::SameCrate,
+            false => DefinitionOrigin::OtherCrate,
+        };
+
+        Resolution::builder()
+            .kind(DefinitionKind::Struct)
+            .origin(origin)
+            .krate(krate)
+            .path(
+                TypePath::builder()
+                    .krate(krate)
+                    .modules(modules)
+                    .name(name)
+                    .build(),
+            )
+            .build()
+    }
+
+    fn mark(node: &DecoratedNode<'_>, map: &mut DecorationMap, resolved: &[Resolved<'_>]) {
+        let names_something = [
+            "identifier",
+            "type_identifier",
+            "scoped_identifier",
+            "scoped_type_identifier",
+        ]
+        .contains(&node.kind());
+        let found = resolved.iter().find(|(text, _)| *text == node.text());
+        if let (true, Some((_, definition))) = (names_something, found) {
+            map.insert(node.id(), resolution(definition));
+        }
+        for child in node.named_children() {
+            mark(&child, map, resolved);
+        }
+    }
+
+    /// Attaches the resolution of each listed name to a tree
+    fn resolve(tree: &mut DecoratedTree, resolved: &[Resolved<'_>]) {
+        let mut map = DecorationMap::new();
+        mark(&tree.root_node(), &mut map, resolved);
+        decorate(tree, map);
+    }
+
+    fn run(source: &str, resolved: &[Resolved<'_>]) -> Vec<Diagnostic> {
+        let mut tree = parse(source, Language::Rust);
+        resolve(&mut tree, resolved);
+        execute_rule(&tree)
     }
 
     /// Runs the rule as stiles runs it, with `allowed-crates` set
-    fn run_with_allowed_crates(source: &str, allowed: &[&str]) -> Vec<Diagnostic> {
-        let tree = parse(source, Language::Rust);
+    fn run_with_allowed_crates(
+        source: &str,
+        allowed: &[&str],
+        resolved: &[Resolved<'_>],
+    ) -> Vec<Diagnostic> {
+        let mut tree = parse(source, Language::Rust);
+        resolve(&mut tree, resolved);
         let options = RuleOptions::new(vec![
             RuleOption::builder()
                 .rule(RULE_ID.as_str().to_owned())
@@ -736,31 +757,38 @@ mod tests {
     }
 
     /// Runs the rule on `source` as if it were the file at `path`
-    ///
-    /// `parse` names every file `<test>`, so this parses with the grammar
-    /// of `stiles-rust` and a path of the test's own.
-    fn run_at(path: &Path, source: &str) -> Vec<Diagnostic> {
-        execute_rule(&parse_at(path, source))
+    fn run_at(path: &Path, source: &str, resolved: &[Resolved<'_>]) -> Vec<Diagnostic> {
+        execute_rule(&parse_at(path, source, resolved))
     }
 
     /// Parses `source` as the file at `path`
-    fn parse_at(path: &Path, source: &str) -> DecoratedTree {
+    ///
+    /// `parse` names every file `<test>`, so this parses with the grammar
+    /// of `stiles-rust` and a path of the test's own.
+    fn parse_at(path: &Path, source: &str, resolved: &[Resolved<'_>]) -> DecoratedTree {
         let mut parser = tree_sitter::Parser::new();
         parser
             .set_language(&stiles_rust::language())
             .expect("the grammar should load");
         let tree = parser.parse(source, None).expect("the source should parse");
-        DecoratedTree::builder()
+        let mut tree = DecoratedTree::builder()
             .tree(tree)
             .language(Language::Rust)
             .source(source.to_owned())
             .file(PathBuf::from(path))
-            .build()
+            .build();
+        resolve(&mut tree, resolved);
+        tree
     }
 
     /// Runs the rule after `attach` adds what the provider knows of test code
-    fn run_attaching(source: &str, attach: impl FnOnce(&mut DecoratedTree)) -> Vec<Diagnostic> {
+    fn run_attaching(
+        source: &str,
+        resolved: &[Resolved<'_>],
+        attach: impl FnOnce(&mut DecoratedTree),
+    ) -> Vec<Diagnostic> {
         let mut tree = parse(source, Language::Rust);
+        resolve(&mut tree, resolved);
         attach(&mut tree);
         execute_rule(&tree)
     }
@@ -774,79 +802,159 @@ mod tests {
     }
 
     #[test]
-    fn aliased_crate_import_is_flagged_once() {
-        let source = r#"
-use ra_ap_vfs as vfs;
-
-pub trait Port {
-    fn read(&self, file: &vfs::VfsPath);
-}
-"#;
-
-        let diagnostics = run(source);
-
-        assert_eq!(diagnostics.len(), 1);
-    }
-
-    #[test]
-    fn aliased_crate_import_message_names_the_alias_path_and_real_crate() {
-        let source = r#"
-use ra_ap_vfs as vfs;
-
-pub trait Port {
-    fn read(&self, file: &vfs::VfsPath);
-}
-"#;
-
-        let diagnostics = run(source);
-
-        assert_diagnostic(&diagnostics[0])
-            .message_contains("names `vfs::VfsPath` from the external crate `ra_ap_vfs`");
-    }
-
-    #[test]
-    fn aliased_type_import_is_flagged_once() {
-        let source = r#"
-use ra_ap_vfs::VfsPath as File;
-
-pub trait Port {
-    fn read(&self, file: File);
-}
-"#;
-
-        let diagnostics = run(source);
-
-        assert_eq!(diagnostics.len(), 1);
-    }
-
-    #[test]
-    fn aliased_type_import_message_names_the_alias_and_real_crate() {
-        let source = r#"
-use ra_ap_vfs::VfsPath as File;
-
-pub trait Port {
-    fn read(&self, file: File);
-}
-"#;
-
-        let diagnostics = run(source);
-
-        assert_diagnostic(&diagnostics[0])
-            .message_contains("names `File` from the external crate `ra_ap_vfs`");
-    }
-
-    #[test]
     fn allowed_crate_is_not_flagged() {
-        let source = "pub trait Port {\n    fn run(&self) -> clawless::CommandResult;\n}";
+        let source = r#"pub trait Port {
+    fn run(&self) -> clawless::CommandResult;
+}"#;
 
-        assert_no_diagnostics(&run_with_allowed_crates(source, &["clawless"]));
+        let diagnostics = run_with_allowed_crates(
+            source,
+            &["clawless"],
+            &[("clawless::CommandResult", "clawless::CommandResult")],
+        );
+
+        assert_no_diagnostics(&diagnostics);
     }
 
     #[test]
     fn allowed_crate_leaves_another_crate_flagged() {
-        let source = "pub trait Port {\n    fn run(&self) -> anyhow::Result<()>;\n}";
+        let source = r#"pub trait Port {
+    fn run(&self) -> anyhow::Result<()>;
+}"#;
 
-        assert_eq!(run_with_allowed_crates(source, &["clawless"]).len(), 1);
+        let diagnostics = run_with_allowed_crates(
+            source,
+            &["clawless"],
+            &[("anyhow::Result", "anyhow::Result")],
+        );
+
+        assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn allowed_crate_through_a_glob_counts_by_the_defining_crate() {
+        let source = r#"
+use facade::*;
+
+pub trait Port {
+    fn port(&self, x: Thing);
+}
+"#;
+
+        let diagnostics = run_with_allowed_crates(
+            source,
+            &["facade"],
+            &[
+                ("facade::Thing", "facade_core::thing::Thing"),
+                ("facade", "<crate:facade>"),
+                ("Thing", "facade_core::thing::Thing"),
+            ],
+        );
+
+        assert_diagnostic(&diagnostics[0])
+            .message_contains("names `Thing` from the external crate `facade_core`");
+    }
+
+    #[test]
+    fn allowed_crate_written_in_a_use_is_not_flagged() {
+        let source = r#"
+use facade::Thing;
+
+pub trait Port {
+    fn port(&self, x: Thing);
+}
+"#;
+
+        let diagnostics = run_with_allowed_crates(
+            source,
+            &["facade"],
+            &[
+                ("facade::Thing", "facade_core::thing::Thing"),
+                ("facade", "<crate:facade>"),
+                ("Thing", "facade_core::thing::Thing"),
+            ],
+        );
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn allowed_crate_written_in_a_use_list_is_not_flagged() {
+        let source = r#"
+use facade::{Other, Thing};
+
+pub trait Port {
+    fn port(&self, x: Thing);
+}
+"#;
+
+        let diagnostics = run_with_allowed_crates(
+            source,
+            &["facade"],
+            &[
+                ("facade", "<crate:facade>"),
+                ("Thing", "facade_core::thing::Thing"),
+                ("Other", "facade_core::other::Other"),
+            ],
+        );
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn allowed_crate_written_in_place_is_not_flagged() {
+        let source = r#"
+pub trait Port {
+    fn port(&self, x: facade::Thing);
+}
+"#;
+
+        let diagnostics = run_with_allowed_crates(
+            source,
+            &["facade"],
+            &[
+                ("facade::Thing", "facade_core::thing::Thing"),
+                ("facade", "<crate:facade>"),
+                ("Thing", "facade_core::thing::Thing"),
+            ],
+        );
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn allowed_crate_written_under_a_cargo_rename_is_not_flagged() {
+        let source = r#"
+pub trait Port {
+    fn port(&self, x: renamed::Thing);
+}
+"#;
+
+        let diagnostics = run_with_allowed_crates(
+            source,
+            &["renamed"],
+            &[
+                ("renamed::Thing", "real_core::Thing"),
+                ("renamed", "<crate:real>"),
+            ],
+        );
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn allowed_defining_crate_is_not_flagged() {
+        let source = r#"pub trait Port {
+    fn run(&self) -> facade::Thing;
+}"#;
+
+        let diagnostics = run_with_allowed_crates(
+            source,
+            &["facade_core"],
+            &[("facade::Thing", "facade_core::thing::Thing")],
+        );
+
+        assert_no_diagnostics(&diagnostics);
     }
 
     #[test]
@@ -857,7 +965,7 @@ pub trait DecorationProvider {
 }
 "#;
 
-        let diagnostics = run(source);
+        let diagnostics = run(source, &[ANYHOW_RESULT]);
 
         assert_diagnostic(&diagnostics[0])
             .has_rule_id("lint.external-type-in-port")
@@ -875,41 +983,57 @@ pub trait DecorationProvider {
 }
 "#;
 
-        let diagnostics = run(source);
+        let diagnostics = run(source, &[("anyhow::Result", "anyhow::Result")]);
 
         assert_eq!(diagnostics.len(), 1);
     }
 
     #[test]
     fn array_length_is_not_flagged() {
-        let diagnostics = run("pub trait Port { fn read(&self) -> [u8; limits::LEN]; }");
+        let source = r#"pub trait Port { fn read(&self) -> [u8; limits::LEN]; }"#;
+
+        let diagnostics = run(source, &[("limits::LEN", "limits::LEN")]);
 
         assert_no_diagnostics(&diagnostics);
     }
 
     #[test]
-    fn associated_type_of_generic_is_not_flagged() {
+    fn associated_type_of_a_bounded_parameter_is_flagged_once_at_the_bound() {
         let source = r#"
 pub trait Port {
-    fn first<I: Iterator>(&self, items: I) -> I::Item;
+    fn first<I: vfs::Walk>(&self, items: I) -> I::Entry;
 }
 "#;
 
-        let diagnostics = run(source);
+        let diagnostics = run(
+            source,
+            &[
+                ("vfs::Walk", "ra_ap_vfs::walk::Walk"),
+                ("I", "<param>"),
+                ("I::Entry", "ra_ap_vfs::walk::Walk::Entry"),
+            ],
+        );
 
-        assert_no_diagnostics(&diagnostics);
+        assert_eq!(diagnostics.len(), 1);
     }
 
     #[test]
     fn associated_type_of_trait_generic_is_not_flagged() {
-        let diagnostics = run("pub trait Port<S> { fn read(&self) -> S::Output; }");
+        let source = r#"pub trait Port<S> { fn read(&self) -> S::Output; }"#;
+
+        let diagnostics = run(source, &[("S", "<param>")]);
 
         assert_no_diagnostics(&diagnostics);
     }
 
     #[test]
     fn bare_local_type_is_not_flagged() {
-        let diagnostics = run("pub trait Port { fn read(&self, tree: &Tree) -> Coverage; }");
+        let source = r#"pub trait Port { fn read(&self, tree: &Tree) -> Coverage; }"#;
+
+        let diagnostics = run(
+            source,
+            &[("Tree", "sample::Tree"), ("Coverage", "sample::Coverage")],
+        );
 
         assert_no_diagnostics(&diagnostics);
     }
@@ -922,7 +1046,13 @@ pub trait Port {
 }
 "#;
 
-        let diagnostics = run(source);
+        let diagnostics = run(
+            source,
+            &[
+                ("ra_ap_hir::Semantics", "ra_ap_hir::semantics::Semantics"),
+                ("S", "<param>"),
+            ],
+        );
 
         assert_eq!(diagnostics.len(), 1);
     }
@@ -935,7 +1065,13 @@ pub trait Port {
 }
 "#;
 
-        let diagnostics = run(source);
+        let diagnostics = run(
+            source,
+            &[
+                ("ra_ap_hir::Semantics", "ra_ap_hir::semantics::Semantics"),
+                ("S", "<param>"),
+            ],
+        );
 
         assert_diagnostic(&diagnostics[0])
             .message_contains("names `ra_ap_hir::Semantics` from the external crate `ra_ap_hir`");
@@ -953,7 +1089,10 @@ pub trait Port {
 }
 "#;
 
-        let diagnostics = run(source);
+        let diagnostics = run(
+            source,
+            &[("Serialize", "serde::ser::Serialize"), ("T", "<param>")],
+        );
 
         assert_eq!(diagnostics.len(), 1);
     }
@@ -970,7 +1109,10 @@ pub trait Port {
 }
 "#;
 
-        let diagnostics = run(source);
+        let diagnostics = run(
+            source,
+            &[("Serialize", "serde::ser::Serialize"), ("T", "<param>")],
+        );
 
         assert_diagnostic(&diagnostics[0])
             .message_contains("names `Serialize` from the external crate `serde`");
@@ -984,7 +1126,17 @@ pub trait Port {
 }
 "#;
 
-        let diagnostics = run(source);
+        let diagnostics = run(
+            source,
+            &[
+                ("serde::Deserialize", "serde::de::Deserialize"),
+                ("T", "<param>"),
+                (
+                    "<T as serde::Deserialize>::Output",
+                    "serde::de::Deserialize::Output",
+                ),
+            ],
+        );
 
         assert_eq!(diagnostics.len(), 1);
     }
@@ -997,7 +1149,17 @@ pub trait Port {
 }
 "#;
 
-        let diagnostics = run(source);
+        let diagnostics = run(
+            source,
+            &[
+                ("serde::Deserialize", "serde::de::Deserialize"),
+                ("T", "<param>"),
+                (
+                    "<T as serde::Deserialize>::Output",
+                    "serde::de::Deserialize::Output",
+                ),
+            ],
+        );
 
         assert_diagnostic(&diagnostics[0]).message_contains("names `serde::Deserialize`");
     }
@@ -1027,7 +1189,7 @@ pub trait Port {
 }
 "#;
 
-        let diagnostics = run(source);
+        let diagnostics = run(source, &[("anyhow::Result", "anyhow::Result")]);
 
         assert_eq!(diagnostics.len(), 1);
     }
@@ -1039,36 +1201,17 @@ pub trait Port {
             .find("anyhow")
             .expect("source should contain the path");
 
-        let diagnostics = run(source);
+        let diagnostics = run(source, &[ANYHOW_RESULT]);
 
         assert_diagnostic(&diagnostics[0])
             .has_span("<test>", start..start + "anyhow::Result".len());
     }
 
     #[test]
-    fn diagnostic_span_source_reports_one_diagnostic() {
-        let source = "pub trait Port { fn read(&self) -> anyhow::Result<()>; }";
-
-        let diagnostics = run(source);
-
-        assert_eq!(diagnostics.len(), 1);
-    }
-
-    fn run_documented(source: &str) -> Vec<stiles_types::Diagnostic> {
-        let tree = stiles_testing::parse(source, stiles_types::Language::Rust);
-        stiles_testing::execute(
-            &tree,
-            &mut [Box::new(stiles_rust::RustLintPassAdapter::new(
-                ExternalTypeInPort::default(),
-            ))],
-        )
-    }
-
-    #[test]
     fn documented_example_is_flagged() {
         let pair = example_pair::ExamplePair::read(include_str!("lib.rs"));
 
-        let diagnostics = run_documented(pair.example());
+        let diagnostics = run(pair.example(), &DOCUMENTED);
 
         assert!(!diagnostics.is_empty());
     }
@@ -1077,10 +1220,11 @@ pub trait Port {
     fn documented_fix_is_not_flagged() {
         let pair = example_pair::ExamplePair::read(include_str!("lib.rs"));
 
-        let diagnostics = run_documented(pair.fix());
+        let diagnostics = run(pair.fix(), &DOCUMENTED);
 
-        stiles_testing::assert_no_diagnostics(&diagnostics);
+        assert_no_diagnostics(&diagnostics);
     }
+
     #[test]
     fn dyn_and_impl_trait_bounds_are_flagged_twice() {
         let source = r#"
@@ -1089,9 +1233,50 @@ pub trait Port {
 }
 "#;
 
-        let diagnostics = run(source);
+        let diagnostics = run(
+            source,
+            &[
+                (
+                    "tokio::io::AsyncWrite",
+                    "tokio::io::async_write::AsyncWrite",
+                ),
+                ("futures::Stream", "futures_core::stream::Stream"),
+            ],
+        );
 
         assert_eq!(diagnostics.len(), 2);
+    }
+
+    /// The names of the documented example and fix, and their definitions
+    const DOCUMENTED: [Resolved<'static>; 5] = [
+        ANYHOW_RESULT,
+        ("Result", "core::result::Result"),
+        ("DecoratedTree", "sample::DecoratedTree"),
+        ("Coverage", "sample::Coverage"),
+        ("DecorateError", "sample::DecorateError"),
+    ];
+
+    #[test]
+    fn dyn_and_impl_trait_bounds_are_flagged_with_the_defining_crate_of_the_impl_second() {
+        let source = r#"
+pub trait Port {
+    fn write(&self, sink: &mut dyn tokio::io::AsyncWrite) -> impl futures::Stream;
+}
+"#;
+
+        let diagnostics = run(
+            source,
+            &[
+                (
+                    "tokio::io::AsyncWrite",
+                    "tokio::io::async_write::AsyncWrite",
+                ),
+                ("futures::Stream", "futures_core::stream::Stream"),
+            ],
+        );
+
+        assert_diagnostic(&diagnostics[1])
+            .message_contains("names `futures::Stream` from the external crate `futures_core`");
     }
 
     #[test]
@@ -1102,22 +1287,18 @@ pub trait Port {
 }
 "#;
 
-        let diagnostics = run(source);
+        let diagnostics = run(
+            source,
+            &[
+                (
+                    "tokio::io::AsyncWrite",
+                    "tokio::io::async_write::AsyncWrite",
+                ),
+                ("futures::Stream", "futures_core::stream::Stream"),
+            ],
+        );
 
         assert_diagnostic(&diagnostics[0]).message_contains("external crate `tokio`");
-    }
-
-    #[test]
-    fn dyn_and_impl_trait_bounds_are_flagged_with_the_impl_crate_second() {
-        let source = r#"
-pub trait Port {
-    fn write(&self, sink: &mut dyn tokio::io::AsyncWrite) -> impl futures::Stream;
-}
-"#;
-
-        let diagnostics = run(source);
-
-        assert_diagnostic(&diagnostics[1]).message_contains("external crate `futures`");
     }
 
     #[test]
@@ -1130,68 +1311,29 @@ pub trait Port {
 }
 "#;
 
-        let diagnostics = run(source);
+        let diagnostics = run(source, &[("VfsPath", "ra_ap_vfs::vfs_path::VfsPath")]);
 
         assert_eq!(diagnostics.len(), 2);
     }
 
     #[test]
     fn empty_source_produces_no_diagnostics() {
-        let diagnostics = run("");
+        let source = r#""#;
 
-        assert_no_diagnostics(&diagnostics);
-    }
-
-    #[test]
-    fn extern_crate_alias_is_flagged_once() {
-        let source = r#"
-extern crate ra_ap_vfs as vfs;
-
-pub trait Port {
-    fn read(&self, file: vfs::VfsPath);
-}
-"#;
-
-        let diagnostics = run(source);
-
-        assert_eq!(diagnostics.len(), 1);
-    }
-
-    #[test]
-    fn extern_crate_alias_message_names_the_real_crate() {
-        let source = r#"
-extern crate ra_ap_vfs as vfs;
-
-pub trait Port {
-    fn read(&self, file: vfs::VfsPath);
-}
-"#;
-
-        let diagnostics = run(source);
-
-        assert_diagnostic(&diagnostics[0]).message_contains("external crate `ra_ap_vfs`");
-    }
-
-    #[test]
-    fn extern_crate_self_alias_is_not_flagged() {
-        let source = r#"
-extern crate self as stiles;
-
-pub trait Port {
-    fn read(&self) -> stiles::Coverage;
-}
-"#;
-
-        let diagnostics = run(source);
+        let diagnostics = run(source, &[]);
 
         assert_no_diagnostics(&diagnostics);
     }
 
     #[test]
     fn file_in_tests_directory_without_a_target_is_flagged() {
-        let source = "pub trait Port { fn read(&self) -> anyhow::Result<()>; }";
+        let source = r#"pub trait Port { fn read(&self) -> anyhow::Result<()>; }"#;
 
-        let diagnostics = run_at(Path::new("crates/stiles/tests/fixtures/src/lib.rs"), source);
+        let diagnostics = run_at(
+            Path::new("crates/stiles/tests/fixtures/src/lib.rs"),
+            source,
+            &[("anyhow::Result", "anyhow::Result")],
+        );
 
         assert_eq!(diagnostics.len(), 1);
     }
@@ -1199,7 +1341,11 @@ pub trait Port {
     #[test]
     fn file_that_only_integration_tests_compile_is_not_flagged() {
         let source = "pub trait Port { fn read(&self) -> anyhow::Result<()>; }";
-        let mut tree = parse_at(Path::new("crates/stiles/tests/fixtures/src/lib.rs"), source);
+        let mut tree = parse_at(
+            Path::new("crates/stiles/tests/fixtures/src/lib.rs"),
+            source,
+            &[ANYHOW_RESULT],
+        );
         test_decorations::target(&mut tree, [TargetKind::IntegrationTest]);
 
         let diagnostics = execute_rule(&tree);
@@ -1208,15 +1354,63 @@ pub trait Port {
     }
 
     #[test]
+    fn finding_names_the_crate_written_in_a_use() {
+        let source = r#"
+use facade::Thing;
+
+pub trait Port {
+    fn port(&self, x: Thing);
+}
+"#;
+
+        let diagnostics = run(
+            source,
+            &[
+                ("facade::Thing", "facade_core::thing::Thing"),
+                ("facade", "<crate:facade>"),
+                ("Thing", "facade_core::thing::Thing"),
+            ],
+        );
+
+        assert_diagnostic(&diagnostics[0])
+            .message_contains("names `Thing` from the external crate `facade`");
+    }
+
+    #[test]
+    fn finding_names_the_crate_written_in_place() {
+        let source = r#"
+pub trait Port {
+    fn port(&self, x: facade::Thing);
+}
+"#;
+
+        let diagnostics = run(
+            source,
+            &[
+                ("facade::Thing", "facade_core::thing::Thing"),
+                ("facade", "<crate:facade>"),
+                ("Thing", "facade_core::thing::Thing"),
+            ],
+        );
+
+        assert_diagnostic(&diagnostics[0])
+            .message_contains("names `facade::Thing` from the external crate `facade`");
+    }
+
+    #[test]
     fn function_pointer_parameter_is_flagged_once() {
-        let diagnostics = run("pub trait Port { fn visit(&self, f: fn(syn::Item)); }");
+        let source = r#"pub trait Port { fn visit(&self, f: fn(syn::Item)); }"#;
+
+        let diagnostics = run(source, &[("syn::Item", "syn::item::Item")]);
 
         assert_eq!(diagnostics.len(), 1);
     }
 
     #[test]
     fn function_pointer_parameter_message_names_the_parameter_type() {
-        let diagnostics = run("pub trait Port { fn visit(&self, f: fn(syn::Item)); }");
+        let source = r#"pub trait Port { fn visit(&self, f: fn(syn::Item)); }"#;
+
+        let diagnostics = run(source, &[("syn::Item", "syn::item::Item")]);
 
         assert_diagnostic(&diagnostics[0]).message_contains("names `syn::Item`");
     }
@@ -1231,7 +1425,14 @@ pub trait Port {
 }
 "#;
 
-        let diagnostics = run(source);
+        let diagnostics = run(
+            source,
+            &[
+                ("VfsPath", "ra_ap_vfs::vfs_path::VfsPath"),
+                ("Vec", "alloc::vec::Vec"),
+                ("Option", "core::option::Option"),
+            ],
+        );
 
         assert_eq!(diagnostics.len(), 1);
     }
@@ -1246,13 +1447,51 @@ pub trait Port {
 }
 "#;
 
-        let diagnostics = run(source);
+        let diagnostics = run(
+            source,
+            &[
+                ("VfsPath", "ra_ap_vfs::vfs_path::VfsPath"),
+                ("Vec", "alloc::vec::Vec"),
+                ("Option", "core::option::Option"),
+            ],
+        );
 
         assert_diagnostic(&diagnostics[0]).message_contains("names `VfsPath`");
     }
 
     #[test]
-    fn glob_import_leaves_unexplained_root_unreported() {
+    fn glob_import_is_flagged_once() {
+        let source = r#"
+use ra_ap_vfs::*;
+
+pub trait Port {
+    fn read(&self) -> VfsPath;
+}
+"#;
+
+        let diagnostics = run(source, &[("VfsPath", "ra_ap_vfs::vfs_path::VfsPath")]);
+
+        assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn glob_import_message_names_the_crate() {
+        let source = r#"
+use ra_ap_vfs::*;
+
+pub trait Port {
+    fn read(&self) -> VfsPath;
+}
+"#;
+
+        let diagnostics = run(source, &[("VfsPath", "ra_ap_vfs::vfs_path::VfsPath")]);
+
+        assert_diagnostic(&diagnostics[0])
+            .message_contains("names `VfsPath` from the external crate `ra_ap_vfs`");
+    }
+
+    #[test]
+    fn glob_import_of_a_local_module_is_not_flagged() {
         let source = r#"
 use super::*;
 
@@ -1261,153 +1500,9 @@ pub trait Port {
 }
 "#;
 
-        let diagnostics = run(source);
+        let diagnostics = run(source, &[("model::Coverage", "sample::model::Coverage")]);
 
         assert_no_diagnostics(&diagnostics);
-    }
-
-    #[test]
-    fn glob_import_still_reports_proven_external_alias_once() {
-        let source = r#"
-use super::*;
-extern crate anyhow as failure;
-
-pub trait Port {
-    fn read(&self) -> failure::Result<()>;
-}
-"#;
-
-        let diagnostics = run(source);
-
-        assert_eq!(diagnostics.len(), 1);
-    }
-
-    #[test]
-    fn glob_import_still_reports_proven_external_alias_with_the_real_crate() {
-        let source = r#"
-use super::*;
-extern crate anyhow as failure;
-
-pub trait Port {
-    fn read(&self) -> failure::Result<()>;
-}
-"#;
-
-        let diagnostics = run(source);
-
-        assert_diagnostic(&diagnostics[0]).message_contains("external crate `anyhow`");
-    }
-
-    #[test]
-    fn import_chain_to_external_crate_is_flagged_once() {
-        let source = r#"
-use ra_ap_hir as hir;
-use hir::Semantics;
-
-pub trait Port {
-    fn run(&self, semantics: &Semantics);
-}
-"#;
-
-        let diagnostics = run(source);
-
-        assert_eq!(diagnostics.len(), 1);
-    }
-
-    #[test]
-    fn import_chain_to_external_crate_message_names_the_real_crate() {
-        let source = r#"
-use ra_ap_hir as hir;
-use hir::Semantics;
-
-pub trait Port {
-    fn run(&self, semantics: &Semantics);
-}
-"#;
-
-        let diagnostics = run(source);
-
-        assert_diagnostic(&diagnostics[0]).message_contains("external crate `ra_ap_hir`");
-    }
-
-    #[test]
-    fn import_chain_to_local_module_is_not_flagged() {
-        let source = r#"
-use crate::model;
-use model::Coverage;
-
-pub trait Port {
-    fn read(&self) -> Coverage;
-}
-"#;
-
-        let diagnostics = run(source);
-
-        assert_no_diagnostics(&diagnostics);
-    }
-
-    #[test]
-    fn import_cycle_is_not_flagged() {
-        let source = r#"
-use first as second;
-use second as first;
-
-pub trait Port {
-    fn read(&self) -> first::Coverage;
-}
-"#;
-
-        let diagnostics = run(source);
-
-        assert_no_diagnostics(&diagnostics);
-    }
-
-    #[test]
-    fn import_under_cfg_test_is_not_resolved() {
-        let source = r#"
-#[cfg(test)]
-use anyhow::Result;
-
-pub trait Port {
-    fn read(&self) -> Result<()>;
-}
-"#;
-
-        let diagnostics = run_attaching(source, |tree| {
-            test_decorations::mark(tree, "use anyhow::Result")
-        });
-
-        assert_no_diagnostics(&diagnostics);
-    }
-
-    #[test]
-    fn imported_crate_name_is_flagged_once() {
-        let source = r#"
-use anyhow;
-
-pub trait Port {
-    fn read(&self) -> anyhow::Error;
-}
-"#;
-
-        let diagnostics = run(source);
-
-        assert_eq!(diagnostics.len(), 1);
-    }
-
-    #[test]
-    fn imported_crate_name_message_names_the_crate() {
-        let source = r#"
-use anyhow;
-
-pub trait Port {
-    fn read(&self) -> anyhow::Error;
-}
-"#;
-
-        let diagnostics = run(source);
-
-        assert_diagnostic(&diagnostics[0]).message_contains("external crate `anyhow`");
     }
 
     #[test]
@@ -1422,7 +1517,10 @@ impl Parser {
 }
 "#;
 
-        let diagnostics = run(source);
+        let diagnostics = run(
+            source,
+            &[("tree_sitter::Language", "tree_sitter::Language")],
+        );
 
         assert_no_diagnostics(&diagnostics);
     }
@@ -1439,79 +1537,37 @@ mod fixtures {
 }
 "#;
 
-        let diagnostics =
-            run_attaching(source, |tree| test_decorations::mark(tree, "mod fixtures"));
+        let diagnostics = run_attaching(source, &[("anyhow::Result", "anyhow::Result")], |tree| {
+            test_decorations::mark(tree, "mod fixtures")
+        });
 
         assert_no_diagnostics(&diagnostics);
     }
 
     #[test]
-    fn leading_colon_path_ignores_a_glob() {
-        let source = r#"
-use super::*;
-
-pub trait Port {
-    fn read(&self) -> ::anyhow::Error;
-}
-"#;
-
-        let diagnostics = run(source);
-
-        assert_eq!(diagnostics.len(), 1);
-    }
-
-    #[test]
     fn leading_colon_path_is_flagged_once() {
-        let diagnostics = run("pub trait Port { fn read(&self) -> ::anyhow::Error; }");
+        let source = r#"pub trait Port { fn read(&self) -> ::anyhow::Error; }"#;
+
+        let diagnostics = run(source, &[("::anyhow::Error", "anyhow::Error")]);
 
         assert_eq!(diagnostics.len(), 1);
     }
 
     #[test]
     fn leading_colon_path_message_names_the_path_and_crate() {
-        let diagnostics = run("pub trait Port { fn read(&self) -> ::anyhow::Error; }");
+        let source = r#"pub trait Port { fn read(&self) -> ::anyhow::Error; }"#;
+
+        let diagnostics = run(source, &[("::anyhow::Error", "anyhow::Error")]);
 
         assert_diagnostic(&diagnostics[0])
             .message_contains("names `::anyhow::Error` from the external crate `anyhow`");
     }
 
     #[test]
-    fn local_module_root_is_not_flagged() {
-        let source = r#"
-mod model;
-
-use model::Coverage;
-
-pub trait Port {
-    fn read(&self) -> model::Tree;
-    fn cover(&self) -> Coverage;
-}
-"#;
-
-        let diagnostics = run(source);
-
-        assert_no_diagnostics(&diagnostics);
-    }
-
-    #[test]
-    fn local_path_roots_are_not_flagged() {
-        let source = r#"
-use super::Tree;
-
-pub trait Port {
-    fn read(&self, tree: Tree) -> crate::Coverage;
-    fn write(&self, value: self::Value) -> super::Outcome;
-}
-"#;
-
-        let diagnostics = run(source);
-
-        assert_no_diagnostics(&diagnostics);
-    }
-
-    #[test]
     fn macro_in_type_position_is_not_flagged() {
-        let diagnostics = run("pub trait Port { fn read(&self) -> output!(anyhow::Error); }");
+        let source = r#"pub trait Port { fn read(&self) -> output!(anyhow::Error); }"#;
+
+        let diagnostics = run(source, &[("anyhow::Error", "anyhow::Error")]);
 
         assert_no_diagnostics(&diagnostics);
     }
@@ -1528,7 +1584,7 @@ macro_rules! port {
 }
 "#;
 
-        let diagnostics = run(source);
+        let diagnostics = run(source, &[("anyhow::Result", "anyhow::Result")]);
 
         assert_no_diagnostics(&diagnostics);
     }
@@ -1541,7 +1597,7 @@ pub trait Port {
 }
 "#;
 
-        let diagnostics = run(source);
+        let diagnostics = run(source, &[("anyhow::Result", "anyhow::Result")]);
 
         assert_no_diagnostics(&diagnostics);
     }
@@ -1555,7 +1611,7 @@ pub trait Port {
 }
 "#;
 
-        let diagnostics = run(source);
+        let diagnostics = run(source, &[("anyhow::Result", "anyhow::Result")]);
 
         assert_eq!(diagnostics.len(), 1);
     }
@@ -1569,7 +1625,7 @@ pub trait Port {
 }
 "#;
 
-        let diagnostics = run(source);
+        let diagnostics = run(source, &[("anyhow::Result", "anyhow::Result")]);
 
         assert_diagnostic(&diagnostics[0]).message_contains("names `anyhow::Result`");
     }
@@ -1583,60 +1639,11 @@ pub trait Port {
 }
 "#;
 
-        let diagnostics = run_attaching(source, |tree| test_decorations::mark(tree, "fn fake"));
+        let diagnostics = run_attaching(source, &[("anyhow::Result", "anyhow::Result")], |tree| {
+            test_decorations::mark(tree, "fn fake")
+        });
 
         assert_no_diagnostics(&diagnostics);
-    }
-
-    #[test]
-    fn nested_module_does_not_inherit_imports() {
-        let source = r#"
-use anyhow::Result;
-
-mod inner {
-    pub trait Port {
-        fn read(&self) -> Result<()>;
-    }
-}
-"#;
-
-        let diagnostics = run(source);
-
-        assert_no_diagnostics(&diagnostics);
-    }
-
-    #[test]
-    fn nested_module_with_own_import_is_flagged_once() {
-        let source = r#"
-pub mod inner {
-    use anyhow::Result;
-
-    pub trait Port {
-        fn read(&self) -> Result<()>;
-    }
-}
-"#;
-
-        let diagnostics = run(source);
-
-        assert_eq!(diagnostics.len(), 1);
-    }
-
-    #[test]
-    fn nested_module_with_own_import_message_names_the_crate() {
-        let source = r#"
-pub mod inner {
-    use anyhow::Result;
-
-    pub trait Port {
-        fn read(&self) -> Result<()>;
-    }
-}
-"#;
-
-        let diagnostics = run(source);
-
-        assert_diagnostic(&diagnostics[0]).message_contains("external crate `anyhow`");
     }
 
     #[test]
@@ -1649,13 +1656,20 @@ pub trait Port {
 }
 "#;
 
-        let diagnostics = run_at(Path::new("crates/stiles-types/src/lib.rs"), source);
+        let diagnostics = run_at(
+            Path::new("crates/stiles-types/src/lib.rs"),
+            source,
+            &[
+                ("IStable", "stabby_abi::istable::IStable"),
+                ("T", "<param>"),
+            ],
+        );
 
         assert_eq!(diagnostics.len(), 1);
     }
 
     #[test]
-    fn non_sibling_crate_in_a_workspace_message_names_the_crate() {
+    fn non_sibling_crate_in_a_workspace_message_names_the_defining_crate() {
         let source = r#"
 use stabby::IStable;
 
@@ -1664,40 +1678,61 @@ pub trait Port {
 }
 "#;
 
-        let diagnostics = run_at(Path::new("crates/stiles-types/src/lib.rs"), source);
+        let diagnostics = run_at(
+            Path::new("crates/stiles-types/src/lib.rs"),
+            source,
+            &[
+                ("IStable", "stabby_abi::istable::IStable"),
+                ("T", "<param>"),
+            ],
+        );
 
-        assert_diagnostic(&diagnostics[0]).message_contains("external crate `stabby`");
+        assert_diagnostic(&diagnostics[0]).message_contains("external crate `stabby_abi`");
     }
 
     #[test]
     fn private_trait_is_not_flagged() {
-        let diagnostics = run("trait Port { fn read(&self) -> anyhow::Result<()>; }");
+        let source = r#"trait Port { fn read(&self) -> anyhow::Result<()>; }"#;
+
+        let diagnostics = run(source, &[("anyhow::Result", "anyhow::Result")]);
 
         assert_no_diagnostics(&diagnostics);
     }
 
     #[test]
-    fn qualified_path_to_unimported_crate_is_flagged_once() {
+    fn qualified_path_is_flagged_once() {
         let source = r#"
 pub trait Port {
     fn decorate(&self, file: &ra_ap_vfs::VfsPath) -> Coverage;
 }
 "#;
 
-        let diagnostics = run(source);
+        let diagnostics = run(
+            source,
+            &[
+                ("ra_ap_vfs::VfsPath", "ra_ap_vfs::vfs_path::VfsPath"),
+                ("Coverage", "sample::Coverage"),
+            ],
+        );
 
         assert_eq!(diagnostics.len(), 1);
     }
 
     #[test]
-    fn qualified_path_to_unimported_crate_message_names_method_path_and_crate() {
+    fn qualified_path_message_names_method_path_and_crate() {
         let source = r#"
 pub trait Port {
     fn decorate(&self, file: &ra_ap_vfs::VfsPath) -> Coverage;
 }
 "#;
 
-        let diagnostics = run(source);
+        let diagnostics = run(
+            source,
+            &[
+                ("ra_ap_vfs::VfsPath", "ra_ap_vfs::vfs_path::VfsPath"),
+                ("Coverage", "sample::Coverage"),
+            ],
+        );
 
         assert_diagnostic(&diagnostics[0]).message_contains(
             "port method `decorate` names `ra_ap_vfs::VfsPath` from the external crate `ra_ap_vfs`",
@@ -1706,21 +1741,126 @@ pub trait Port {
 
     #[cfg(feature = "plugin")]
     #[test]
-    fn reads_returns_the_target_and_the_test_code() {
+    fn reads_returns_the_resolution_the_target_and_the_test_code() {
         let reads = stiles_plugin::DeclaresRules::reads(&ExternalTypeInPort::default());
 
         assert_eq!(
             reads,
-            stiles_plugin::Reads::of::<stiles_rust::decorations::Target>()
+            stiles_plugin::Reads::of::<Resolution>()
+                .and::<stiles_rust::decorations::Target>()
                 .and::<stiles_rust::decorations::TestCode>()
         );
     }
 
     #[test]
+    fn renamed_crate_import_is_flagged_once() {
+        let source = r#"
+use ra_ap_vfs as vfs;
+
+pub trait Port {
+    fn read(&self, file: &vfs::VfsPath);
+}
+"#;
+
+        let diagnostics = run(source, &[("vfs::VfsPath", "ra_ap_vfs::vfs_path::VfsPath")]);
+
+        assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn renamed_crate_import_message_names_the_alias_path_and_real_crate() {
+        let source = r#"
+use ra_ap_vfs as vfs;
+
+pub trait Port {
+    fn read(&self, file: &vfs::VfsPath);
+}
+"#;
+
+        let diagnostics = run(source, &[("vfs::VfsPath", "ra_ap_vfs::vfs_path::VfsPath")]);
+
+        assert_diagnostic(&diagnostics[0])
+            .message_contains("names `vfs::VfsPath` from the external crate `ra_ap_vfs`");
+    }
+
+    #[test]
+    fn renamed_type_import_is_flagged_once() {
+        let source = r#"
+use ra_ap_vfs::VfsPath as File;
+
+pub trait Port {
+    fn read(&self, file: File);
+}
+"#;
+
+        let diagnostics = run(source, &[("File", "ra_ap_vfs::vfs_path::VfsPath")]);
+
+        assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn renamed_type_import_message_names_the_alias_and_real_crate() {
+        let source = r#"
+use ra_ap_vfs::VfsPath as File;
+
+pub trait Port {
+    fn read(&self, file: File);
+}
+"#;
+
+        let diagnostics = run(source, &[("File", "ra_ap_vfs::vfs_path::VfsPath")]);
+
+        assert_diagnostic(&diagnostics[0])
+            .message_contains("names `File` from the external crate `ra_ap_vfs`");
+    }
+
+    #[test]
     fn restricted_trait_is_not_flagged() {
-        let diagnostics = run("pub(crate) trait Port { fn read(&self) -> anyhow::Result<()>; }");
+        let source = r#"pub(crate) trait Port { fn read(&self) -> anyhow::Result<()>; }"#;
+
+        let diagnostics = run(source, &[("anyhow::Result", "anyhow::Result")]);
 
         assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn same_crate_paths_are_not_flagged() {
+        let source = r#"
+use super::Tree;
+
+pub trait Port {
+    fn read(&self, tree: Tree) -> crate::Coverage;
+    fn write(&self, value: self::Value) -> super::Outcome;
+}
+"#;
+
+        let diagnostics = run(
+            source,
+            &[
+                ("Tree", "sample::Tree"),
+                ("crate::Coverage", "sample::Coverage"),
+                ("self::Value", "sample::port::Value"),
+                ("super::Outcome", "sample::Outcome"),
+            ],
+        );
+
+        assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn same_crate_reexport_of_an_external_type_is_flagged() {
+        let source = r#"
+use crate::errors::Failure;
+
+pub trait Port {
+    fn read(&self) -> Failure;
+}
+"#;
+
+        let diagnostics = run(source, &[("Failure", "anyhow::Error")]);
+
+        assert_diagnostic(&diagnostics[0])
+            .message_contains("names `Failure` from the external crate `anyhow`");
     }
 
     #[test]
@@ -1733,7 +1873,14 @@ pub trait Decoration {
 }
 "#;
 
-        let diagnostics = run(source);
+        let diagnostics = run(
+            source,
+            &[
+                ("Self", "<self>"),
+                ("Self::Ref", "sample::Decoration::Ref"),
+                ("DecoratedNode", "sample::DecoratedNode"),
+            ],
+        );
 
         assert_no_diagnostics(&diagnostics);
     }
@@ -1752,6 +1899,11 @@ pub trait DeclaresRules {
         let diagnostics = run_at(
             Path::new("crates/stiles-plugin/src/declares_rules.rs"),
             source,
+            &[
+                ("RuleId", "stiles_types::rule_id::RuleId"),
+                ("Vec", "alloc::vec::Vec"),
+                ("stiles_rust::Language", "stiles_rust::language::Language"),
+            ],
         );
 
         assert_no_diagnostics(&diagnostics);
@@ -1759,11 +1911,30 @@ pub trait DeclaresRules {
 
     #[test]
     fn sibling_of_unprefixed_crate_directory_is_not_flagged() {
-        let source = "pub trait Port { fn read(&self) -> stiles_types::RuleId; }";
+        let source = r#"pub trait Port { fn read(&self) -> stiles_types::RuleId; }"#;
 
-        let diagnostics = run_at(Path::new("stiles/src/lib.rs"), source);
+        let diagnostics = run_at(
+            Path::new("stiles/src/lib.rs"),
+            source,
+            &[("stiles_types::RuleId", "stiles_types::rule_id::RuleId")],
+        );
 
         assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn sibling_reexport_of_an_external_type_is_flagged() {
+        let source = r#"pub trait Port { fn language(&self) -> stiles_rust::Language; }"#;
+
+        let diagnostics = run_at(
+            Path::new("crates/stiles-plugin/src/lib.rs"),
+            source,
+            &[("stiles_rust::Language", "tree_sitter::Language")],
+        );
+
+        assert_diagnostic(&diagnostics[0]).message_contains(
+            "names `stiles_rust::Language` from the external crate `tree_sitter`",
+        );
     }
 
     #[test]
@@ -1778,7 +1949,16 @@ pub trait Port {
 }
 "#;
 
-        let diagnostics = run(source);
+        let diagnostics = run(
+            source,
+            &[
+                ("std::path::Path", "std::path::Path"),
+                ("io::Result", "std::io::error::Result"),
+                ("Arc", "alloc::sync::Arc"),
+                ("core::fmt::Formatter", "core::fmt::Formatter"),
+                ("::core::fmt::Result", "core::fmt::Result"),
+            ],
+        );
 
         assert_no_diagnostics(&diagnostics);
     }
@@ -1794,9 +1974,45 @@ mod tests {
 }
 "#;
 
-        let diagnostics = run_attaching(source, |tree| test_decorations::mark(tree, "mod tests"));
+        let diagnostics = run_attaching(source, &[("anyhow::Result", "anyhow::Result")], |tree| {
+            test_decorations::mark(tree, "mod tests")
+        });
 
         assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn trait_in_inline_module_is_flagged_once() {
+        let source = r#"
+pub mod inner {
+    use anyhow::Result;
+
+    pub trait Port {
+        fn read(&self) -> Result<()>;
+    }
+}
+"#;
+
+        let diagnostics = run(source, &[("Result", "anyhow::Result")]);
+
+        assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn trait_in_inline_module_message_names_the_crate() {
+        let source = r#"
+pub mod inner {
+    use anyhow::Result;
+
+    pub trait Port {
+        fn read(&self) -> Result<()>;
+    }
+}
+"#;
+
+        let diagnostics = run(source, &[("Result", "anyhow::Result")]);
+
+        assert_diagnostic(&diagnostics[0]).message_contains("external crate `anyhow`");
     }
 
     #[test]
@@ -1809,7 +2025,7 @@ pub fn build() {
 }
 "#;
 
-        let diagnostics = run(source);
+        let diagnostics = run(source, &[("anyhow::Result", "anyhow::Result")]);
 
         assert_no_diagnostics(&diagnostics);
     }
@@ -1821,21 +2037,15 @@ pub fn build() {
     }
 
     #[test]
-    fn trait_send_glob() {
+    fn trait_send_context() {
         fn assert_send<T: Send>() {}
-        assert_send::<Glob>();
+        assert_send::<Context<'_>>();
     }
 
     #[test]
-    fn trait_send_root() {
+    fn trait_send_import() {
         fn assert_send<T: Send>() {}
-        assert_send::<Root<'_>>();
-    }
-
-    #[test]
-    fn trait_send_scope() {
-        fn assert_send<T: Send>() {}
-        assert_send::<Scope<'_>>();
+        assert_send::<Import>();
     }
 
     #[test]
@@ -1845,33 +2055,39 @@ pub fn build() {
     }
 
     #[test]
+    fn trait_send_written_crate() {
+        fn assert_send<T: Send>() {}
+        assert_send::<WrittenCrate>();
+    }
+
+    #[test]
     fn trait_sync() {
         fn assert_sync<T: Sync>() {}
         assert_sync::<ExternalTypeInPort>();
     }
 
     #[test]
-    fn trait_sync_glob() {
+    fn trait_sync_context() {
         fn assert_sync<T: Sync>() {}
-        assert_sync::<Glob>();
+        assert_sync::<Context<'_>>();
     }
 
     #[test]
-    fn trait_sync_root() {
+    fn trait_sync_import() {
         fn assert_sync<T: Sync>() {}
-        assert_sync::<Root<'_>>();
-    }
-
-    #[test]
-    fn trait_sync_scope() {
-        fn assert_sync<T: Sync>() {}
-        assert_sync::<Scope<'_>>();
+        assert_sync::<Import>();
     }
 
     #[test]
     fn trait_sync_signature() {
         fn assert_sync<T: Sync>() {}
         assert_sync::<Signature<'_, '_>>();
+    }
+
+    #[test]
+    fn trait_sync_written_crate() {
+        fn assert_sync<T: Sync>() {}
+        assert_sync::<WrittenCrate>();
     }
 
     #[test]
@@ -1883,7 +2099,7 @@ pub trait Port {
 }
 "#;
 
-        let diagnostics = run(source);
+        let diagnostics = run(source, &[("anyhow::Result", "anyhow::Result")]);
 
         assert_eq!(diagnostics.len(), 1);
     }
@@ -1897,7 +2113,7 @@ pub trait Port {
 }
 "#;
 
-        let diagnostics = run(source);
+        let diagnostics = run(source, &[("anyhow::Result", "anyhow::Result")]);
 
         assert_diagnostic(&diagnostics[0]).message_contains("names `anyhow::Result`");
     }
@@ -1911,7 +2127,7 @@ pub trait Port {
 }
 "#;
 
-        let diagnostics = run_attaching(source, |tree| {
+        let diagnostics = run_attaching(source, &[("anyhow::Result", "anyhow::Result")], |tree| {
             test_decorations::mark(tree, "pub trait Port")
         });
 
@@ -1925,27 +2141,27 @@ pub trait Port {
     }
 
     #[test]
-    fn trait_unpin_glob() {
+    fn trait_unpin_context() {
         fn assert_unpin<T: Unpin>() {}
-        assert_unpin::<Glob>();
+        assert_unpin::<Context<'_>>();
     }
 
     #[test]
-    fn trait_unpin_root() {
+    fn trait_unpin_import() {
         fn assert_unpin<T: Unpin>() {}
-        assert_unpin::<Root<'_>>();
-    }
-
-    #[test]
-    fn trait_unpin_scope() {
-        fn assert_unpin<T: Unpin>() {}
-        assert_unpin::<Scope<'_>>();
+        assert_unpin::<Import>();
     }
 
     #[test]
     fn trait_unpin_signature() {
         fn assert_unpin<T: Unpin>() {}
         assert_unpin::<Signature<'_, '_>>();
+    }
+
+    #[test]
+    fn trait_unpin_written_crate() {
+        fn assert_unpin<T: Unpin>() {}
+        assert_unpin::<WrittenCrate>();
     }
 
     #[test]
@@ -1958,7 +2174,13 @@ pub trait Port {
 }
 "#;
 
-        let diagnostics = run(source);
+        let diagnostics = run(
+            source,
+            &[
+                ("Item", "ra_ap_vfs::Item"),
+                ("Iterator", "core::iter::Iterator"),
+            ],
+        );
 
         assert_no_diagnostics(&diagnostics);
     }
@@ -1971,7 +2193,13 @@ pub trait Port {
 }
 "#;
 
-        let diagnostics = run(source);
+        let diagnostics = run(
+            source,
+            &[
+                ("ra_ap_vfs::FileId", "ra_ap_vfs::FileId"),
+                ("Iterator", "core::iter::Iterator"),
+            ],
+        );
 
         assert_eq!(diagnostics.len(), 1);
     }
@@ -1984,127 +2212,97 @@ pub trait Port {
 }
 "#;
 
-        let diagnostics = run(source);
+        let diagnostics = run(
+            source,
+            &[
+                ("ra_ap_vfs::FileId", "ra_ap_vfs::FileId"),
+                ("Iterator", "core::iter::Iterator"),
+            ],
+        );
 
         assert_diagnostic(&diagnostics[0]).message_contains("names `ra_ap_vfs::FileId`");
     }
 
     #[test]
-    fn type_parameter_shadowing_an_import_is_not_flagged() {
+    fn type_parameter_is_not_flagged() {
         let source = r#"
-use serde::T;
-
 pub trait Port {
     fn write<T>(&self, value: T);
 }
 "#;
 
-        let diagnostics = run(source);
+        let diagnostics = run(source, &[("T", "<param>")]);
 
         assert_no_diagnostics(&diagnostics);
     }
 
     #[test]
     fn typed_receiver_is_flagged_once() {
-        let diagnostics = run("pub trait Port { fn read(self: triomphe::Arc<Self>); }");
+        let source = r#"pub trait Port { fn read(self: triomphe::Arc<Self>); }"#;
+
+        let diagnostics = run(
+            source,
+            &[("triomphe::Arc", "triomphe::arc::Arc"), ("Self", "<self>")],
+        );
 
         assert_eq!(diagnostics.len(), 1);
     }
 
     #[test]
     fn typed_receiver_message_names_the_crate() {
-        let diagnostics = run("pub trait Port { fn read(self: triomphe::Arc<Self>); }");
+        let source = r#"pub trait Port { fn read(self: triomphe::Arc<Self>); }"#;
+
+        let diagnostics = run(
+            source,
+            &[("triomphe::Arc", "triomphe::arc::Arc"), ("Self", "<self>")],
+        );
 
         assert_diagnostic(&diagnostics[0]).message_contains("external crate `triomphe`");
     }
 
     #[test]
-    fn underscore_import_binds_no_name() {
-        let source = r#"
-use anyhow::Context as _;
+    fn unrelated_crate_without_workspace_is_flagged() {
+        let source = r#"pub trait Port { fn read(&self) -> stiles_types::RuleId; }"#;
 
-pub trait Port {
-    fn read(&self) -> Context;
-}
-"#;
+        let diagnostics = run_at(
+            Path::new("src/lib.rs"),
+            source,
+            &[("stiles_types::RuleId", "stiles_types::rule_id::RuleId")],
+        );
 
-        let diagnostics = run(source);
+        assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn unresolved_name_is_not_flagged() {
+        let source = r#"pub trait Port { fn read(&self) -> anyhow::Result<()>; }"#;
+
+        let diagnostics = run(source, &[]);
 
         assert_no_diagnostics(&diagnostics);
     }
 
     #[test]
-    fn unrelated_crate_without_workspace_is_flagged() {
-        let source = "pub trait Port { fn read(&self) -> stiles_types::RuleId; }";
+    fn use_of_another_definition_leaves_the_defining_crate() {
+        let source = r#"
+use facade::Other;
 
-        let diagnostics = run_at(Path::new("src/lib.rs"), source);
+pub trait Port {
+    fn port(&self, x: Thing);
+}
+"#;
+
+        let diagnostics = run_with_allowed_crates(
+            source,
+            &["facade"],
+            &[
+                ("facade", "<crate:facade>"),
+                ("Other", "facade_core::other::Other"),
+                ("Thing", "facade_core::thing::Thing"),
+            ],
+        );
 
         assert_eq!(diagnostics.len(), 1);
-    }
-
-    #[test]
-    fn use_list_entries_are_flagged_three_times() {
-        let source = r#"
-use ra_ap_vfs::{FileId, path::{self as paths, VfsPath}};
-
-pub trait Port {
-    fn read(&self, id: FileId, path: VfsPath) -> paths::Kind;
-}
-"#;
-
-        let diagnostics = run(source);
-
-        assert_eq!(diagnostics.len(), 3);
-    }
-
-    #[test]
-    fn use_list_entries_are_flagged_with_the_list_crate() {
-        let source = r#"
-use ra_ap_vfs::{FileId, path::{self as paths, VfsPath}};
-
-pub trait Port {
-    fn read(&self, id: FileId, path: VfsPath) -> paths::Kind;
-}
-"#;
-
-        let naming_the_crate = run(source)
-            .iter()
-            .filter(|diagnostic| diagnostic.message().contains("external crate `ra_ap_vfs`"))
-            .count();
-
-        assert_eq!(naming_the_crate, 3);
-    }
-
-    #[test]
-    fn use_list_self_entry_is_resolved_to_one_diagnostic() {
-        let source = r#"
-use std::io::{self, Read};
-use ra_ap_vfs::{self};
-
-pub trait Port {
-    fn read(&self, reader: &mut dyn Read) -> io::Result<ra_ap_vfs::FileId>;
-}
-"#;
-
-        let diagnostics = run(source);
-
-        assert_eq!(diagnostics.len(), 1);
-    }
-
-    #[test]
-    fn use_list_self_entry_is_resolved_to_the_external_path() {
-        let source = r#"
-use std::io::{self, Read};
-use ra_ap_vfs::{self};
-
-pub trait Port {
-    fn read(&self, reader: &mut dyn Read) -> io::Result<ra_ap_vfs::FileId>;
-}
-"#;
-
-        let diagnostics = run(source);
-
-        assert_diagnostic(&diagnostics[0]).message_contains("names `ra_ap_vfs::FileId`");
     }
 
     #[test]

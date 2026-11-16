@@ -1,6 +1,8 @@
 #[cfg(feature = "plugin")]
 use stiles_rust::ReadsTestCode as _;
-use stiles_rust::decorations::{AdtFlags, AdtPath, EnumVariants, ResolvedType};
+use stiles_rust::decorations::{
+    AdtFlags, AdtPath, DefinitionKind, EnumVariants, Resolution, ResolvedType,
+};
 use stiles_rust::{RuleId, RustLintPass, is_test_code};
 use stiles_types::{DecoratedNode, Diagnostic, RuleOptions, Severity};
 
@@ -20,9 +22,6 @@ pub const RULE_ID: RuleId = RuleId::new("lint.single-variant-branch");
 
 /// The macros that end a block without returning to it
 const DIVERGING_MACROS: &[&str] = &["panic", "unreachable", "todo", "unimplemented"];
-
-/// The variants that the prelude puts in scope by their plain name
-const PRELUDE_VARIANTS: &[&str] = &["Some", "None", "Ok", "Err"];
 
 /// The option that names the enums to treat as `#[non_exhaustive]`
 const NON_EXHAUSTIVE: &str = "non-exhaustive";
@@ -44,10 +43,9 @@ const NON_EXHAUSTIVE: &str = "non-exhaustive";
 /// are not reported either, because they never gain a variant. Their
 /// pattern must leave only the other variant, so `Some(name)` passes and
 /// `Some(5)` does not. A struct inside the variant passes when its pattern
-/// binds every field, such as `Some(&Opened(at))`. A plain name such as
-/// `Opened` counts as a struct, unless it is `Some`, `None`, `Ok`, or `Err`.
-/// It also counts as a variant in a file that imports from inside a type,
-/// as `use Kind::*` does.
+/// binds every field, such as `Some(&Opened(at))`. The `Resolution`
+/// decoration of the name tells a struct from a variant, through a glob, a
+/// rename, or a re-export. A name without it counts as a struct.
 ///
 /// An enum that another crate marks `#[non_exhaustive]` is not reported,
 /// because a `match` on it needs a wildcard arm anyway.
@@ -401,17 +399,17 @@ fn binds_everything(pattern: &DecoratedNode<'_>) -> bool {
 
 /// Returns whether a struct or tuple struct pattern binds a whole struct
 ///
-/// No decoration gives the type of a pattern, so the name decides. A path
-/// such as `Kind::Alpha { .. }` names a variant of an enum, which can fail.
-/// A plain name is a struct, which cannot, unless it is a variant that the
-/// prelude or an import puts in scope.
+/// A variant of an enum can fail, and a struct cannot. Only a name that
+/// resolves to a variant makes the pattern refutable, so `Self` and an
+/// alias of a struct count as the struct. A name that the provider did not
+/// resolve counts as a struct too, so the rule stays silent on it.
 fn is_plain_struct_binding(pattern: &DecoratedNode<'_>) -> bool {
     let Some(name) = pattern.child_by_field_name("type") else {
         return false;
     };
-    let plain = ["identifier", "type_identifier"].contains(&name.kind())
-        && !PRELUDE_VARIANTS.contains(&name.text())
-        && !imports_through_a_type(&file_root(pattern));
+    let plain = name
+        .decoration::<Resolution>()
+        .is_none_or(|resolution| resolution.kind() != DefinitionKind::EnumVariant);
 
     plain
         && pattern
@@ -424,46 +422,6 @@ fn is_plain_struct_binding(pattern: &DecoratedNode<'_>) -> bool {
                     .is_none_or(|inner| binds_everything(&inner)),
                 _ => binds_everything(child),
             })
-}
-
-/// Returns the root of the tree that holds a node
-fn file_root<'a>(node: &DecoratedNode<'a>) -> DecoratedNode<'a> {
-    let mut root = *node;
-    while let Some(parent) = root.parent() {
-        root = parent;
-    }
-    root
-}
-
-/// Returns whether a `use` under a node imports a name from inside a type
-///
-/// `use Kind::*` and `use Kind::Alpha` put the variants of `Kind` in scope,
-/// so a plain name in that file can name a variant.
-fn imports_through_a_type(node: &DecoratedNode<'_>) -> bool {
-    match node.kind() {
-        "use_declaration" => goes_through_a_type(node),
-        _ => node.named_children().iter().any(imports_through_a_type),
-    }
-}
-
-/// Returns whether a part of a `use` names a path whose last segment is a type
-///
-/// A module has a lower-case name and a type a capitalised one, so the
-/// capital is what marks a type.
-fn goes_through_a_type(node: &DecoratedNode<'_>) -> bool {
-    let path = match node.kind() {
-        "scoped_identifier" | "scoped_use_list" => node.child_by_field_name("path"),
-        "use_wildcard" => node.named_child(0),
-        _ => None,
-    };
-    let through_a_type = path.is_some_and(|path| {
-        path.text()
-            .rsplit("::")
-            .next()
-            .is_some_and(|segment| segment.starts_with(char::is_uppercase))
-    });
-
-    through_a_type || node.named_children().iter().any(goes_through_a_type)
 }
 
 /// Returns the enum that an `is_` predicate of a variant tests
@@ -571,6 +529,7 @@ impl stiles_plugin::DeclaresRules for SingleVariantBranch {
             .and::<AdtFlags>()
             .and::<AdtPath>()
             .and::<EnumVariants>()
+            .and::<Resolution>()
             .and_test_code()
     }
 }
@@ -593,6 +552,21 @@ mod tests {
 
     /// The path of the definition of the tested enum
     const KIND_PATH: &str = "sample::kind::Kind";
+
+    /// The pattern names that resolve to a variant in the test sources
+    const VARIANT_NAMES: &[&str] = &[
+        "Some",
+        "None",
+        "Ok",
+        "Err",
+        "Alpha",
+        "Kind::Alpha",
+        "Normal",
+        "Component::Normal",
+    ];
+
+    /// The pattern names that the provider leaves unresolved in the test sources
+    const UNRESOLVED_NAMES: &[&str] = &["Unknown"];
 
     /// How a test decorates its tested values and configures the rule
     struct Setup<'a> {
@@ -620,9 +594,36 @@ mod tests {
                 map.insert(node.id(), path.clone());
             }
         }
+        if let Some(name) = pattern_name(node) {
+            map.insert(name.id(), resolution(name.text()));
+        }
         for child in node.named_children() {
             mark(&child, map, setup);
         }
+    }
+
+    /// Returns the name of a struct or tuple struct pattern that the provider resolves
+    fn pattern_name<'a>(node: &DecoratedNode<'a>) -> Option<DecoratedNode<'a>> {
+        ["struct_pattern", "tuple_struct_pattern"]
+            .contains(&node.kind())
+            .then(|| node.child_by_field_name("type"))
+            .flatten()
+            .filter(|name| !UNRESOLVED_NAMES.contains(&name.text()))
+    }
+
+    /// Returns the resolution of a pattern name, a variant or a struct
+    fn resolution(name: &str) -> Resolution {
+        let kind = match (VARIANT_NAMES.contains(&name), name == "Self") {
+            (true, _) => DefinitionKind::EnumVariant,
+            (false, true) => DefinitionKind::SelfType,
+            (false, false) => DefinitionKind::Struct,
+        };
+
+        Resolution::builder()
+            .kind(kind)
+            .origin(stiles_rust::decorations::DefinitionOrigin::SameCrate)
+            .krate("sample")
+            .build()
     }
 
     /// Runs the rule as stiles runs it, with `non-exhaustive` set
@@ -1031,6 +1032,14 @@ mod tests {
     }
 
     #[test]
+    fn option_pattern_naming_a_struct_beside_a_glob_of_variants_is_not_flagged() {
+        let source =
+            "use Component::*;\nfn f() { let Some(Point { x, .. }) = k else { return; }; a(x); }";
+
+        assert_no_diagnostics(&run_with(source, option(), Exhaustiveness::Exhaustive));
+    }
+
+    #[test]
     fn option_pattern_naming_a_struct_imported_from_a_module_is_not_flagged() {
         let source = "use crate::span::Opened;\nfn f() { let Some(&Opened(opened)) = k else { return; }; a(opened); }";
 
@@ -1069,6 +1078,17 @@ mod tests {
     }
 
     #[test]
+    fn option_pattern_naming_a_variant_imported_from_the_crate_root_is_flagged() {
+        let source =
+            "use crate::Alpha;\nfn f() { let Some(Alpha { x }) = k else { return; }; a(x); }";
+
+        assert_eq!(
+            run_with(source, option(), Exhaustiveness::Exhaustive).len(),
+            1
+        );
+    }
+
+    #[test]
     fn option_pattern_naming_a_variant_imported_in_a_list_is_flagged() {
         let source = "use self::Component::{Normal, Prefix};\nfn f() { let Some(Normal(name)) = k else { return; }; a(name); }";
 
@@ -1076,6 +1096,20 @@ mod tests {
             run_with(source, option(), Exhaustiveness::Exhaustive).len(),
             1
         );
+    }
+
+    #[test]
+    fn option_pattern_naming_an_unresolved_name_is_not_flagged() {
+        let source = "fn f() { let Some(Unknown { x }) = k else { return; }; a(x); }";
+
+        assert_no_diagnostics(&run_with(source, option(), Exhaustiveness::Exhaustive));
+    }
+
+    #[test]
+    fn option_pattern_naming_self_is_not_flagged() {
+        let source = "fn f() { let Some(Self { x, .. }) = k else { return; }; a(x); }";
+
+        assert_no_diagnostics(&run_with(source, option(), Exhaustiveness::Exhaustive));
     }
 
     #[test]
@@ -1151,6 +1185,7 @@ mod tests {
                 .and::<AdtFlags>()
                 .and::<AdtPath>()
                 .and::<EnumVariants>()
+                .and::<Resolution>()
                 .and::<stiles_rust::decorations::Target>()
                 .and::<stiles_rust::decorations::TestCode>()
         );

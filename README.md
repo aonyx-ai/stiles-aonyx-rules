@@ -62,6 +62,9 @@ spoke.
 `lint.external-type-in-port` reads `allowed-crates`. It names the crates that
 a project keeps in its own public API on purpose, as Rust writes them in a
 path. The rule treats such a crate like `std`, and it still reports any other.
+A facade counts too: `facade::Thing` passes when `facade` is allowed, even
+though `facade_core` defines `Thing`. A name that a glob import brings in
+counts only by the crate that defines it.
 
 `lint.single-variant-branch` reads `non-exhaustive`. It names the enums
 that grow like a `#[non_exhaustive]` enum but lack the attribute, by the

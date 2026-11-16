@@ -1,12 +1,8 @@
-mod resolve;
-
 #[cfg(feature = "plugin")]
 use stiles_rust::ReadsTestCode as _;
-use stiles_rust::decorations::{Target, TargetKind};
+use stiles_rust::decorations::{DefinitionKind, Resolution, Target, TargetKind};
 use stiles_rust::{RuleId, RustLintPass, is_test_code};
 use stiles_types::{DecoratedNode, Diagnostic, Severity};
-
-use self::resolve::Namespace;
 
 /// The id that every diagnostic of this rule carries
 ///
@@ -37,11 +33,13 @@ const PRINT_MACROS: [&str; 4] = ["print", "println", "eprint", "eprintln"];
 /// call ends the process instead of returning the result, and output behind
 /// it in a buffer is lost.
 ///
-/// A path counts when it resolves to the standard library through the `use`
-/// declarations of the file. A local item, binding, or `macro_rules!` with
-/// the same name silences the rule, and so does an import it cannot follow.
-/// The rule reads `dbg!` as a debugging aid that Clippy already covers, so
-/// it leaves that macro alone.
+/// A name counts when its `Resolution` decoration names the definition in
+/// the standard library. Rust-analyzer resolves it, so a glob import, a
+/// rename, and a re-export reach the definition. A local item, a binding,
+/// or a `macro_rules!` with the same name resolves to itself instead. A
+/// name without the decoration keeps the rule silent. The rule reads
+/// `dbg!` as a debugging aid that Clippy already covers, so it leaves that
+/// macro alone.
 ///
 /// The rule skips the root of a binary, where the program meets the
 /// terminal. The kinds of the `Target` decoration of that file are only
@@ -55,7 +53,8 @@ const PRINT_MACROS: [&str; 4] = ["print", "println", "eprint", "eprintln"];
 /// A file is test code too when its kinds are only integration tests and
 /// benches. A `cfg(test)` on a statement marks no item, so the rule checks
 /// the statement. Code inside a macro argument or a macro body is invisible
-/// to the rule, because tree-sitter does not parse it as code.
+/// to the rule. Tree-sitter does not parse it as code, and the provider
+/// resolves no name in it.
 ///
 /// # Examples
 ///
@@ -71,13 +70,28 @@ const PRINT_MACROS: [&str; 4] = ["print", "println", "eprint", "eprintln"];
 /// }
 /// ```
 ///
+/// The rule reads what each name resolves to, which the Rust provider
+/// attaches as decorations. This example attaches it by hand.
+///
 /// ```
 /// use stiles_rust::RustLintPassAdapter;
+/// use stiles_rust::decorations::{DefinitionKind, DefinitionOrigin, Resolution, TypePath};
 /// use stiles_testing::{execute, parse};
 /// use stiles_types::{Language, LintPass};
 /// use terminal_output::TerminalOutput;
 ///
-/// let tree = parse("fn run() { println!(\"building\"); }", Language::Rust);
+/// let mut tree = parse("fn run() { println!(\"building\"); }", Language::Rust);
+/// let function = tree.root_node().named_child(0).unwrap();
+/// let statement = function.child_by_field_name("body").unwrap().named_child(0).unwrap();
+/// let call = statement.named_child(0).unwrap();
+/// let name = call.child_by_field_name("macro").unwrap().id();
+/// let println = Resolution::builder()
+///     .kind(DefinitionKind::Macro)
+///     .origin(DefinitionOrigin::OtherCrate)
+///     .krate("std")
+///     .path(TypePath::builder().krate("std").modules(["macros"]).name("println").build())
+///     .build();
+/// tree.decorations_mut().insert(name, println);
 /// let pass: Box<dyn LintPass> = Box::new(RustLintPassAdapter::new(TerminalOutput));
 /// let mut passes = vec![pass];
 ///
@@ -89,13 +103,15 @@ pub struct TerminalOutput;
 
 impl RustLintPass for TerminalOutput {
     fn check_macro_invocation(&mut self, node: &DecoratedNode<'_>) -> Vec<Diagnostic> {
-        let Some(path) = node.child_by_field_name("macro") else {
-            return Vec::new();
-        };
-        let Some(segments) = self::resolve::resolve(node, path.text(), Namespace::Macro) else {
-            return Vec::new();
-        };
-        let Some(name) = print_macro(&segments) else {
+        let resolution = node
+            .child_by_field_name("macro")
+            .and_then(|path| path.decoration::<Resolution>().and_then(std_item));
+        let Some(name) = (match resolution {
+            Some(StdItem::Macro { name }) => PRINT_MACROS
+                .into_iter()
+                .find(|candidate| *candidate == name),
+            Some(StdItem::Function { .. }) | None => None,
+        }) else {
             return Vec::new();
         };
 
@@ -106,24 +122,20 @@ impl RustLintPass for TerminalOutput {
     }
 
     fn check_call_expression(&mut self, node: &DecoratedNode<'_>) -> Vec<Diagnostic> {
-        let Some(function) = node.child_by_field_name("function") else {
-            return Vec::new();
-        };
-        let namespace = match function.kind() {
-            "identifier" => Namespace::Value,
-            "scoped_identifier" => Namespace::Type,
-            _ => return Vec::new(),
-        };
-        let Some(segments) = self::resolve::resolve(node, function.text(), namespace) else {
-            return Vec::new();
+        let resolution = node
+            .child_by_field_name("function")
+            .and_then(|function| function.decoration::<Resolution>().and_then(std_item));
+        let function = match resolution {
+            Some(StdItem::Function { module, name }) => (module, name),
+            Some(StdItem::Macro { .. }) | None => return Vec::new(),
         };
 
-        let message = match segments_as_str(&segments).as_slice() {
-            ["std", "process", "exit"] => {
+        let message = match function {
+            ("process", "exit") => {
                 "`std::process::exit` ends the process; return the result to `main` instead"
                     .to_owned()
             }
-            ["std", "io", handle @ ("stdout" | "stderr")] => {
+            ("io", handle @ ("stdout" | "stderr")) => {
                 format!("`std::io::{handle}()` reaches for the terminal; {HANDLE_ADVICE}")
             }
             _ => return Vec::new(),
@@ -140,7 +152,7 @@ impl stiles_plugin::DeclaresRules for TerminalOutput {
     }
 
     fn reads(&self) -> stiles_plugin::Reads {
-        stiles_plugin::Reads::none().and_test_code()
+        stiles_plugin::Reads::of::<Resolution>().and_test_code()
     }
 }
 
@@ -153,22 +165,51 @@ const PRINT_ADVICE: &str = "return the result, or write to a handle the caller p
 /// The fix a standard stream handle's finding asks for
 const HANDLE_ADVICE: &str = "write to a handle the caller passes in instead";
 
-/// Returns the name of the print macro a resolved path names, if it names one
-fn print_macro(segments: &[String]) -> Option<&'static str> {
-    let [krate, name] = segments_as_str(segments)[..] else {
-        return None;
-    };
-    if krate != "std" {
-        return None;
-    }
-    PRINT_MACROS
-        .into_iter()
-        .find(|candidate| *candidate == name)
+/// A macro or a function of the standard library, which the rule may report
+enum StdItem<'a> {
+    /// A macro, by its name alone, because the module that defines it is private
+    Macro { name: &'a str },
+    /// A function, by its public module and its name
+    ///
+    /// The definition can sit in a private module below the public one, as
+    /// `stdout` sits in `std::io::stdio`. The first module is the public one.
+    Function { module: &'a str, name: &'a str },
 }
 
-/// Borrows each segment of a resolved path, so a slice pattern can match it
-fn segments_as_str(segments: &[String]) -> Vec<&str> {
-    segments.iter().map(String::as_str).collect()
+/// Returns the macro or the function of `std` that `resolution` names, if it names one
+fn std_item(resolution: &Resolution) -> Option<StdItem<'_>> {
+    let path = resolution.path()?;
+    if path.krate() != "std" {
+        return None;
+    }
+
+    match resolution.kind() {
+        DefinitionKind::Macro => Some(StdItem::Macro { name: path.name() }),
+        DefinitionKind::Function => Some(StdItem::Function {
+            module: path.modules().next()?,
+            name: path.name(),
+        }),
+        DefinitionKind::Crate
+        | DefinitionKind::Module
+        | DefinitionKind::Struct
+        | DefinitionKind::Enum
+        | DefinitionKind::Union
+        | DefinitionKind::EnumVariant
+        | DefinitionKind::Trait
+        | DefinitionKind::TypeAlias
+        | DefinitionKind::AssociatedFunction
+        | DefinitionKind::Method
+        | DefinitionKind::Const
+        | DefinitionKind::Static
+        | DefinitionKind::LocalBinding
+        | DefinitionKind::TypeParameter
+        | DefinitionKind::ConstParameter
+        | DefinitionKind::SelfType
+        | DefinitionKind::BuiltinType
+        | DefinitionKind::BuiltinAttribute
+        | DefinitionKind::ToolModule
+        | DefinitionKind::DeriveHelper => None,
+    }
 }
 
 /// Returns the finding for `node`, unless its file or its scope is exempt
@@ -228,6 +269,7 @@ mod tests {
     use std::path::Path;
 
     use stiles_rust::RustLintPassAdapter;
+    use stiles_rust::decorations::{DefinitionOrigin, TypePath};
     use stiles_testing::{assert_diagnostic, execute};
     use stiles_types::{DecoratedTree, Language, LintPass};
 
@@ -251,10 +293,128 @@ mod tests {
             .build()
     }
 
+    /// Returns what the provider attaches to a name of the item that `path` spells
+    ///
+    /// The path spells the crate, the modules, and the name, as `std::process::exit`.
+    fn defined(kind: DefinitionKind, path: &str) -> Resolution {
+        let segments: Vec<&str> = path.split("::").collect();
+        let [krate, modules @ .., name] = segments.as_slice() else {
+            panic!("the path `{path}` should name a crate and an item");
+        };
+        let origin = match *krate {
+            "sample" => DefinitionOrigin::SameCrate,
+            _ => DefinitionOrigin::OtherCrate,
+        };
+        Resolution::builder()
+            .kind(kind)
+            .origin(origin)
+            .krate(krate)
+            .path(
+                TypePath::builder()
+                    .krate(krate)
+                    .modules(modules.iter().copied())
+                    .name(name)
+                    .build(),
+            )
+            .build()
+    }
+
+    /// Returns what the provider attaches to a name of the standard macro `name`
+    fn std_macro(name: &str) -> Resolution {
+        defined(DefinitionKind::Macro, &format!("std::macros::{name}"))
+    }
+
+    /// Returns what the provider attaches to a name of `std::process::exit`
+    fn std_exit() -> Resolution {
+        defined(DefinitionKind::Function, "std::process::exit")
+    }
+
+    /// Returns what the provider attaches to a name of the standard stream function `name`
+    fn std_stream(name: &str) -> Resolution {
+        defined(DefinitionKind::Function, &format!("std::io::stdio::{name}"))
+    }
+
+    /// Returns what the provider attaches to a local binding
+    fn local_binding() -> Resolution {
+        Resolution::builder()
+            .kind(DefinitionKind::LocalBinding)
+            .origin(DefinitionOrigin::SameCrate)
+            .krate("sample")
+            .build()
+    }
+
+    /// Returns the spellings of standard names that every test resolves
+    fn standard_names() -> Vec<(&'static str, Resolution)> {
+        let mut names: Vec<(&str, Resolution)> = PRINT_MACROS
+            .into_iter()
+            .map(|name| (name, std_macro(name)))
+            .collect();
+        names.extend([
+            ("std::println", std_macro("println")),
+            ("::std::eprintln", std_macro("eprintln")),
+            ("dbg", std_macro("dbg")),
+            ("vec", defined(DefinitionKind::Macro, "alloc::macros::vec")),
+            ("std::process::exit", std_exit()),
+            ("std::io::stdout", std_stream("stdout")),
+            ("std::io::stderr", std_stream("stderr")),
+            ("std::io::stdin", std_stream("stdin")),
+        ]);
+        names
+    }
+
+    /// Attaches each resolution to every name in `tree` that `names` spells
+    ///
+    /// The provider resolves no token inside a macro call, so the walk
+    /// skips token trees.
+    fn resolve(tree: &mut DecoratedTree, names: &[(&str, Resolution)]) {
+        let mut found = Vec::new();
+        collect_names(&tree.root_node(), names, &mut found);
+        for (id, resolution) in found {
+            tree.decorations_mut().insert(id, resolution);
+        }
+    }
+
+    /// Collects the id and the resolution of each name below `node` that `names` spells
+    fn collect_names(
+        node: &DecoratedNode<'_>,
+        names: &[(&str, Resolution)],
+        found: &mut Vec<(usize, Resolution)>,
+    ) {
+        if node.kind() == "token_tree" {
+            return;
+        }
+        if ["identifier", "scoped_identifier"].contains(&node.kind())
+            && let Some((_, resolution)) = names
+                .iter()
+                .rev()
+                .find(|(spelling, _)| *spelling == node.text())
+        {
+            found.push((node.id(), resolution.clone()));
+        }
+        for child in node.named_children() {
+            collect_names(&child, names, found);
+        }
+    }
+
     /// Returns the messages the rule reports for `source`, after `attach`
     /// adds what the provider knows of test code and targets
     fn messages_attaching(source: &str, attach: impl FnOnce(&mut DecoratedTree)) -> Vec<String> {
+        messages_with(source, &[], attach)
+    }
+
+    /// Returns the messages the rule reports for `source`, with `names`
+    /// resolved on top of the standard names and `attach` applied
+    ///
+    /// A spelling in `names` replaces the standard resolution of that spelling.
+    fn messages_with(
+        source: &str,
+        names: &[(&str, Resolution)],
+        attach: impl FnOnce(&mut DecoratedTree),
+    ) -> Vec<String> {
         let mut tree = parse_at(Path::new(LIBRARY), source);
+        let mut all = standard_names();
+        all.extend(names.iter().cloned());
+        resolve(&mut tree, &all);
         attach(&mut tree);
         let mut passes: Vec<Box<dyn LintPass>> =
             vec![Box::new(RustLintPassAdapter::new(TerminalOutput))];
@@ -264,10 +424,16 @@ mod tests {
             .collect()
     }
 
-    /// Returns the messages the rule reports for `source` in a file that
-    /// the provider did not decorate
+    /// Returns the messages the rule reports for `source`, which resolves
+    /// only the standard names
     fn messages(source: &str) -> Vec<String> {
         messages_attaching(source, |_| {})
+    }
+
+    /// Returns the messages the rule reports for `source`, with `names`
+    /// resolved on top of the standard names
+    fn messages_resolving(source: &str, names: &[(&str, Resolution)]) -> Vec<String> {
+        messages_with(source, names, |_| {})
     }
 
     /// Returns the messages the rule reports for `source` in a file that
@@ -309,96 +475,32 @@ mod tests {
 
     #[test]
     fn aliased_print_import_is_flagged() {
-        let messages = messages("use std::println as say;\nfn f() { say!(\"x\"); }");
+        let messages = messages_resolving(
+            "use std::println as say;\nfn f() { say!(\"x\"); }",
+            &[("say", std_macro("println"))],
+        );
 
         assert_eq!(messages, vec![print_message("println")]);
     }
 
     #[test]
     fn bare_exit_after_glob_import_is_flagged() {
-        let messages = messages("use std::process::*;\nfn f() { exit(1); }");
-
-        assert_eq!(messages, vec![EXIT_MESSAGE]);
-    }
-
-    #[test]
-    fn bare_exit_after_glob_in_list_is_flagged() {
-        let messages = messages("use std::process::{*};\nfn f() { exit(1); }");
-
-        assert_eq!(messages, vec![EXIT_MESSAGE]);
-    }
-
-    #[test]
-    fn bare_exit_after_import_in_list_is_flagged() {
-        let messages = messages("use std::{io, process::{self, exit}};\nfn f() { exit(1); }");
-
-        assert_eq!(messages, vec![EXIT_MESSAGE]);
-    }
-
-    #[test]
-    fn bare_exit_after_import_is_flagged() {
-        let messages = messages("use std::process::exit;\nfn f() { exit(1); }");
+        let messages = messages_resolving(
+            "use std::process::*;\nfn f() { exit(1); }",
+            &[("exit", std_exit())],
+        );
 
         assert_eq!(messages, vec![EXIT_MESSAGE]);
     }
 
     #[test]
     fn bare_exit_after_renamed_import_is_flagged() {
-        let messages = messages("use std::process::exit as quit;\nfn f() { quit(2); }");
+        let messages = messages_resolving(
+            "use std::process::exit as quit;\nfn f() { quit(2); }",
+            &[("quit", std_exit())],
+        );
 
         assert_eq!(messages, vec![EXIT_MESSAGE]);
-    }
-
-    #[test]
-    fn bare_exit_after_two_glob_imports_is_not_flagged() {
-        let source = "use std::process::*;\nuse std::io::*;\nfn f() { exit(1); }";
-
-        let messages = messages(source);
-
-        assert!(messages.is_empty());
-    }
-
-    #[test]
-    fn bare_exit_imported_in_enclosing_block_is_flagged() {
-        let source = "fn f() { use std::process::exit; if done { exit(0); } }";
-
-        let messages = messages(source);
-
-        assert_eq!(messages, vec![EXIT_MESSAGE]);
-    }
-
-    #[test]
-    fn bare_exit_imported_in_parent_module_is_not_flagged() {
-        let source = "use std::process::exit;\nmod inner { fn f() { exit(1); } }";
-
-        let messages = messages(source);
-
-        assert!(messages.is_empty());
-    }
-
-    #[test]
-    fn bare_exit_imported_in_same_inline_module_is_flagged() {
-        let source = "mod inner { use std::process::exit; fn f() { exit(1); } }";
-
-        let messages = messages(source);
-
-        assert_eq!(messages, vec![EXIT_MESSAGE]);
-    }
-
-    #[test]
-    fn bare_exit_imported_outside_nested_function_is_flagged() {
-        let source = "use std::process::exit;\nfn f() { fn g() { exit(1); } }";
-
-        let messages = messages(source);
-
-        assert_eq!(messages, vec![EXIT_MESSAGE]);
-    }
-
-    #[test]
-    fn bare_exit_without_import_is_not_flagged() {
-        let messages = messages("fn f() { exit(1); }");
-
-        assert!(messages.is_empty());
     }
 
     #[test]
@@ -510,15 +612,6 @@ mod tests {
     }
 
     #[test]
-    fn closure_parameter_named_exit_is_not_flagged() {
-        let source = "use std::process::exit;\nfn f() { run(|exit: fn(i32)| exit(1)); }";
-
-        let messages = messages(source);
-
-        assert!(messages.is_empty());
-    }
-
-    #[test]
     fn dbg_is_not_flagged() {
         let messages = messages("fn f(x: u8) -> u8 { dbg!(x) }");
 
@@ -528,7 +621,8 @@ mod tests {
     #[test]
     fn diagnostic_has_rule_id_severity_and_span() {
         let source = "fn f() { println!(\"x\"); }";
-        let tree = parse_at(Path::new(LIBRARY), source);
+        let mut tree = parse_at(Path::new(LIBRARY), source);
+        resolve(&mut tree, &standard_names());
         let mut passes: Vec<Box<dyn LintPass>> =
             vec![Box::new(RustLintPassAdapter::new(TerminalOutput))];
 
@@ -543,7 +637,8 @@ mod tests {
     #[test]
     fn diagnostic_is_reported_once() {
         let source = "fn f() { println!(\"x\"); }";
-        let tree = parse_at(Path::new(LIBRARY), source);
+        let mut tree = parse_at(Path::new(LIBRARY), source);
+        resolve(&mut tree, &standard_names());
         let mut passes: Vec<Box<dyn LintPass>> =
             vec![Box::new(RustLintPassAdapter::new(TerminalOutput))];
 
@@ -553,7 +648,8 @@ mod tests {
     }
 
     fn run_documented(source: &str) -> Vec<stiles_types::Diagnostic> {
-        let tree = stiles_testing::parse(source, stiles_types::Language::Rust);
+        let mut tree = stiles_testing::parse(source, stiles_types::Language::Rust);
+        resolve(&mut tree, &standard_names());
         stiles_testing::execute(
             &tree,
             &mut [Box::new(stiles_rust::RustLintPassAdapter::new(
@@ -579,6 +675,7 @@ mod tests {
 
         stiles_testing::assert_no_diagnostics(&diagnostics);
     }
+
     #[test]
     fn example_file_is_not_flagged() {
         let source = "fn main() { run(); }\nfn run() { println!(\"x\"); }";
@@ -589,59 +686,24 @@ mod tests {
     }
 
     #[test]
-    fn exit_after_absolute_import_is_flagged() {
-        let messages = messages("use ::std::process;\nfn f() { process::exit(1); }");
-
-        assert_eq!(messages, vec![EXIT_MESSAGE]);
-    }
-
-    #[test]
-    fn exit_after_import_in_bare_list_is_flagged() {
-        let messages = messages("use {std::process::exit};\nfn f() { exit(1); }");
-
-        assert_eq!(messages, vec![EXIT_MESSAGE]);
-    }
-
-    #[test]
-    fn exit_after_import_in_rooted_list_is_flagged() {
-        let messages = messages("use ::{std::process};\nfn f() { process::exit(1); }");
-
-        assert_eq!(messages, vec![EXIT_MESSAGE]);
-    }
-
-    #[test]
     fn exit_after_module_import_is_flagged() {
-        let messages = messages("use std::process;\nfn f() { process::exit(1); }");
+        let messages = messages_resolving(
+            "use std::process;\nfn f() { process::exit(1); }",
+            &[("process::exit", std_exit())],
+        );
 
         assert_eq!(messages, vec![EXIT_MESSAGE]);
-    }
-
-    #[test]
-    fn exit_after_renamed_module_import_is_flagged() {
-        let source = "use std::process::{self as proc};\nfn f() { proc::exit(1); }";
-
-        let messages = messages(source);
-
-        assert_eq!(messages, vec![EXIT_MESSAGE]);
-    }
-
-    #[test]
-    fn exit_after_std_alias_is_flagged() {
-        let messages = messages("use std as standard;\nfn f() { standard::process::exit(1); }");
-
-        assert_eq!(messages, vec![EXIT_MESSAGE]);
-    }
-
-    #[test]
-    fn exit_from_crate_module_is_not_flagged() {
-        let messages = messages("use crate::process;\nfn f() { process::exit(1); }");
-
-        assert!(messages.is_empty());
     }
 
     #[test]
     fn exit_from_other_crate_is_not_flagged() {
-        let messages = messages("use nix::process;\nfn f() { process::exit(1); }");
+        let messages = messages_resolving(
+            "use nix::process;\nfn f() { process::exit(1); }",
+            &[(
+                "process::exit",
+                defined(DefinitionKind::Function, "nix::unistd::exit"),
+            )],
+        );
 
         assert!(messages.is_empty());
     }
@@ -659,7 +721,7 @@ mod tests {
     fn exit_in_method_body_is_flagged() {
         let source = "use std::process;\nimpl App { fn quit(&self) { process::exit(0); } }";
 
-        let messages = messages(source);
+        let messages = messages_resolving(source, &[("process::exit", std_exit())]);
 
         assert_eq!(messages, vec![EXIT_MESSAGE]);
     }
@@ -672,26 +734,17 @@ mod tests {
     }
 
     #[test]
-    fn exit_through_chained_import_is_flagged() {
-        let source = "use std::process;\nuse process::exit;\nfn f() { exit(1); }";
+    fn exit_through_reexport_is_flagged() {
+        let source = "use facade::quit;\nfn f() { quit(1); }";
 
-        let messages = messages(source);
+        let messages = messages_resolving(source, &[("quit", std_exit())]);
 
         assert_eq!(messages, vec![EXIT_MESSAGE]);
     }
 
     #[test]
-    fn exit_with_cyclic_imports_is_not_flagged() {
-        let source = "use a::b;\nuse b::a;\nfn f() { a::exit(1); }";
-
-        let messages = messages(source);
-
-        assert!(messages.is_empty());
-    }
-
-    #[test]
-    fn exit_without_import_is_not_flagged() {
-        let messages = messages("fn f() { process::exit(1); }");
+    fn exit_without_resolution_is_not_flagged() {
+        let messages = messages("use std::process::exit;\nfn f() { exit(1); }");
 
         assert!(messages.is_empty());
     }
@@ -707,51 +760,10 @@ mod tests {
     }
 
     #[test]
-    fn for_loop_binding_named_exit_is_not_flagged() {
-        let source = "use std::process::exit;\nfn f() { for exit in hooks { exit(1); } }";
-
-        let messages = messages(source);
-
-        assert!(messages.is_empty());
-    }
-
-    #[test]
     fn full_exit_path_is_flagged() {
         let messages = messages("fn f() { std::process::exit(1); }");
 
         assert_eq!(messages, vec![EXIT_MESSAGE]);
-    }
-
-    #[test]
-    fn glob_import_from_other_crate_hides_bare_exit() {
-        let source = "fn f() { use std::process::exit; { use other::*; exit(1); } }";
-
-        let messages = messages(source);
-
-        assert!(messages.is_empty());
-    }
-
-    #[test]
-    fn glob_import_from_other_crate_keeps_full_path() {
-        let messages = messages("use super::*;\nfn f() { std::process::exit(1); }");
-
-        assert_eq!(messages, vec![EXIT_MESSAGE]);
-    }
-
-    #[test]
-    fn glob_import_from_other_crate_keeps_print() {
-        let messages = messages("use super::*;\nfn f() { println!(\"x\"); }");
-
-        assert_eq!(messages, vec![print_message("println")]);
-    }
-
-    #[test]
-    fn if_let_binding_named_exit_is_not_flagged() {
-        let source = "use std::process::exit;\nfn f() { if let Some(exit) = hook { exit(1); } }";
-
-        let messages = messages(source);
-
-        assert!(messages.is_empty());
     }
 
     #[test]
@@ -851,35 +863,20 @@ mod tests {
     }
 
     #[test]
-    fn let_binding_after_call_is_flagged() {
-        let source = "use std::process::exit;\nfn f() { exit(1); let exit = 2; }";
-
-        let messages = messages(source);
-
-        assert_eq!(messages, vec![EXIT_MESSAGE]);
-    }
-
-    #[test]
-    fn let_binding_in_outer_function_is_flagged() {
-        let source = "use std::process::exit;\nfn f() { let exit = 2; fn g() { exit(1); } }";
-
-        let messages = messages(source);
-
-        assert_eq!(messages, vec![EXIT_MESSAGE]);
-    }
-
-    #[test]
     fn let_binding_named_exit_is_not_flagged() {
         let source = "use std::process::exit;\nfn f() { let exit = |code| code; exit(1); }";
 
-        let messages = messages(source);
+        let messages = messages_resolving(source, &[("exit", local_binding())]);
 
         assert!(messages.is_empty());
     }
 
     #[test]
     fn local_function_named_exit_is_not_flagged() {
-        let messages = messages("fn exit(code: i32) {}\nfn f() { exit(1); }");
+        let messages = messages_resolving(
+            "fn exit(code: i32) {}\nfn f() { exit(1); }",
+            &[("exit", defined(DefinitionKind::Function, "sample::exit"))],
+        );
 
         assert!(messages.is_empty());
     }
@@ -894,8 +891,9 @@ mod tests {
     #[test]
     fn local_macro_named_println_is_not_flagged() {
         let source = "macro_rules! println { ($($t:tt)*) => {}; }\nfn f() { println!(\"x\"); }";
+        let local = defined(DefinitionKind::Macro, "sample::println");
 
-        let messages = messages(source);
+        let messages = messages_resolving(source, &[("println", local)]);
 
         assert!(messages.is_empty());
     }
@@ -903,8 +901,9 @@ mod tests {
     #[test]
     fn local_module_named_process_is_not_flagged() {
         let source = "mod process { pub fn exit(_: i32) {} }\nfn f() { process::exit(1); }";
+        let local = defined(DefinitionKind::Function, "sample::process::exit");
 
-        let messages = messages(source);
+        let messages = messages_resolving(source, &[("process::exit", local)]);
 
         assert!(messages.is_empty());
     }
@@ -916,15 +915,6 @@ mod tests {
         let messages = messages_in_target(source, [TargetKind::Binary]);
 
         assert_eq!(messages, vec![print_message("println")]);
-    }
-
-    #[test]
-    fn match_arm_binding_named_exit_is_not_flagged() {
-        let source = "use std::process::exit;\nfn f() { match hook { exit => exit(1) } }";
-
-        let messages = messages(source);
-
-        assert!(messages.is_empty());
     }
 
     #[test]
@@ -943,14 +933,17 @@ mod tests {
     fn parameter_named_exit_is_not_flagged() {
         let source = "use std::process::exit;\nfn f(exit: impl Fn(i32)) { exit(1); }";
 
-        let messages = messages(source);
+        let messages = messages_resolving(source, &[("exit", local_binding())]);
 
         assert!(messages.is_empty());
     }
 
     #[test]
     fn print_from_other_crate_is_not_flagged() {
-        let messages = messages("use defmt::println;\nfn f() { println!(\"x\"); }");
+        let messages = messages_resolving(
+            "use defmt::println;\nfn f() { println!(\"x\"); }",
+            &[("println", defined(DefinitionKind::Macro, "defmt::println"))],
+        );
 
         assert!(messages.is_empty());
     }
@@ -1003,6 +996,34 @@ mod tests {
     }
 
     #[test]
+    fn print_named_by_a_function_is_not_flagged() {
+        let source = "fn f() { println!(\"x\"); }";
+        let function = defined(DefinitionKind::Function, "std::println");
+
+        let messages = messages_resolving(source, &[("println", function)]);
+
+        assert!(messages.is_empty());
+    }
+
+    #[test]
+    fn print_through_reexport_is_flagged() {
+        let source = "fn f() { facade::say!(\"x\"); }";
+
+        let messages = messages_resolving(source, &[("facade::say", std_macro("println"))]);
+
+        assert_eq!(messages, vec![print_message("println")]);
+    }
+
+    #[test]
+    fn print_without_resolution_is_not_flagged() {
+        let source = "fn f() { say!(\"x\"); }";
+
+        let messages = messages(source);
+
+        assert!(messages.is_empty());
+    }
+
+    #[test]
     fn qualified_print_is_flagged() {
         let messages = messages("fn f() { std::println!(\"x\"); }");
 
@@ -1011,19 +1032,33 @@ mod tests {
 
     #[cfg(feature = "plugin")]
     #[test]
-    fn reads_returns_the_target_and_the_test_code() {
+    fn reads_returns_the_resolution_the_target_and_the_test_code() {
         let reads = stiles_plugin::DeclaresRules::reads(&TerminalOutput);
 
         assert_eq!(
             reads,
-            stiles_plugin::Reads::of::<stiles_rust::decorations::Target>()
+            stiles_plugin::Reads::of::<Resolution>()
+                .and::<Target>()
                 .and::<stiles_rust::decorations::TestCode>()
         );
     }
 
     #[test]
+    fn std_function_outside_its_module_is_not_flagged() {
+        let source = "fn f() { sys::exit(1); }";
+        let private = defined(DefinitionKind::Function, "std::sys::exit::exit");
+
+        let messages = messages_resolving(source, &[("sys::exit", private)]);
+
+        assert!(messages.is_empty());
+    }
+
+    #[test]
     fn stderr_after_import_is_flagged() {
-        let messages = messages("use std::io::stderr;\nfn f() { let e = stderr(); }");
+        let messages = messages_resolving(
+            "use std::io::stderr;\nfn f() { let e = stderr(); }",
+            &[("stderr", std_stream("stderr"))],
+        );
 
         assert_eq!(messages, vec![handle_message("stderr")]);
     }
@@ -1036,10 +1071,19 @@ mod tests {
     }
 
     #[test]
+    fn stdout_after_glob_import_is_flagged() {
+        let source = "use std::io::*;\nfn f() { let out = stdout(); }";
+
+        let messages = messages_resolving(source, &[("stdout", std_stream("stdout"))]);
+
+        assert_eq!(messages, vec![handle_message("stdout")]);
+    }
+
+    #[test]
     fn stdout_after_module_import_is_flagged() {
         let source = "use std::io::{self, Write};\nfn f() { io::stdout().flush(); }";
 
-        let messages = messages(source);
+        let messages = messages_resolving(source, &[("io::stdout", std_stream("stdout"))]);
 
         assert_eq!(messages, vec![handle_message("stdout")]);
     }
@@ -1056,6 +1100,15 @@ mod tests {
         let messages = messages("fn f() { render(std::io::stdout); }");
 
         assert!(messages.is_empty());
+    }
+
+    #[test]
+    fn stdout_through_reexport_is_flagged() {
+        let source = "fn f() { let out = facade::out(); }";
+
+        let messages = messages_resolving(source, &[("facade::out", std_stream("stdout"))]);
+
+        assert_eq!(messages, vec![handle_message("stdout")]);
     }
 
     #[test]
@@ -1094,9 +1147,21 @@ mod tests {
     }
 
     #[test]
+    fn trait_send_std_item() {
+        fn assert_send<T: Send>() {}
+        assert_send::<StdItem<'static>>();
+    }
+
+    #[test]
     fn trait_sync() {
         fn assert_sync<T: Sync>() {}
         assert_sync::<TerminalOutput>();
+    }
+
+    #[test]
+    fn trait_sync_std_item() {
+        fn assert_sync<T: Sync>() {}
+        assert_sync::<StdItem<'static>>();
     }
 
     #[test]
@@ -1106,12 +1171,9 @@ mod tests {
     }
 
     #[test]
-    fn use_after_function_still_resolves() {
-        let source = "fn f() { process::exit(1); }\nuse std::process;";
-
-        let messages = messages(source);
-
-        assert_eq!(messages, vec![EXIT_MESSAGE]);
+    fn trait_unpin_std_item() {
+        fn assert_unpin<T: Unpin>() {}
+        assert_unpin::<StdItem<'static>>();
     }
 
     #[test]

@@ -1,5 +1,4 @@
-use std::collections::HashMap;
-
+use stiles_rust::decorations::{Resolution, TypePathRef};
 use stiles_rust::{RuleId, RustLintPass, RustLintPassAdapter};
 use stiles_types::{DecoratedNode, Diagnostic, LintPass, Severity};
 
@@ -36,10 +35,11 @@ const CATCH_ALL_NAMES: &[&str] = &["Other", "Custom", "Unknown", "Extension", "U
 /// A struct field with a restricted or no visibility is not reported. A type
 /// that erases values behind its own accessors does so by design.
 ///
-/// A bare `Value` counts only when a `use` in scope imports it from
-/// `serde_json`, because many crates have a `Value` of their own. A bare
-/// `Box`, `Any`, `String`, or map name counts unless a `use` in scope binds
-/// it to something else. The rule reads no decoration.
+/// The rule reads the [`Resolution`] decoration of each type name. A name
+/// counts when it resolves to the definition of one of these types. A glob
+/// import, a rename, and a re-export all resolve there. A `Value` of another
+/// crate resolves elsewhere, so it does not count. A name without the
+/// decoration does not count either.
 ///
 /// A type that deserializes an external format may hold a
 /// `serde_json::Value`, but the rule cannot tell which types those are. Such
@@ -85,57 +85,51 @@ impl OpenVocabulary {
     }
 }
 
-/// A type the rule recognizes by its path
-///
-/// A bare name matches when no `use` in scope binds it. A type that a bare
-/// name does not prove, such as `serde_json::Value`, has no bare name.
-struct KnownType {
-    bare: Option<&'static str>,
-    paths: &'static [&'static str],
-}
+const BOX: &[TypePathRef<'static>] = &[TypePathRef::builder()
+    .krate("alloc")
+    .modules(&["boxed"])
+    .name("Box")
+    .build()];
 
-const BOX: KnownType = KnownType {
-    bare: Some("Box"),
-    paths: &["std::boxed::Box", "alloc::boxed::Box"],
-};
+const ANY: &[TypePathRef<'static>] = &[TypePathRef::builder()
+    .krate("core")
+    .modules(&["any"])
+    .name("Any")
+    .build()];
 
-const ANY: KnownType = KnownType {
-    bare: Some("Any"),
-    paths: &["std::any::Any", "core::any::Any"],
-};
+const JSON_VALUE: &[TypePathRef<'static>] = &[TypePathRef::builder()
+    .krate("serde_json")
+    .modules(&["value"])
+    .name("Value")
+    .build()];
 
-const JSON_VALUE: KnownType = KnownType {
-    bare: None,
-    paths: &["serde_json::Value", "serde_json::value::Value"],
-};
+const STRING: &[TypePathRef<'static>] = &[TypePathRef::builder()
+    .krate("alloc")
+    .modules(&["string"])
+    .name("String")
+    .build()];
 
-const STRING: KnownType = KnownType {
-    bare: Some("String"),
-    paths: &["std::string::String", "alloc::string::String"],
-};
-
-const MAPS: &[KnownType] = &[
-    KnownType {
-        bare: Some("HashMap"),
-        paths: &[
-            "std::collections::HashMap",
-            "std::collections::hash_map::HashMap",
-            "hashbrown::HashMap",
-        ],
-    },
-    KnownType {
-        bare: Some("BTreeMap"),
-        paths: &[
-            "std::collections::BTreeMap",
-            "std::collections::btree_map::BTreeMap",
-            "alloc::collections::BTreeMap",
-            "alloc::collections::btree_map::BTreeMap",
-        ],
-    },
-    KnownType {
-        bare: Some("IndexMap"),
-        paths: &["indexmap::IndexMap", "indexmap::map::IndexMap"],
-    },
+const MAPS: &[TypePathRef<'static>] = &[
+    TypePathRef::builder()
+        .krate("std")
+        .modules(&["collections", "hash", "map"])
+        .name("HashMap")
+        .build(),
+    TypePathRef::builder()
+        .krate("hashbrown")
+        .modules(&["map"])
+        .name("HashMap")
+        .build(),
+    TypePathRef::builder()
+        .krate("alloc")
+        .modules(&["collections", "btree", "map"])
+        .name("BTreeMap")
+        .build(),
+    TypePathRef::builder()
+        .krate("indexmap")
+        .modules(&["map"])
+        .name("IndexMap")
+        .build(),
 ];
 
 /// A kind of slot that holds a value the type does not name
@@ -171,178 +165,13 @@ struct Field<'a> {
     declared: DecoratedNode<'a>,
 }
 
-/// The names that `use` declarations bind where an item is defined
+/// Returns whether the type name `node` resolves to one of the definitions in `known`
 ///
-/// Each local name maps to the path segments it stands for. A name that
-/// an inner scope binds hides the same name from an outer scope.
-#[derive(Default)]
-struct Imports {
-    bindings: HashMap<String, Vec<String>>,
-}
-
-impl Imports {
-    /// Collects the imports visible to `item`
-    ///
-    /// A block sees its own `use` declarations and those of every scope
-    /// around it, up to the module. An inline module starts a new scope, so
-    /// the walk stops at the first module or at the file.
-    ///
-    /// A type parameter of `item` hides an import of the same name. It
-    /// binds the empty path, which names no type the rule knows.
-    fn visible_to(item: &DecoratedNode<'_>) -> Self {
-        let mut imports = Self::default();
-        if let Some(parameters) = item.child_by_field_name("type_parameters") {
-            for parameter in parameters.named_children() {
-                let Some(name) = parameter.child_by_field_name("name") else {
-                    continue;
-                };
-                imports.bindings.insert(name.text().to_string(), Vec::new());
-            }
-        }
-        let mut current = item.parent();
-
-        while let Some(scope) = current {
-            let module_root = match scope.kind() {
-                "source_file" => true,
-                "declaration_list" => scope
-                    .parent()
-                    .is_some_and(|parent| parent.kind() == "mod_item"),
-                _ => false,
-            };
-            if module_root || scope.kind() == "block" {
-                imports.add_declarations_in(&scope);
-            }
-            if module_root {
-                break;
-            }
-            current = scope.parent();
-        }
-
-        imports
-    }
-
-    /// Adds the bindings of every `use` declaration directly inside `scope`
-    fn add_declarations_in(&mut self, scope: &DecoratedNode<'_>) {
-        for child in scope.named_children() {
-            if child.kind() != "use_declaration" {
-                continue;
-            }
-            let Some(argument) = child.child_by_field_name("argument") else {
-                continue;
-            };
-            self.add_tree(&argument, &[]);
-        }
-    }
-
-    /// Adds the bindings of one use tree under the path `prefix`
-    ///
-    /// A glob binds no name the rule can see, so it adds nothing.
-    fn add_tree(&mut self, tree: &DecoratedNode<'_>, prefix: &[String]) {
-        match tree.kind() {
-            "use_list" => {
-                for item in tree.named_children() {
-                    self.add_tree(&item, prefix);
-                }
-            }
-            "scoped_use_list" => {
-                let Some(list) = tree.child_by_field_name("list") else {
-                    return;
-                };
-                let mut nested = prefix.to_vec();
-                if let Some(path) = tree.child_by_field_name("path") {
-                    nested.extend(segments(path.text()));
-                }
-                self.add_tree(&list, &nested);
-            }
-            "use_as_clause" => {
-                let (Some(path), Some(alias)) = (
-                    tree.child_by_field_name("path"),
-                    tree.child_by_field_name("alias"),
-                ) else {
-                    return;
-                };
-                self.bind(Some(alias.text()), prefix, &path);
-            }
-            "identifier" | "scoped_identifier" | "self" => self.bind(None, prefix, tree),
-            _ => {}
-        }
-    }
-
-    /// Binds a name to `path` under `prefix`, unless an inner scope bound it
-    ///
-    /// The name is `alias` when the import renames, and the last segment of
-    /// the path otherwise. A trailing `self` names the module the prefix
-    /// ends in, so it is dropped from the path first.
-    fn bind(&mut self, alias: Option<&str>, prefix: &[String], path: &DecoratedNode<'_>) {
-        let mut target = joined(prefix, path.text());
-        if target.last().is_some_and(|segment| segment == "self") {
-            target.pop();
-        }
-        let Some(last) = target.last() else {
-            return;
-        };
-        let local = alias.unwrap_or(last).to_string();
-        if local == "_" {
-            return;
-        }
-        self.bindings.entry(local).or_insert(target);
-    }
-
-    /// Returns the full path that the path written in `node` resolves to
-    ///
-    /// A path that starts with `::` names a crate directly, so no import
-    /// rewrites it.
-    fn resolve(&self, node: &DecoratedNode<'_>) -> Vec<String> {
-        let written = segments(node.text());
-        let Some(first) = written.first() else {
-            return written;
-        };
-        if first.is_empty() {
-            return written[1..].to_vec();
-        }
-        let Some(target) = self.bindings.get(first) else {
-            return written;
-        };
-
-        let mut resolved = target.clone();
-        resolved.extend_from_slice(&written[1..]);
-        resolved
-    }
-
-    /// Returns whether the path written in `node` names `known`
-    fn names(&self, node: &DecoratedNode<'_>, known: &KnownType) -> bool {
-        let resolved = self.resolve(node);
-        if let [only] = resolved.as_slice()
-            && known.bare == Some(only.as_str())
-        {
-            return true;
-        }
-
-        let resolved = resolved.join("::");
-        known.paths.contains(&resolved.as_str())
-    }
-}
-
-/// Splits a written path into its segments, ignoring whitespace
-///
-/// A leading `::` yields an empty first segment.
-fn segments(text: &str) -> Vec<String> {
-    let text: String = text
-        .chars()
-        .filter(|character| !character.is_whitespace())
-        .collect();
-    text.split("::").map(str::to_string).collect()
-}
-
-/// Returns `prefix` followed by the segments written in `text`
-fn joined(prefix: &[String], text: &str) -> Vec<String> {
-    let mut path = prefix.to_vec();
-    path.extend(
-        segments(text)
-            .into_iter()
-            .filter(|segment| !segment.is_empty()),
-    );
-    path
+/// A name without a [`Resolution`] names none of them.
+fn names(node: &DecoratedNode<'_>, known: &[TypePathRef<'_>]) -> bool {
+    node.decoration::<Resolution>()
+        .and_then(Resolution::path)
+        .is_some_and(|path| known.iter().any(|candidate| path == candidate))
 }
 
 /// Returns the first type argument of a generic type, skipping lifetimes
@@ -363,46 +192,42 @@ fn matches_kind(node: &DecoratedNode<'_>, kinds: &[&str]) -> bool {
 ///
 /// `dyn Any + Send` parses as a bounded type around `dyn Any`, and
 /// `dyn Send + Any` puts `Any` beside the `dyn`. Both count.
-fn is_any_object(object: &DecoratedNode<'_>, imports: &Imports) -> bool {
+fn is_any_object(object: &DecoratedNode<'_>) -> bool {
     match object.kind() {
         "dynamic_type" => object
             .child_by_field_name("trait")
-            .is_some_and(|bound| imports.names(&bound, &ANY)),
-        "bounded_type" => object
-            .named_children()
-            .iter()
-            .any(|bound| is_any_bound(bound, imports)),
+            .is_some_and(|bound| names(&bound, ANY)),
+        "bounded_type" => object.named_children().iter().any(is_any_bound),
         _ => false,
     }
 }
 
 /// Returns whether one bound of a bounded trait object is `Any`
-fn is_any_bound(bound: &DecoratedNode<'_>, imports: &Imports) -> bool {
+fn is_any_bound(bound: &DecoratedNode<'_>) -> bool {
     match bound.kind() {
-        "dynamic_type" | "bounded_type" => is_any_object(bound, imports),
-        "type_identifier" | "scoped_type_identifier" => imports.names(bound, &ANY),
+        "dynamic_type" | "bounded_type" => is_any_object(bound),
+        "type_identifier" | "scoped_type_identifier" => names(bound, ANY),
         _ => false,
     }
 }
 
 /// Returns the open slot that `node` itself is, if any
-fn slot_at(node: &DecoratedNode<'_>, imports: &Imports) -> Option<OpenSlot> {
+fn slot_at(node: &DecoratedNode<'_>) -> Option<OpenSlot> {
     match node.kind() {
         "generic_type" => {
             let name = node.child_by_field_name("type")?;
             let argument = first_type_argument(node)?;
-            if imports.names(&name, &BOX) && is_any_object(&argument, imports) {
+            if names(&name, BOX) && is_any_object(&argument) {
                 return Some(OpenSlot::AnyBox);
             }
-            let is_map = MAPS.iter().any(|map| imports.names(&name, map));
-            if is_map && imports.names(&argument, &STRING) {
+            if names(&name, MAPS) && names(&argument, STRING) {
                 return Some(OpenSlot::StringKeyedMap);
             }
             None
         }
-        "type_identifier" | "scoped_type_identifier" => imports
-            .names(node, &JSON_VALUE)
-            .then_some(OpenSlot::JsonValue),
+        "type_identifier" | "scoped_type_identifier" => {
+            names(node, JSON_VALUE).then_some(OpenSlot::JsonValue)
+        }
         _ => None,
     }
 }
@@ -411,21 +236,15 @@ fn slot_at(node: &DecoratedNode<'_>, imports: &Imports) -> Option<OpenSlot> {
 ///
 /// A scoped path is read whole, so its last segment is never read as a
 /// bare name of its own.
-fn find_slot<'a>(
-    declared: &DecoratedNode<'a>,
-    imports: &Imports,
-) -> Option<(OpenSlot, DecoratedNode<'a>)> {
-    if let Some(slot) = slot_at(declared, imports) {
+fn find_slot<'a>(declared: &DecoratedNode<'a>) -> Option<(OpenSlot, DecoratedNode<'a>)> {
+    if let Some(slot) = slot_at(declared) {
         return Some((slot, *declared));
     }
     if declared.kind() == "scoped_type_identifier" {
         return None;
     }
 
-    declared
-        .named_children()
-        .iter()
-        .find_map(|child| find_slot(child, imports))
+    declared.named_children().iter().find_map(find_slot)
 }
 
 /// Returns whether the given node is a bare `pub` visibility modifier
@@ -525,14 +344,14 @@ fn fields<'a>(body: &DecoratedNode<'a>) -> Vec<Field<'a>> {
 ///
 /// The diagnostic names the field, then `owner`. A variant passes its own
 /// name there, and a struct passes an empty string.
-fn slot_diagnostics(fields: Vec<Field<'_>>, owner: &str, imports: &Imports) -> Vec<Diagnostic> {
+fn slot_diagnostics(fields: Vec<Field<'_>>, owner: &str) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();
 
     for Field {
         label, declared, ..
     } in fields
     {
-        let Some((slot, node)) = find_slot(&declared, imports) else {
+        let Some((slot, node)) = find_slot(&declared) else {
             continue;
         };
 
@@ -549,7 +368,7 @@ fn slot_diagnostics(fields: Vec<Field<'_>>, owner: &str, imports: &Imports) -> V
 ///
 /// A variant field has no visibility of its own. It is as visible as the
 /// enum, so every field counts.
-fn variant_diagnostics(variant: &DecoratedNode<'_>, imports: &Imports) -> Vec<Diagnostic> {
+fn variant_diagnostics(variant: &DecoratedNode<'_>) -> Vec<Diagnostic> {
     let Some(name) = variant.child_by_field_name("name") else {
         return Vec::new();
     };
@@ -569,7 +388,7 @@ fn variant_diagnostics(variant: &DecoratedNode<'_>, imports: &Imports) -> Vec<Di
             )).span(name.span()).build());
     }
     let owner = format!(" of variant `{}`", name.text());
-    diagnostics.extend(slot_diagnostics(fields, &owner, imports));
+    diagnostics.extend(slot_diagnostics(fields, &owner));
 
     diagnostics
 }
@@ -579,12 +398,11 @@ impl RustLintPass for OpenVocabulary {
         let Some(body) = node.child_by_field_name("body") else {
             return Vec::new();
         };
-        let imports = Imports::visible_to(node);
 
         body.named_children()
             .iter()
             .filter(|variant| variant.kind() == "enum_variant")
-            .flat_map(|variant| variant_diagnostics(variant, &imports))
+            .flat_map(|variant| variant_diagnostics(variant))
             .collect()
     }
 
@@ -592,14 +410,13 @@ impl RustLintPass for OpenVocabulary {
         let Some(body) = node.child_by_field_name("body") else {
             return Vec::new();
         };
-        let imports = Imports::visible_to(node);
 
         let public = fields(&body)
             .into_iter()
             .filter(|field| field.exposure == Exposure::Public)
             .collect();
 
-        slot_diagnostics(public, "", &imports)
+        slot_diagnostics(public, "")
     }
 }
 
@@ -610,7 +427,7 @@ impl stiles_plugin::DeclaresRules for OpenVocabulary {
     }
 
     fn reads(&self) -> stiles_plugin::Reads {
-        stiles_plugin::Reads::none()
+        stiles_plugin::Reads::of::<Resolution>()
     }
 }
 
@@ -619,19 +436,122 @@ stiles_plugin::export_lints![rust: [OpenVocabulary]];
 
 #[cfg(test)]
 mod tests {
-    use stiles_testing::{assert_diagnostic, assert_no_diagnostics, execute, parse};
-    use stiles_types::{Language, LintPass, Severity};
+    use stiles_rust::decorations::{DefinitionKind, DefinitionOrigin, TypePath};
+    use stiles_testing::{assert_diagnostic, assert_no_diagnostics, decorate, execute, parse};
+    use stiles_types::{DecorationMap, Language, LintPass, Severity};
 
     use super::*;
 
-    fn adapt() -> Box<dyn LintPass> {
-        OpenVocabulary::into_lint_pass()
+    /// The definitions that the provider finds for the spellings the tests write
+    const SPELLINGS: &[(&str, &str)] = &[
+        ("Box", "alloc::boxed::Box"),
+        ("std::boxed::Box", "alloc::boxed::Box"),
+        ("alloc::boxed::Box", "alloc::boxed::Box"),
+        ("Any", "core::any::Any"),
+        ("std::any::Any", "core::any::Any"),
+        ("core::any::Any", "core::any::Any"),
+        ("my::Any", "sample::my::Any"),
+        ("Error", "core::error::Error"),
+        ("Arc", "alloc::sync::Arc"),
+        ("String", "alloc::string::String"),
+        ("std::string::String", "alloc::string::String"),
+        ("HashMap", "std::collections::hash::map::HashMap"),
+        (
+            "std::collections::HashMap",
+            "std::collections::hash::map::HashMap",
+        ),
+        ("BTreeMap", "alloc::collections::btree::map::BTreeMap"),
+        (
+            "std::collections::btree_map::BTreeMap",
+            "alloc::collections::btree::map::BTreeMap",
+        ),
+        ("IndexMap", "indexmap::map::IndexMap"),
+        ("indexmap::IndexMap", "indexmap::map::IndexMap"),
+        ("serde_json::Value", "serde_json::value::Value"),
+        ("serde_json::value::Value", "serde_json::value::Value"),
+        ("toml::Value", "toml::value::Value"),
+        ("config::Value", "config::Value"),
+    ];
+
+    /// The definition of `serde_json::Value`
+    const JSON: &str = "serde_json::value::Value";
+
+    /// Returns the resolution of a name to the definition at `path`
+    fn resolution(path: &str) -> Resolution {
+        let mut segments: Vec<&str> = path.split("::").collect();
+        let name = segments.pop().expect("the path should have a name");
+        let krate = segments.remove(0);
+
+        Resolution::builder()
+            .kind(DefinitionKind::Struct)
+            .origin(DefinitionOrigin::OtherCrate)
+            .krate(krate)
+            .path(
+                TypePath::builder()
+                    .krate(krate)
+                    .modules(segments)
+                    .name(name)
+                    .build(),
+            )
+            .build()
+    }
+
+    /// Returns what the provider attaches to a type name, if anything
+    ///
+    /// A spelling in `extra` wins over one in [`SPELLINGS`]. A name at the
+    /// end of a scoped path gets nothing, because the rule reads the path.
+    fn resolve(node: &DecoratedNode<'_>, extra: &[(&str, Resolution)]) -> Option<Resolution> {
+        if !matches_kind(node, &["type_identifier", "scoped_type_identifier"])
+            || node
+                .parent()
+                .is_some_and(|parent| parent.kind() == "scoped_type_identifier")
+        {
+            return None;
+        }
+        let written: String = node
+            .text()
+            .chars()
+            .filter(|character| !character.is_whitespace())
+            .collect();
+        let written = written.trim_start_matches("::");
+        if let Some((_, found)) = extra.iter().find(|(spelling, _)| *spelling == written) {
+            return Some(found.clone());
+        }
+
+        SPELLINGS
+            .iter()
+            .find(|(spelling, _)| *spelling == written)
+            .map(|(_, path)| resolution(path))
+    }
+
+    fn mark(node: &DecoratedNode<'_>, map: &mut DecorationMap, extra: &[(&str, Resolution)]) {
+        if let Some(found) = resolve(node, extra) {
+            map.insert(node.id(), found);
+        }
+        for child in node.named_children() {
+            mark(&child, map, extra);
+        }
+    }
+
+    /// Runs the rule after resolving names as [`SPELLINGS`] and `extra` say
+    fn run_resolving(source: &str, extra: &[(&str, Resolution)]) -> Vec<Diagnostic> {
+        let mut tree = parse(source, Language::Rust);
+        let mut map = DecorationMap::new();
+        mark(&tree.root_node(), &mut map, extra);
+        decorate(&mut tree, map);
+        let mut passes: Vec<Box<dyn LintPass>> = vec![OpenVocabulary::into_lint_pass()];
+
+        execute(&tree, &mut passes)
     }
 
     fn run(source: &str) -> Vec<Diagnostic> {
+        run_resolving(source, &[])
+    }
+
+    /// Runs the rule on a tree that carries no decoration
+    fn run_undecorated(source: &str) -> Vec<Diagnostic> {
         let tree = parse(source, Language::Rust);
-        let mut passes = vec![adapt()];
-        execute(&tree, &mut passes)
+        execute(&tree, &mut [OpenVocabulary::into_lint_pass()])
     }
 
     #[test]
@@ -705,7 +625,10 @@ mod tests {
 
     #[test]
     fn any_imported_from_elsewhere_not_flagged() {
-        let diagnostics = run("use crate::plugin::Any;\npub struct S { pub slot: Box<dyn Any> }");
+        let diagnostics = run_resolving(
+            "use crate::plugin::Any;\npub struct S { pub slot: Box<dyn Any> }",
+            &[("Any", resolution("sample::plugin::Any"))],
+        );
 
         assert_no_diagnostics(&diagnostics);
     }
@@ -844,16 +767,11 @@ mod tests {
         assert_no_diagnostics(&diagnostics);
     }
 
-    fn run_documented(source: &str) -> Vec<stiles_types::Diagnostic> {
-        let tree = stiles_testing::parse(source, stiles_types::Language::Rust);
-        stiles_testing::execute(&tree, &mut [OpenVocabulary::into_lint_pass()])
-    }
-
     #[test]
     fn documented_example_is_flagged() {
         let pair = example_pair::ExamplePair::read(include_str!("lib.rs"));
 
-        let diagnostics = run_documented(pair.example());
+        let diagnostics = run_undecorated(pair.example());
 
         assert!(!diagnostics.is_empty());
     }
@@ -862,10 +780,11 @@ mod tests {
     fn documented_fix_is_not_flagged() {
         let pair = example_pair::ExamplePair::read(include_str!("lib.rs"));
 
-        let diagnostics = run_documented(pair.fix());
+        let diagnostics = run_undecorated(pair.fix());
 
-        stiles_testing::assert_no_diagnostics(&diagnostics);
+        assert_no_diagnostics(&diagnostics);
     }
+
     #[test]
     fn empty_catch_all_payload_not_flagged() {
         let diagnostics = run("pub enum Kind { Other(), Unknown {} }");
@@ -874,14 +793,23 @@ mod tests {
     }
 
     #[test]
-    fn generic_parameter_hides_imported_name() {
-        let diagnostics = run("use serde_json::Value;\npub struct S<Value> { pub data: Value }");
+    fn generic_parameter_named_value_not_flagged() {
+        let parameter = Resolution::builder()
+            .kind(DefinitionKind::TypeParameter)
+            .origin(DefinitionOrigin::SameCrate)
+            .krate("sample")
+            .build();
+
+        let diagnostics = run_resolving(
+            "use serde_json::Value;\npub struct S<Value> { pub data: Value }",
+            &[("Value", parameter)],
+        );
 
         assert_no_diagnostics(&diagnostics);
     }
 
     #[test]
-    fn json_value_bare_without_import_not_flagged() {
+    fn json_value_bare_without_resolution_not_flagged() {
         let diagnostics = run("pub struct S { pub data: Value }");
 
         assert_no_diagnostics(&diagnostics);
@@ -890,68 +818,27 @@ mod tests {
     #[test]
     fn json_value_from_another_crate_not_flagged() {
         let sources = [
-            "pub struct S { pub data: toml::Value }",
-            "use toml::Value;\npub struct S { pub data: Value }",
-            "use serde_json::Value;\npub struct S { pub data: toml::Value }",
-            "use serde_json::Value as Json;\npub struct S { pub data: Value }",
+            ("pub struct S { pub data: toml::Value }", None),
+            (
+                "use toml::Value;\npub struct S { pub data: Value }",
+                Some("toml::value::Value"),
+            ),
+            (
+                "use serde_json::Value;\npub struct S { pub data: toml::Value }",
+                None,
+            ),
         ];
 
-        for source in sources {
-            let diagnostics = run(source);
+        for (source, value) in sources {
+            let extra: Vec<(&str, Resolution)> = value
+                .map(|path| ("Value", resolution(path)))
+                .into_iter()
+                .collect();
+
+            let diagnostics = run_resolving(source, &extra);
 
             assert_no_diagnostics(&diagnostics);
         }
-    }
-
-    #[test]
-    fn json_value_glob_import_not_flagged() {
-        let diagnostics = run("use serde_json::*;\npub struct S { pub data: Value }");
-
-        assert_no_diagnostics(&diagnostics);
-    }
-
-    #[test]
-    fn json_value_import_in_function_reaches_struct_in_it() {
-        let diagnostics = run("fn main() { use serde_json::Value; struct S { pub data: Value } }");
-
-        assert_eq!(diagnostics.len(), 1);
-    }
-
-    #[test]
-    fn json_value_import_in_inner_block_shadows_outer_one() {
-        let diagnostics = run(
-            "use serde_json::Value;\nfn main() { use toml::Value; struct S { pub data: Value } }",
-        );
-
-        assert_no_diagnostics(&diagnostics);
-    }
-
-    #[test]
-    fn json_value_import_in_module_reaches_function_body() {
-        let diagnostics = run("use serde_json::Value;\nfn main() { struct S { pub data: Value } }");
-
-        assert_eq!(diagnostics.len(), 1);
-    }
-
-    #[test]
-    fn json_value_import_in_other_module_not_flagged() {
-        let sources = [
-            "mod a { use serde_json::Value; }\nmod b { pub struct S { pub data: Value } }",
-            "use serde_json::Value;\nmod b { pub struct S { pub data: Value } }",
-        ];
-
-        for source in sources {
-            let diagnostics = run(source);
-
-            assert_no_diagnostics(&diagnostics);
-        }
-    }
-
-    #[test]
-    fn json_value_import_inside_same_module_flagged() {
-        let diagnostics = run("mod b { use serde_json::Value; pub struct S { pub data: Value } }");
-
-        assert_eq!(diagnostics.len(), 1);
     }
 
     #[test]
@@ -980,7 +867,7 @@ mod tests {
         ];
 
         for source in sources {
-            let diagnostics = run(source);
+            let diagnostics = run_resolving(source, &json_aliases());
 
             assert_eq!(diagnostics.len(), 1, "{source}");
         }
@@ -1005,11 +892,39 @@ mod tests {
         ];
 
         for source in sources {
-            let diagnostics = run(source);
+            let diagnostics = run_resolving(source, &json_aliases());
 
             assert_diagnostic(&diagnostics[0])
                 .message_contains("field `data` holds a `serde_json::Value`");
         }
+    }
+
+    #[test]
+    fn json_value_through_a_glob_import_flagged() {
+        let diagnostics = run_resolving(
+            "use serde_json::*;\npub struct S { pub data: Value }",
+            &[("Value", resolution(JSON))],
+        );
+
+        assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn json_value_through_a_reexport_flagged() {
+        let diagnostics = run_resolving(
+            "use crate::wire::Payload;\npub struct S { pub data: Payload }",
+            &[("Payload", resolution(JSON))],
+        );
+
+        assert_eq!(diagnostics.len(), 1);
+    }
+
+    /// Resolves each name that the spelling tests import `serde_json::Value` as
+    fn json_aliases() -> Vec<(&'static str, Resolution)> {
+        ["Value", "Json", "json::Value", "value::Value"]
+            .into_iter()
+            .map(|alias| (alias, resolution(JSON)))
+            .collect()
     }
 
     #[test]
@@ -1140,6 +1055,16 @@ mod tests {
     }
 
     #[test]
+    fn string_keyed_map_renamed_flagged() {
+        let diagnostics = run_resolving(
+            "use std::collections::HashMap as Map;\npub struct S { pub map: Map<String, u32> }",
+            &[("Map", resolution("std::collections::hash::map::HashMap"))],
+        );
+
+        assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
     fn string_keyed_map_spellings_flagged_once() {
         let types = [
             "HashMap<String, u32>",
@@ -1181,8 +1106,9 @@ mod tests {
 
     #[test]
     fn string_keyed_map_under_other_name_not_flagged() {
-        let diagnostics = run(
+        let diagnostics = run_resolving(
             "use crate::cache::Store as HashMap;\npub struct S { pub map: HashMap<String, u32> }",
+            &[("HashMap", resolution("sample::cache::Store"))],
         );
 
         assert_no_diagnostics(&diagnostics);
@@ -1233,18 +1159,6 @@ mod tests {
     }
 
     #[test]
-    fn trait_send_imports() {
-        fn assert_send<T: Send>() {}
-        assert_send::<Imports>();
-    }
-
-    #[test]
-    fn trait_send_known_type() {
-        fn assert_send<T: Send>() {}
-        assert_send::<KnownType>();
-    }
-
-    #[test]
     fn trait_send_open_slot() {
         fn assert_send<T: Send>() {}
         assert_send::<OpenSlot>();
@@ -1269,18 +1183,6 @@ mod tests {
     }
 
     #[test]
-    fn trait_sync_imports() {
-        fn assert_sync<T: Sync>() {}
-        assert_sync::<Imports>();
-    }
-
-    #[test]
-    fn trait_sync_known_type() {
-        fn assert_sync<T: Sync>() {}
-        assert_sync::<KnownType>();
-    }
-
-    #[test]
     fn trait_sync_open_slot() {
         fn assert_sync<T: Sync>() {}
         assert_sync::<OpenSlot>();
@@ -1302,18 +1204,6 @@ mod tests {
     fn trait_unpin_field() {
         fn assert_unpin<T: Unpin>() {}
         assert_unpin::<Field<'static>>();
-    }
-
-    #[test]
-    fn trait_unpin_imports() {
-        fn assert_unpin<T: Unpin>() {}
-        assert_unpin::<Imports>();
-    }
-
-    #[test]
-    fn trait_unpin_known_type() {
-        fn assert_unpin<T: Unpin>() {}
-        assert_unpin::<KnownType>();
     }
 
     #[test]
@@ -1344,6 +1234,17 @@ mod tests {
 
         for source in sources {
             let diagnostics = run(source);
+
+            assert_no_diagnostics(&diagnostics);
+        }
+    }
+
+    #[test]
+    fn unresolved_open_slots_not_flagged() {
+        let types = ["Box<dyn Any>", "HashMap<String, u32>", "serde_json::Value"];
+
+        for declared in types {
+            let diagnostics = run_undecorated(&format!("pub struct S {{ pub slot: {declared} }}"));
 
             assert_no_diagnostics(&diagnostics);
         }
