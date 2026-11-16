@@ -48,6 +48,11 @@ const PRINT_MACROS: [&str; 4] = ["print", "println", "eprint", "eprintln"];
 /// and examples. A build script talks to cargo through standard output, and
 /// an example is a program that shows its output to a person.
 ///
+/// The rule skips the body of an `impl Termination`. Std calls `report` with
+/// no argument when `main` returns the value, so no caller can pass a handle
+/// in. Such an impl hands the handles of the process to a function that
+/// takes them, and that function is where the rule looks.
+///
 /// The rule skips test code, which the Rust provider marks with the
 /// `TestCode` decoration, such as a test function or a `cfg(test)` module.
 /// A file is test code too when its kinds are only integration tests and
@@ -220,6 +225,9 @@ fn report(node: &DecoratedNode<'_>, message: String) -> Vec<Diagnostic> {
     if is_test_code(node) {
         return Vec::new();
     }
+    if is_in_termination_impl(node) {
+        return Vec::new();
+    }
 
     vec![
         Diagnostic::builder()
@@ -229,6 +237,24 @@ fn report(node: &DecoratedNode<'_>, message: String) -> Vec<Diagnostic> {
             .span(node.span())
             .build(),
     ]
+}
+
+/// Returns whether `node` sits in an impl of the trait `Termination`
+///
+/// The trait counts by the last segment of its path, so `Termination` and
+/// `std::process::Termination` both count.
+fn is_in_termination_impl(node: &DecoratedNode<'_>) -> bool {
+    let mut current = node.parent();
+    while let Some(scope) = current {
+        if scope.kind() == "impl_item" {
+            return scope.child_by_field_name("trait").is_some_and(|name| {
+                let path = name.text();
+                path.rsplit("::").next().unwrap_or(path).trim() == "Termination"
+            });
+        }
+        current = scope.parent();
+    }
+    false
 }
 
 /// Returns whether the rule skips every node of the file that holds `node`
@@ -1091,6 +1117,25 @@ mod tests {
         let messages = messages("fn f() { let out = std::io::stdout().lock(); }");
 
         assert_eq!(messages, vec![handle_message("stdout")]);
+    }
+
+    #[test]
+    fn stdout_in_other_trait_impl_is_flagged() {
+        let source =
+            "impl Render for Exit { fn render(self) { report_to(&mut std::io::stdout()); } }";
+
+        let messages = messages(source);
+
+        assert_eq!(messages, vec![handle_message("stdout")]);
+    }
+
+    #[test]
+    fn stdout_in_termination_impl_is_not_flagged() {
+        let source = "impl std::process::Termination for Exit {\n    fn report(self) -> ExitCode { report_to(&mut std::io::stdout()) }\n}";
+
+        let messages = messages(source);
+
+        assert!(messages.is_empty());
     }
 
     #[test]
