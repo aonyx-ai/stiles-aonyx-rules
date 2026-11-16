@@ -1,5 +1,5 @@
 use stiles_rust::{RuleId, RustLintPass, RustLintPassAdapter};
-use stiles_types::{DecoratedNode, Diagnostic, LintPass, Severity};
+use stiles_types::{DecoratedNode, Diagnostic, Edit, Fix, LintPass, Severity, Span};
 
 /// The id that every diagnostic of this rule carries
 ///
@@ -29,6 +29,11 @@ const STD_DERIVES: &[&str] = &[
 /// Standard library derives must appear first in the prescribed order
 /// (Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Default),
 /// followed by third-party derives sorted alphabetically.
+///
+/// `stiles check --fix` writes the derives in that order. Each derive keeps
+/// its path as written, such as `serde::Serialize`, and the commas and line
+/// breaks between them stay in place. The rule attaches no fix when the list
+/// holds a comment, because the comment has no clear place in the new order.
 ///
 /// # Examples
 ///
@@ -81,84 +86,136 @@ fn macro_name(full_path: &str) -> &str {
     full_path.rsplit("::").next().unwrap_or(full_path)
 }
 
-/// Extracts derive names from `#[derive(...)]` attribute text
+/// One derive of the list, with the offset of its first byte
 ///
-/// Returns [`None`] if the text is not a derive attribute or the
-/// derive list is empty. A trailing comma adds no entry.
-fn extract_derive_names(text: &str) -> Option<Vec<String>> {
-    let text = text.trim();
-    let inner = text.strip_prefix("#[derive(")?;
-    let inner = inner.strip_suffix(")]")?;
-    let inner = inner.trim();
-    if inner.is_empty() {
-        return None;
+/// The offset counts from the start of the attribute's text.
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+struct Entry<'a> {
+    offset: usize,
+    name: &'a str,
+}
+
+/// Returns the derives of `#[derive(...)]` attribute text, as written
+///
+/// Returns [`None`] if the text is not a derive attribute or the derive
+/// list is empty. A trailing comma adds no entry.
+///
+/// [`None`]: std::option::Option::None
+fn derive_entries(text: &str) -> Option<Vec<Entry<'_>>> {
+    let inner = text.strip_prefix("#[derive(")?.strip_suffix(")]")?;
+    let base = "#[derive(".len();
+
+    let mut entries = Vec::new();
+    let mut start = 0;
+    for piece in inner.split(',') {
+        let name = piece.trim();
+        if !name.is_empty() {
+            let leading = piece.len() - piece.trim_start().len();
+            entries.push(Entry {
+                offset: base + start + leading,
+                name,
+            });
+        }
+        start += piece.len() + 1;
     }
 
-    let names: Vec<String> = inner
-        .split(',')
-        .map(str::trim)
-        .filter(|name| !name.is_empty())
-        .map(str::to_string)
-        .collect();
-
-    if names.is_empty() {
-        return None;
+    match entries.is_empty() {
+        true => None,
+        false => Some(entries),
     }
-
-    Some(names)
 }
 
 /// Computes the canonical ordering for a list of derive names
 ///
 /// Standard derives are placed first in their prescribed order,
 /// followed by third-party derives sorted case-insensitively.
-fn compute_expected_order(names: &[String]) -> Vec<String> {
-    let mut std_derives: Vec<&String> = names
+fn compute_expected_order<'a>(names: &[&'a str]) -> Vec<&'a str> {
+    let mut std_derives: Vec<&str> = names
         .iter()
+        .copied()
         .filter(|n| std_derive_index(macro_name(n)).is_some())
         .collect();
     std_derives.sort_by_key(|n| std_derive_index(macro_name(n)).unwrap_or(usize::MAX));
 
-    let mut third_party: Vec<&String> = names
+    let mut third_party: Vec<&str> = names
         .iter()
+        .copied()
         .filter(|n| std_derive_index(macro_name(n)).is_none())
         .collect();
     third_party.sort_by_key(|a| a.to_lowercase());
 
-    let mut result: Vec<String> = std_derives.into_iter().cloned().collect();
-    result.extend(third_party.into_iter().cloned());
-    result
+    std_derives.extend(third_party);
+    std_derives
+}
+
+/// Returns the fix that writes each derive in its expected place, or
+/// [`None`] when the list holds a comment
+///
+/// Each edit replaces one derive and leaves the commas, the spaces, and the
+/// line breaks between them as they are. A comment has no clear place in
+/// the new order, so a list with one gets no fix.
+///
+/// [`None`]: std::option::Option::None
+fn reorder(node: &DecoratedNode<'_>, entries: &[Entry<'_>], expected: &[&str]) -> Option<Fix> {
+    let text = node.text();
+    if text.contains("//") || text.contains("/*") {
+        return None;
+    }
+
+    let start = node.span().start();
+    let edits: Vec<Edit> = entries
+        .iter()
+        .zip(expected)
+        .filter(|(entry, name)| entry.name != **name)
+        .map(
+            |(
+                &Entry {
+                    offset,
+                    name: written,
+                },
+                name,
+            )| {
+                let span = Span::builder()
+                    .file(node.span().file_path().clone())
+                    .start(start + offset)
+                    .end(start + offset + written.len())
+                    .build();
+                Edit::builder().span(span).replacement(*name).build()
+            },
+        )
+        .collect();
+
+    Fix::builder()
+        .message("sort the derives")
+        .edits(edits)
+        .build()
+        .ok()
 }
 
 impl RustLintPass for DeriveOrder {
     fn check_attribute_item(&mut self, node: &DecoratedNode<'_>) -> Vec<Diagnostic> {
-        let text = node.text();
-
-        let Some(names) = extract_derive_names(text) else {
+        let Some(entries) = derive_entries(node.text()) else {
             return Vec::new();
         };
-
-        if names.len() <= 1 {
-            return Vec::new();
-        }
-
+        let names: Vec<&str> = entries.iter().map(|entry| entry.name).collect();
         let expected = compute_expected_order(&names);
-
         if names == expected {
             return Vec::new();
         }
 
-        let expected_str = expected.join(", ");
-        vec![
-            Diagnostic::builder()
-                .rule_id(RULE_ID)
-                .severity(Severity::Error)
-                .message(format!(
-                    "derive macros are not in canonical order; expected: {expected_str}"
-                ))
-                .span(node.span())
-                .build(),
-        ]
+        let diagnostic = Diagnostic::builder()
+            .rule_id(RULE_ID)
+            .severity(Severity::Error)
+            .message(format!(
+                "derive macros are not in canonical order; expected: {}",
+                expected.join(", ")
+            ))
+            .span(node.span())
+            .build();
+        let fixed = reorder(node, &entries, &expected)
+            .and_then(|fix| diagnostic.clone().with_fix(fix).ok());
+
+        vec![fixed.unwrap_or(diagnostic)]
     }
 }
 
@@ -178,7 +235,7 @@ stiles_plugin::export_lints![rust: [DeriveOrder]];
 
 #[cfg(test)]
 mod tests {
-    use stiles_testing::{assert_diagnostic, assert_no_diagnostics, execute, parse};
+    use stiles_testing::{assert_diagnostic, assert_fix, assert_no_diagnostics, execute, parse};
     use stiles_types::{Language, LintPass, Severity};
 
     use super::*;
@@ -187,10 +244,21 @@ mod tests {
         DeriveOrder::into_lint_pass()
     }
 
+    fn passes() -> Vec<Box<dyn LintPass>> {
+        vec![adapt()]
+    }
+
     fn run(source: &str) -> Vec<Diagnostic> {
         let tree = parse(source, Language::Rust);
         let mut passes = vec![adapt()];
         execute(&tree, &mut passes)
+    }
+
+    #[test]
+    fn block_comment_in_the_list_has_no_fix() {
+        let diagnostics = run("#[derive(Debug /* printed */, Clone)]\nstruct Foo;");
+
+        assert_diagnostic(&diagnostics[0]).has_no_fix();
     }
 
     #[test]
@@ -216,16 +284,16 @@ mod tests {
         assert_no_diagnostics(&diagnostics);
     }
 
+    fn run_documented(source: &str) -> Vec<stiles_types::Diagnostic> {
+        let tree = stiles_testing::parse(source, stiles_types::Language::Rust);
+        stiles_testing::execute(&tree, &mut [DeriveOrder::into_lint_pass()])
+    }
+
     #[test]
     fn correct_third_party_alphabetical_not_flagged() {
         let diagnostics = run("#[derive(Clone, Debug, Alpha, Beta, Gamma)]\nstruct Foo;");
 
         assert_no_diagnostics(&diagnostics);
-    }
-
-    fn run_documented(source: &str) -> Vec<stiles_types::Diagnostic> {
-        let tree = stiles_testing::parse(source, stiles_types::Language::Rust);
-        stiles_testing::execute(&tree, &mut [DeriveOrder::into_lint_pass()])
     }
 
     #[test]
@@ -234,7 +302,6 @@ mod tests {
 
         pair.assert_example(run_documented);
     }
-
     #[test]
     fn documented_fix_is_not_flagged() {
         let pair = example_pair::ExamplePair::read(include_str!("lib.rs"));
@@ -243,11 +310,109 @@ mod tests {
 
         stiles_testing::assert_no_diagnostics(&diagnostics);
     }
+
     #[test]
     fn empty_derive_not_flagged() {
         let diagnostics = run("#[derive()]\nstruct Foo;");
 
         assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn entry_offsets_skip_the_spaces_and_the_trailing_comma() {
+        let entries = derive_entries("#[derive( Debug,\n    Clone, )]").expect("a derive list");
+
+        let found: Vec<(usize, &str)> = entries
+            .iter()
+            .map(|entry| (entry.offset, entry.name))
+            .collect();
+
+        assert_eq!(found, [(10, "Debug"), (21, "Clone")]);
+    }
+
+    #[test]
+    fn fix_keeps_a_multiline_layout_and_its_trailing_comma() {
+        assert_fix()
+            .tree(parse(
+                "#[derive(\n    Debug,\n    Clone,\n    Alpha,\n)]\nstruct Foo;",
+                Language::Rust,
+            ))
+            .passes(passes)
+            .produces("#[derive(\n    Clone,\n    Debug,\n    Alpha,\n)]\nstruct Foo;");
+    }
+
+    #[test]
+    fn fix_keeps_qualified_paths_as_written() {
+        assert_fix()
+            .tree(parse(
+                "#[derive(serde::Serialize, std::fmt::Debug, Clone)]\nstruct Foo;",
+                Language::Rust,
+            ))
+            .passes(passes)
+            .produces("#[derive(Clone, std::fmt::Debug, serde::Serialize)]\nstruct Foo;");
+    }
+
+    #[test]
+    fn fix_keeps_the_spacing_between_derives() {
+        assert_fix()
+            .tree(parse(
+                "#[derive(Debug,Clone,  Default)]\nstruct Foo;",
+                Language::Rust,
+            ))
+            .passes(passes)
+            .produces("#[derive(Clone,Debug,  Default)]\nstruct Foo;");
+    }
+
+    #[test]
+    fn fix_puts_std_derives_before_third_party_derives() {
+        assert_fix()
+            .tree(parse(
+                "#[derive(Builder, Clone, Debug)]\nstruct Foo;",
+                Language::Rust,
+            ))
+            .passes(passes)
+            .produces("#[derive(Clone, Debug, Builder)]\nstruct Foo;");
+    }
+
+    #[test]
+    fn fix_sorts_every_derive_list_of_a_file() {
+        assert_fix()
+            .tree(parse(
+                "#[derive(Debug, Clone)]\nstruct A;\n#[derive(Gamma, Alpha)]\nstruct B;",
+                Language::Rust,
+            ))
+            .passes(passes)
+            .produces("#[derive(Clone, Debug)]\nstruct A;\n#[derive(Alpha, Gamma)]\nstruct B;");
+    }
+
+    #[test]
+    fn fix_sorts_std_derives_in_the_prescribed_order() {
+        assert_fix()
+            .tree(parse(
+                "#[derive(Default, Debug, Hash, PartialOrd, Ord, PartialEq, Eq, Clone, Copy)]\nstruct Foo;",
+                Language::Rust,
+            ))
+            .passes(passes)
+            .produces("#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Default)]\nstruct Foo;");
+    }
+
+    #[test]
+    fn fix_sorts_third_party_derives_without_regard_to_case() {
+        assert_fix()
+            .tree(parse(
+                "#[derive(Clone, getters, Beta, alpha)]\nstruct Foo;",
+                Language::Rust,
+            ))
+            .passes(passes)
+            .produces("#[derive(Clone, alpha, Beta, getters)]\nstruct Foo;");
+    }
+
+    #[test]
+    fn line_comment_in_the_list_has_no_fix() {
+        let diagnostics =
+            run("#[derive(\n    Debug,\n    Clone, // cloned\n    Copy,\n)]\nstruct Foo;");
+
+        assert_diagnostic(&diagnostics[0]).has_no_fix();
     }
 
     #[test]
@@ -321,15 +486,33 @@ mod tests {
     }
 
     #[test]
+    fn trait_send_entry() {
+        fn assert_send<T: Send>() {}
+        assert_send::<Entry<'_>>();
+    }
+
+    #[test]
     fn trait_sync() {
         fn assert_sync<T: Sync>() {}
         assert_sync::<DeriveOrder>();
     }
 
     #[test]
+    fn trait_sync_entry() {
+        fn assert_sync<T: Sync>() {}
+        assert_sync::<Entry<'_>>();
+    }
+
+    #[test]
     fn trait_unpin() {
         fn assert_unpin<T: Unpin>() {}
         assert_unpin::<DeriveOrder>();
+    }
+
+    #[test]
+    fn trait_unpin_entry() {
+        fn assert_unpin<T: Unpin>() {}
+        assert_unpin::<Entry<'_>>();
     }
 
     #[test]
