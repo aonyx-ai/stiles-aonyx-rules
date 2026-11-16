@@ -14,6 +14,7 @@ pub(crate) use self::link_kind::LinkKind;
 pub(crate) struct InlineLink {
     kind: LinkKind,
     start: usize,
+    close: usize,
     end: usize,
 }
 
@@ -50,6 +51,52 @@ impl InlineLink {
     pub(crate) fn end(self) -> usize {
         self.end
     }
+
+    /// Returns the offset of the `]` that closes the link text
+    pub(crate) fn close(self) -> usize {
+        self.close
+    }
+
+    /// Returns the offset of the first byte of the link text
+    pub(crate) fn text_start(self) -> usize {
+        match self.kind {
+            LinkKind::Image => self.start + "![".len(),
+            LinkKind::Text => self.start + "[".len(),
+        }
+    }
+}
+
+/// Whether a document ends inside a fenced code block
+#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
+pub(crate) enum Ending {
+    /// A fence opens and nothing closes it
+    InsideFence,
+    /// Every fence that opens also closes
+    OutsideFence,
+}
+
+/// Returns what each line of a document contributes, and how it ends
+///
+/// The roles come in the order of the lines, one for each line that a
+/// split at `\n` yields.
+pub(crate) fn line_roles(content: &str) -> (Vec<LineRole>, Ending) {
+    let mut roles = Vec::new();
+    let mut state = BlockState::Prose;
+    let mut previous = Fill::Blank;
+
+    for text in content.split('\n') {
+        let line = Line::new(text);
+        let (next, role) = advance(state, line, previous);
+        state = next;
+        previous = line.fill;
+        roles.push(role);
+    }
+
+    let ending = match state {
+        BlockState::Fenced { .. } => Ending::InsideFence,
+        BlockState::IndentedCode | BlockState::Prose => Ending::OutsideFence,
+    };
+    (roles, ending)
 }
 
 /// A run of consecutive lines that hold Markdown prose
@@ -77,7 +124,7 @@ struct Window<'a> {
 
 /// What a line contributes to the document
 #[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
-enum LineRole {
+pub(crate) enum LineRole {
     /// The line holds prose, so the link scanner reads it
     Prose,
     /// The line holds code or nothing, so the link scanner skips it
@@ -245,10 +292,11 @@ fn scan(bytes: &[u8], prose: ProseRange, links: &mut Vec<InlineLink>) {
             index = skip_code_span(window, index);
         } else if byte == b'!' && bytes.get(index + 1) == Some(&b'[') && index + 1 < end {
             index = match link_end(window, index + 1) {
-                Some(link) => {
+                Some((close, link)) => {
                     links.push(InlineLink {
                         kind: LinkKind::Image,
                         start: index,
+                        close,
                         end: link,
                     });
                     link
@@ -257,10 +305,11 @@ fn scan(bytes: &[u8], prose: ProseRange, links: &mut Vec<InlineLink>) {
             };
         } else if byte == b'[' {
             index = match link_end(window, index) {
-                Some(link) => {
+                Some((close, link)) => {
                     links.push(InlineLink {
                         kind: LinkKind::Text,
                         start: index,
+                        close,
                         end: link,
                     });
                     link
@@ -273,14 +322,15 @@ fn scan(bytes: &[u8], prose: ProseRange, links: &mut Vec<InlineLink>) {
     }
 }
 
-/// Returns the offset just past an inline link that starts at `open`
+/// Returns the offset of the `]` that closes the text of an inline link
+/// that starts at `open`, and the offset just past the link
 ///
 /// `open` is the offset of the `[` that begins the link text. Returns
 /// [`None`] for a reference link, for an unclosed bracket, and for a `(`
 /// group that is not a well-formed destination.
 ///
 /// [`None`]: std::option::Option::None
-fn link_end(window: Window<'_>, open: usize) -> Option<usize> {
+fn link_end(window: Window<'_>, open: usize) -> Option<(usize, usize)> {
     let Window { bytes, end } = window;
     let mut index = open + 1;
     let mut depth = 0usize;
@@ -313,7 +363,7 @@ fn link_end(window: Window<'_>, open: usize) -> Option<usize> {
         return None;
     }
 
-    destination_end(window, paren + 1)
+    destination_end(window, paren + 1).map(|end| (close, end))
 }
 
 /// Returns the offset just past the `)` that closes the destination and its
@@ -755,6 +805,12 @@ mod tests {
     }
 
     #[test]
+    fn trait_send_ending() {
+        fn assert_send<T: Send>() {}
+        assert_send::<Ending>();
+    }
+
+    #[test]
     fn trait_send_fill() {
         fn assert_send<T: Send>() {}
         assert_send::<Fill>();
@@ -797,6 +853,12 @@ mod tests {
     }
 
     #[test]
+    fn trait_sync_ending() {
+        fn assert_sync<T: Sync>() {}
+        assert_sync::<Ending>();
+    }
+
+    #[test]
     fn trait_sync_fill() {
         fn assert_sync<T: Sync>() {}
         assert_sync::<Fill>();
@@ -836,6 +898,12 @@ mod tests {
     fn trait_unpin_block_state() {
         fn assert_unpin<T: Unpin>() {}
         assert_unpin::<BlockState>();
+    }
+
+    #[test]
+    fn trait_unpin_ending() {
+        fn assert_unpin<T: Unpin>() {}
+        assert_unpin::<Ending>();
     }
 
     #[test]
