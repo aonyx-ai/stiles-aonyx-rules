@@ -1,5 +1,7 @@
+use std::ops::Range;
+
 use stiles_rust::{RuleId, RustLintPass};
-use stiles_types::{DecoratedNode, Diagnostic, Severity};
+use stiles_types::{DecoratedNode, Diagnostic, Edit, Fix, Severity, Span};
 
 /// The id that every diagnostic of this rule carries
 ///
@@ -33,8 +35,19 @@ const TEST_ATTRIBUTES: &[&str] = &["rstest", "test", "test_case"];
 ///
 /// A test is a function with an attribute whose last path segment is
 /// `test`, `rstest`, or `test_case`. A test inside a macro call such as
-/// `proptest!` is not read. Its order is in tokens that the syntax tree does
-/// not show as items.
+/// `proptest!` or `cfg_if!` is not read. Its order is in tokens that the
+/// syntax tree does not show as items, so it gets no finding and no fix.
+///
+/// `stiles check --fix` sorts all the tests of the module at once. A test
+/// moves with its attributes, its doc comments, and the comments directly
+/// above it. A comment that a blank line sets apart stays in place. Helpers
+/// and other items between the tests stay in place too. The tests fill the
+/// slots between them in sorted order. Every finding in one module carries
+/// this same fix.
+///
+/// The rule attaches no fix when a `macro_rules!` sits between the tests. A
+/// macro is visible only below its definition, so a move could break a test
+/// that calls it.
 ///
 /// # Examples
 ///
@@ -82,9 +95,14 @@ impl RustLintPass for UnsortedTest {
 /// Reports each test in one module that sorts before the test above it
 ///
 /// The message names the first test above it whose name sorts after its
-/// own. Among the tests above it, that is where the test belongs.
+/// own. Among the tests above it, that is where the test belongs. Every
+/// diagnostic of the module carries the same fix, which sorts all its tests.
 fn check_scope(scope: &DecoratedNode<'_>) -> Vec<Diagnostic> {
-    let names = test_names(scope);
+    let tests = tests(scope);
+    let names: Vec<DecoratedNode<'_>> = tests
+        .iter()
+        .filter_map(|test| test.child_by_field_name("name"))
+        .collect();
     let mut diagnostics = Vec::new();
 
     for (position, name) in names.iter().enumerate().skip(1) {
@@ -111,17 +129,28 @@ fn check_scope(scope: &DecoratedNode<'_>) -> Vec<Diagnostic> {
         );
     }
 
+    let Some(fix) = diagnostics.first().and_then(|_| sorting_fix(scope, &tests)) else {
+        return diagnostics;
+    };
     diagnostics
+        .into_iter()
+        .map(|diagnostic| {
+            diagnostic
+                .clone()
+                .with_fix(fix.clone())
+                .unwrap_or(diagnostic)
+        })
+        .collect()
 }
 
-/// Returns the name node of each test function that is a direct item of
-/// the scope, in source order
+/// Returns the function item of each test that is a direct item of the
+/// scope, in source order
 ///
 /// Tree-sitter makes each attribute a sibling of the item it decorates. The
 /// walk notes a test attribute in front of an item and skips comments. Any
 /// item clears the note.
-fn test_names<'a>(scope: &DecoratedNode<'a>) -> Vec<DecoratedNode<'a>> {
-    let mut names = Vec::new();
+fn tests<'a>(scope: &DecoratedNode<'a>) -> Vec<DecoratedNode<'a>> {
+    let mut tests = Vec::new();
     let mut marked = false;
 
     for child in scope.named_children() {
@@ -133,15 +162,180 @@ fn test_names<'a>(scope: &DecoratedNode<'a>) -> Vec<DecoratedNode<'a>> {
             }
             "line_comment" | "block_comment" => {}
             kind => {
-                if marked && kind == "function_item" {
-                    names.extend(child.child_by_field_name("name"));
+                if marked && kind == "function_item" && child.child_by_field_name("name").is_some()
+                {
+                    tests.push(child);
                 }
                 marked = false;
             }
         }
     }
 
-    names
+    tests
+}
+
+/// Returns the fix that puts the tests of the scope in sorted order, or
+/// [`None`] when a move could change what the code means
+///
+/// Each test owns a slot of the source, which [`slot`] describes. The
+/// slots keep their places, and the tests fill them in sorted order. The
+/// text between two slots stays where it is. A `macro_rules!` between the
+/// tests makes their order matter, because a macro is visible only below
+/// its definition, so the scope then gets no fix.
+///
+/// [`None`]: std::option::Option::None
+fn sorting_fix(scope: &DecoratedNode<'_>, tests: &[DecoratedNode<'_>]) -> Option<Fix> {
+    let source = Source::of(scope);
+    let first = tests.first()?.span().start();
+    let last = tests.last()?.span().end();
+    let defines_macro = scope.named_children().iter().any(|child| {
+        child.kind() == "macro_definition"
+            && child.span().start() > first
+            && child.span().end() < last
+    });
+    if defines_macro {
+        return None;
+    }
+
+    let slots: Vec<(usize, usize)> = tests
+        .iter()
+        .map(|test| slot(&source, scope, test))
+        .collect::<Option<_>>()?;
+    let mut order: Vec<usize> = (0..tests.len()).collect();
+    order.sort_by_key(|&index| {
+        tests[index]
+            .child_by_field_name("name")
+            .map_or("", |name| sort_key(name.text()))
+    });
+
+    let file = scope.span().file_path().clone();
+    let edits: Vec<Edit> = slots
+        .iter()
+        .zip(&order)
+        .enumerate()
+        .filter(|&(position, (_, &test))| position != test)
+        .map(|(_, (&(start, end), &test))| {
+            let (from, to) = slots[test];
+            Edit::builder()
+                .span(
+                    Span::builder()
+                        .file(file.clone())
+                        .start(start)
+                        .end(end)
+                        .build(),
+                )
+                .replacement(source.slice(from..to))
+                .build()
+        })
+        .collect();
+
+    Fix::builder()
+        .message("sort the tests of the module")
+        .edits(edits)
+        .build()
+        .ok()
+}
+
+/// Returns the start and the end of the slot that `test` owns
+///
+/// The slot holds the attributes, the doc comments, and the comments
+/// directly above the function, and a comment that trails it on its last
+/// line. A comment above them belongs to the test only when no blank line
+/// lies between. An attribute always belongs to it. An inner attribute or
+/// an inner doc comment belongs to the module, so the slot stops there.
+fn slot(
+    source: &Source<'_>,
+    scope: &DecoratedNode<'_>,
+    test: &DecoratedNode<'_>,
+) -> Option<(usize, usize)> {
+    let siblings = scope.named_children();
+    let index = siblings
+        .iter()
+        .position(|sibling| sibling.id() == test.id())?;
+
+    let run: Vec<&DecoratedNode<'_>> = siblings[..index]
+        .iter()
+        .rev()
+        .take_while(|sibling| match sibling.kind() {
+            "attribute_item" => true,
+            "line_comment" | "block_comment" => {
+                sibling.child_by_field_name("inner").is_none()
+                    && source.opens_line(sibling.span().start())
+            }
+            _ => false,
+        })
+        .collect();
+    let attributes = run
+        .iter()
+        .rposition(|sibling| sibling.kind() == "attribute_item")
+        .map_or(0, |position| position + 1);
+
+    let mut start = run[..attributes]
+        .last()
+        .map_or(test.span().start(), |sibling| sibling.span().start());
+    for sibling in &run[attributes..] {
+        if source
+            .slice(sibling.span().end()..start)
+            .matches('\n')
+            .count()
+            > 1
+        {
+            break;
+        }
+        start = sibling.span().start();
+    }
+
+    let end = siblings
+        .get(index + 1)
+        .filter(|next| match next.kind() {
+            "line_comment" | "block_comment" => !source
+                .slice(test.span().end()..next.span().start())
+                .contains('\n'),
+            _ => false,
+        })
+        .map_or(test.span().end(), |next| next.span().end());
+
+    Some((start, end))
+}
+
+/// The source text of a whole file, and the offset where it starts
+///
+/// Tree-sitter starts the root node after the whitespace that opens the
+/// file, so the text of the root can start after offset 0. Each offset
+/// here counts from the start of the file, as a span does.
+struct Source<'a> {
+    text: &'a str,
+    start: usize,
+}
+
+impl<'a> Source<'a> {
+    /// Reads the source of the file that `node` lies in
+    fn of(node: &DecoratedNode<'a>) -> Self {
+        let mut root = *node;
+        while let Some(parent) = root.parent() {
+            root = parent;
+        }
+
+        Self {
+            text: root.text(),
+            start: root.span().start(),
+        }
+    }
+
+    /// Returns the text between two file offsets
+    fn slice(&self, range: Range<usize>) -> &'a str {
+        let Range { start, end } = range;
+        &self.text[start - self.start..end - self.start]
+    }
+
+    /// Returns whether only whitespace comes before `offset` on its line
+    fn opens_line(&self, offset: usize) -> bool {
+        let before = self.slice(self.start..offset);
+        let line = before
+            .rfind('\n')
+            .map_or(before, |newline| &before[newline + 1..]);
+        line.trim().is_empty()
+    }
 }
 
 /// Returns whether the attribute marks a test, such as `#[tokio::test]`
@@ -182,10 +376,14 @@ stiles_plugin::export_lints![rust: [UnsortedTest]];
 #[cfg(test)]
 mod tests {
     use stiles_rust::RustLintPassAdapter;
-    use stiles_testing::{assert_diagnostic, assert_no_diagnostics, execute, parse};
+    use stiles_testing::{assert_diagnostic, assert_fix, assert_no_diagnostics, execute, parse};
     use stiles_types::{Language, LintPass, Severity};
 
     use super::*;
+
+    fn passes() -> Vec<Box<dyn LintPass>> {
+        vec![Box::new(RustLintPassAdapter::new(UnsortedTest))]
+    }
 
     fn check(source: &str) -> Vec<Diagnostic> {
         let tree = parse(source, Language::Rust);
@@ -206,6 +404,16 @@ mod tests {
             .collect()
     }
 
+    fn run_documented(source: &str) -> Vec<stiles_types::Diagnostic> {
+        let tree = stiles_testing::parse(source, stiles_types::Language::Rust);
+        stiles_testing::execute(
+            &tree,
+            &mut [Box::new(stiles_rust::RustLintPassAdapter::new(
+                UnsortedTest,
+            ))],
+        )
+    }
+
     #[test]
     fn attribute_named_like_a_test_does_not_mark_the_function() {
         let source = "#[test]\nfn b() {}\n#[testing]\nfn a() {}\n#[test_log]\nfn a2() {}";
@@ -223,6 +431,13 @@ mod tests {
     #[test]
     fn cfg_attr_test_does_not_mark_the_function() {
         let source = "#[test]\nfn b() {}\n#[cfg_attr(test, test)]\nfn a() {}";
+
+        assert_no_diagnostics(&check(source));
+    }
+
+    #[test]
+    fn cfg_if_macro_body_is_not_read() {
+        let source = "cfg_if::cfg_if! {\n    if #[cfg(unix)] {\n        #[test]\n        fn b() {}\n        #[test]\n        fn a() {}\n    }\n}\n";
 
         assert_no_diagnostics(&check(source));
     }
@@ -255,16 +470,6 @@ mod tests {
         assert_eq!(flagged(source), ["a"]);
     }
 
-    fn run_documented(source: &str) -> Vec<stiles_types::Diagnostic> {
-        let tree = stiles_testing::parse(source, stiles_types::Language::Rust);
-        stiles_testing::execute(
-            &tree,
-            &mut [Box::new(stiles_rust::RustLintPassAdapter::new(
-                UnsortedTest,
-            ))],
-        )
-    }
-
     #[test]
     fn documented_example_is_flagged() {
         let pair = example_pair::ExamplePair::read(include_str!("lib.rs"));
@@ -280,6 +485,7 @@ mod tests {
 
         stiles_testing::assert_no_diagnostics(&diagnostics);
     }
+
     #[test]
     fn duplicate_names_are_not_flagged() {
         let source = "#[cfg(unix)]\n#[test]\nfn a() {}\n#[cfg(windows)]\n#[test]\nfn a() {}";
@@ -303,6 +509,130 @@ mod tests {
     }
 
     #[test]
+    fn fix_is_the_same_on_every_finding_of_a_module() {
+        let source =
+            "#[test]\nfn d() {}\n#[test]\nfn b() {}\n#[test]\nfn c() {}\n#[test]\nfn a() {}\n";
+        let diagnostics = check(source);
+
+        assert_eq!(diagnostics[0].fix(), diagnostics[1].fix());
+    }
+
+    #[test]
+    fn fix_keeps_a_comment_that_a_blank_line_sets_apart() {
+        assert_fix()
+            .tree(parse(
+                "// Parser tests\n\n#[test]\nfn b() {}\n\n#[test]\nfn a() {}\n",
+                Language::Rust,
+            ))
+            .passes(passes)
+            .produces("// Parser tests\n\n#[test]\nfn a() {}\n\n#[test]\nfn b() {}\n");
+    }
+
+    #[test]
+    fn fix_keeps_helpers_in_place() {
+        assert_fix()
+            .tree(parse("#[test]\nfn c() {}\n\nfn helper() {}\n\n#[test]\nfn b() {}\n\nconst X: u8 = 0;\n\n#[test]\nfn a() {}\n", Language::Rust))
+            .passes(passes)
+            .produces("#[test]\nfn a() {}\n\nfn helper() {}\n\n#[test]\nfn b() {}\n\nconst X: u8 = 0;\n\n#[test]\nfn c() {}\n");
+    }
+
+    #[test]
+    fn fix_keeps_the_inner_docs_of_the_module_in_place() {
+        assert_fix()
+            .tree(parse("mod tests {\n    //! Tests\n    #[test]\n    fn b() {}\n\n    #[test]\n    fn a() {}\n}\n", Language::Rust))
+            .passes(passes)
+            .produces("mod tests {\n    //! Tests\n    #[test]\n    fn a() {}\n\n    #[test]\n    fn b() {}\n}\n");
+    }
+
+    #[test]
+    fn fix_keeps_the_order_of_tests_with_the_same_name() {
+        assert_fix()
+            .tree(parse("#[test]\nfn b() {}\n#[cfg(unix)]\n#[test]\nfn a() {}\n#[cfg(windows)]\n#[test]\nfn a() {}\n", Language::Rust))
+            .passes(passes)
+            .produces("#[cfg(unix)]\n#[test]\nfn a() {}\n#[cfg(windows)]\n#[test]\nfn a() {}\n#[test]\nfn b() {}\n");
+    }
+
+    #[test]
+    fn fix_moves_a_trailing_comment_with_the_test() {
+        assert_fix()
+            .tree(parse(
+                "#[test]\nfn b() {} // slow\n#[test]\nfn a() {}\n",
+                Language::Rust,
+            ))
+            .passes(passes)
+            .produces("#[test]\nfn a() {}\n#[test]\nfn b() {} // slow\n");
+    }
+
+    #[test]
+    fn fix_moves_an_attribute_that_a_blank_line_sets_apart() {
+        assert_fix()
+            .tree(parse(
+                "#[test]\nfn b() {}\n#[test]\n// note\n\n#[ignore]\nfn a() {}\n",
+                Language::Rust,
+            ))
+            .passes(passes)
+            .produces("#[test]\n// note\n\n#[ignore]\nfn a() {}\n#[test]\nfn b() {}\n");
+    }
+
+    #[test]
+    fn fix_moves_attributes_and_doc_comments_with_the_test() {
+        assert_fix()
+            .tree(parse(
+                "#[test]\nfn b() {}\n\n/// Docs\n#[ignore]\n#[test]\n#[should_panic]\nfn a() {}\n",
+                Language::Rust,
+            ))
+            .passes(passes)
+            .produces(
+                "/// Docs\n#[ignore]\n#[test]\n#[should_panic]\nfn a() {}\n\n#[test]\nfn b() {}\n",
+            );
+    }
+
+    #[test]
+    fn fix_moves_the_comment_directly_above_the_test() {
+        assert_fix()
+            .tree(parse(
+                "#[test]\nfn b() {}\n\n// About a\n#[test]\nfn a() {}\n",
+                Language::Rust,
+            ))
+            .passes(passes)
+            .produces("// About a\n#[test]\nfn a() {}\n\n#[test]\nfn b() {}\n");
+    }
+
+    #[test]
+    fn fix_sorts_a_long_reversed_list_in_one_round() {
+        let names: Vec<String> = (0..15).rev().map(|index| format!("t{index:02}")).collect();
+        let source: String = names
+            .iter()
+            .map(|name| format!("#[test]\nfn {name}() {{}}\n"))
+            .collect();
+        let mut sorted = names.clone();
+        sorted.sort();
+        let expected: String = sorted
+            .iter()
+            .map(|name| format!("#[test]\nfn {name}() {{}}\n"))
+            .collect();
+        let tree = parse(&source, Language::Rust);
+        let diagnostics = execute(&tree, &mut passes());
+        let fix = diagnostics[0]
+            .fix()
+            .expect("the finding should carry a fix");
+
+        let mut text = source.clone();
+        for edit in fix.edits().iter().rev() {
+            text.replace_range(edit.span().start()..edit.span().end(), edit.replacement());
+        }
+
+        assert_eq!(text, expected);
+    }
+    #[test]
+    fn fix_sorts_a_nested_module_on_its_own() {
+        assert_fix()
+            .tree(parse("mod tests {\n    #[test]\n    fn z() {}\n    mod inner {\n        #[test]\n        fn y() {}\n        #[test]\n        fn x() {}\n    }\n    #[test]\n    fn a() {}\n}\n", Language::Rust))
+            .passes(passes)
+            .produces("mod tests {\n    #[test]\n    fn a() {}\n    mod inner {\n        #[test]\n        fn x() {}\n        #[test]\n        fn y() {}\n    }\n    #[test]\n    fn z() {}\n}\n");
+    }
+
+    #[test]
     fn function_inside_a_function_body_is_not_read() {
         let source = "#[test]\nfn b() {\n    #[test]\n    fn a() {}\n}";
 
@@ -321,6 +651,22 @@ mod tests {
         let source = "#[test]\nfn c() {}\nfn z_helper() {}\nconst X: u8 = 0;\n#[test]\nfn b() {}";
 
         assert_eq!(flagged(source), ["b"]);
+    }
+
+    #[test]
+    fn macro_definition_above_the_tests_keeps_the_fix() {
+        let diagnostics =
+            check("macro_rules! m { () => {} }\n#[test]\nfn b() {}\n#[test]\nfn a() { m!(); }\n");
+
+        assert_diagnostic(&diagnostics[0]).has_fix();
+    }
+
+    #[test]
+    fn macro_definition_between_the_tests_has_no_fix() {
+        let diagnostics =
+            check("#[test]\nfn b() {}\nmacro_rules! m { () => {} }\n#[test]\nfn a() { m!(); }\n");
+
+        assert_diagnostic(&diagnostics[0]).has_no_fix();
     }
 
     #[test]
@@ -449,15 +795,33 @@ mod tests {
     }
 
     #[test]
+    fn trait_send_source() {
+        fn assert_send<T: Send>() {}
+        assert_send::<Source<'_>>();
+    }
+
+    #[test]
     fn trait_sync() {
         fn assert_sync<T: Sync>() {}
         assert_sync::<UnsortedTest>();
     }
 
     #[test]
+    fn trait_sync_source() {
+        fn assert_sync<T: Sync>() {}
+        assert_sync::<Source<'_>>();
+    }
+
+    #[test]
     fn trait_unpin() {
         fn assert_unpin<T: Unpin>() {}
         assert_unpin::<UnsortedTest>();
+    }
+
+    #[test]
+    fn trait_unpin_source() {
+        fn assert_unpin<T: Unpin>() {}
+        assert_unpin::<Source<'_>>();
     }
 
     #[test]
