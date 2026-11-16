@@ -638,8 +638,6 @@ stiles_plugin::export_lints![rust: [ExternalTypeInPort::default()]];
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
-
     use stiles_rust::RustLintPassAdapter;
     use stiles_rust::decorations::TargetKind;
     use stiles_testing::{assert_diagnostic, assert_no_diagnostics, decorate, execute, parse};
@@ -761,22 +759,9 @@ mod tests {
         execute_rule(&parse_at(path, source, resolved))
     }
 
-    /// Parses `source` as the file at `path`
-    ///
-    /// `parse` names every file `<test>`, so this parses with the grammar
-    /// of `stiles-rust` and a path of the test's own.
+    /// Parses `source` as the file at `path`, with the names in `resolved`
     fn parse_at(path: &Path, source: &str, resolved: &[Resolved<'_>]) -> DecoratedTree {
-        let mut parser = tree_sitter::Parser::new();
-        parser
-            .set_language(&stiles_rust::language())
-            .expect("the grammar should load");
-        let tree = parser.parse(source, None).expect("the source should parse");
-        let mut tree = DecoratedTree::builder()
-            .tree(tree)
-            .language(Language::Rust)
-            .source(source.to_owned())
-            .file(PathBuf::from(path))
-            .build();
+        let mut tree = stiles_testing::parse_at(path, source, Language::Rust);
         resolve(&mut tree, resolved);
         tree
     }

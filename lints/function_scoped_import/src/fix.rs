@@ -1,6 +1,4 @@
-use std::ops::Range;
-
-use stiles_types::{DecoratedNode, Edit, Fix, Span};
+use stiles_types::{DecoratedNode, Edit, FileText, Fix, Span};
 
 use crate::has_cfg_attribute;
 
@@ -86,68 +84,6 @@ enum Standing {
     Free,
 }
 
-/// The source text of a whole file, and the offset where it starts
-///
-/// Tree-sitter starts the root node after the whitespace that opens the
-/// file, so the text of the root can start after offset 0. Each offset
-/// here counts from the start of the file, as a span does.
-struct Source<'a> {
-    text: &'a str,
-    start: usize,
-}
-
-impl<'a> Source<'a> {
-    /// Reads the source of the file that `node` lies in
-    fn of(node: &DecoratedNode<'a>) -> Self {
-        let mut root = *node;
-        while let Some(parent) = root.parent() {
-            root = parent;
-        }
-
-        Self {
-            text: root.text(),
-            start: root.span().start(),
-        }
-    }
-
-    /// Returns the text between two file offsets
-    fn slice(&self, range: Range<usize>) -> &'a str {
-        let Range { start, end } = range;
-        &self.text[start - self.start..end - self.start]
-    }
-
-    /// Returns the file offset where the text ends
-    fn end(&self) -> usize {
-        self.start + self.text.len()
-    }
-
-    /// Returns the offset where the line that holds `offset` starts
-    fn line_start(&self, offset: usize) -> usize {
-        self.slice(self.start..offset)
-            .rfind('\n')
-            .map_or(self.start, |newline| self.start + newline + 1)
-    }
-
-    /// Returns the offset of the newline that ends the line holding
-    /// `offset`, or the end of the text when no newline follows
-    fn line_end(&self, offset: usize) -> usize {
-        let end = self.end();
-        self.slice(offset..end)
-            .find('\n')
-            .map_or(end, |newline| offset + newline)
-    }
-
-    /// Returns the whitespace that opens the line of `offset`, or an empty
-    /// text when something else comes before `offset` on that line
-    fn indent(&self, offset: usize) -> &'a str {
-        let before = self.slice(self.line_start(offset)..offset);
-        match before.trim().is_empty() {
-            true => before,
-            false => "",
-        }
-    }
-}
-
 /// One import in a function body that the fix of the module deletes
 struct Removal<'a> {
     /// The `use` declaration in the body
@@ -176,12 +112,12 @@ pub(crate) fn fix(node: &DecoratedNode<'_>) -> Option<Fix> {
         return None;
     }
 
-    let source = Source::of(node);
+    let source = node.file_text();
     let deleted: Vec<DecoratedNode<'_>> = removals.iter().map(|removal| removal.node).collect();
     let mut edits: Vec<Edit> = deleted
         .iter()
         .map(|import| deletion(&source, import, &deleted))
-        .collect();
+        .collect::<Option<_>>()?;
     let moved: Vec<DecoratedNode<'_>> = removals
         .iter()
         .filter(|removal| removal.standing == Standing::Free)
@@ -521,60 +457,65 @@ fn standing(module: &DecoratedNode<'_>, bindings: &[Binding]) -> Option<Standing
 /// follows and the line above opens the block, the blank line goes too.
 /// Lines of other imports in `deleted` do not count as the line above. An
 /// import that shares its line loses only itself and the spaces after it.
-fn deletion(source: &Source<'_>, node: &DecoratedNode<'_>, deleted: &[DecoratedNode<'_>]) -> Edit {
+fn deletion(
+    source: &FileText<'_>,
+    node: &DecoratedNode<'_>,
+    deleted: &[DecoratedNode<'_>],
+) -> Option<Edit> {
     let span = node.span();
-    let line_start = source.line_start(span.start());
-    let line_end = source.line_end(span.end());
-    let alone = source.slice(line_start..span.start()).trim().is_empty()
-        && source.slice(span.end()..line_end).trim().is_empty();
+    let line_start = source.line_start(span.start())?;
+    let line_end = source.line_end(span.end())?;
+    let alone = source.get(line_start..span.start())?.trim().is_empty()
+        && source.get(span.end()..line_end)?.trim().is_empty();
 
     let (start, end) = match alone {
         true => {
             let file_end = source.end();
             let end = (line_end + 1).min(file_end);
-            let next_end = source.line_end(end);
-            let blank_after = end < file_end && source.slice(end..next_end).trim().is_empty();
-            let opens_block = opens_block(source, line_start, deleted);
+            let next_end = source.line_end(end)?;
+            let blank_after = end < file_end && source.get(end..next_end)?.trim().is_empty();
+            let opens_block = opens_block(source, line_start, deleted)?;
             match blank_after && opens_block {
                 true => (line_start, (next_end + 1).min(file_end)),
                 false => (line_start, end),
             }
         }
         false => {
-            let after = source.slice(span.end()..line_end);
+            let after = source.get(span.end()..line_end)?;
             let spaces = after.len() - after.trim_start_matches([' ', '\t']).len();
             (span.start(), span.end() + spaces)
         }
     };
 
-    Edit::builder()
-        .span(
-            Span::builder()
-                .file(span.file_path().clone())
-                .start(start)
-                .end(end)
-                .build(),
-        )
-        .replacement("")
-        .build()
+    Some(Edit::delete(
+        Span::builder()
+            .file(span.file_path().clone())
+            .start(start)
+            .end(end)
+            .build(),
+    ))
 }
 
 /// Returns whether the line above `line_start` ends with `{`, skipping
 /// the lines of the imports in `deleted`
-fn opens_block(source: &Source<'_>, line_start: usize, deleted: &[DecoratedNode<'_>]) -> bool {
+fn opens_block(
+    source: &FileText<'_>,
+    line_start: usize,
+    deleted: &[DecoratedNode<'_>],
+) -> Option<bool> {
     let mut start = line_start;
-    while start > source.start {
-        let above = source.line_start(start - 1);
+    while start > source.start() {
+        let above = source.line_start(start - 1)?;
         let is_deleted = deleted
             .iter()
-            .any(|import| source.line_start(import.span().start()) == above);
+            .any(|import| source.line_start(import.span().start()) == Some(above));
         if !is_deleted {
-            return source.slice(above..start).trim_end().ends_with('{');
+            return Some(source.get(above..start)?.trim_end().ends_with('{'));
         }
         start = above;
     }
 
-    false
+    Some(false)
 }
 
 /// Returns the edit that inserts the imports with the imports of the module
@@ -583,7 +524,7 @@ fn opens_block(source: &Source<'_>, line_start: usize, deleted: &[DecoratedNode<
 /// import of the module. When the module has none, they go before the first
 /// item, after the inner attributes and docs of the module.
 fn insertion(
-    source: &Source<'_>,
+    source: &FileText<'_>,
     moved: &[DecoratedNode<'_>],
     module: &DecoratedNode<'_>,
 ) -> Option<Edit> {
@@ -597,9 +538,9 @@ fn insertion(
     let (position, replacement) = match last_import {
         Some(import) => {
             let end = import.span().end();
-            let indent = source.indent(import.span().start());
-            let line_end = source.line_end(end);
-            let rest = source.slice(end..line_end).trim();
+            let indent = source.indent(import.span().start()).unwrap_or("");
+            let line_end = source.line_end(end)?;
+            let rest = source.get(end..line_end)?.trim();
             let position = match rest.is_empty() || rest.starts_with("//") {
                 true => line_end,
                 false => end,
@@ -612,7 +553,7 @@ fn insertion(
         }
         None => {
             let start = first_item_start(source, &children)?;
-            let indent = source.indent(start);
+            let indent = source.indent(start).unwrap_or("");
             let text: String = moved
                 .iter()
                 .map(|node| format!("{}\n", reindented(source, node, indent)))
@@ -623,15 +564,10 @@ fn insertion(
     };
 
     Some(
-        Edit::builder()
-            .span(
-                Span::builder()
-                    .file(span.file_path().clone())
-                    .start(position)
-                    .end(position)
-                    .build(),
-            )
-            .replacement(replacement)
+        Edit::insert()
+            .file(span.file_path().clone())
+            .offset(position)
+            .text(replacement)
             .build(),
     )
 }
@@ -642,7 +578,7 @@ fn insertion(
 /// A blank line ends the comments that belong to the item. Inner
 /// attributes and inner doc comments belong to the module, so they stay
 /// above.
-fn first_item_start(source: &Source<'_>, children: &[DecoratedNode<'_>]) -> Option<usize> {
+fn first_item_start(source: &FileText<'_>, children: &[DecoratedNode<'_>]) -> Option<usize> {
     let index = children.iter().position(|child| match child.kind() {
         "attribute_item" | "block_comment" | "inner_attribute_item" | "line_comment" => false,
         _ => true,
@@ -655,10 +591,8 @@ fn first_item_start(source: &Source<'_>, children: &[DecoratedNode<'_>]) -> Opti
             "line_comment" | "block_comment" => {
                 sibling.child_by_field_name("inner").is_none()
                     && source
-                        .slice(sibling.span().end()..start)
-                        .matches('\n')
-                        .count()
-                        <= 1
+                        .get(sibling.span().end()..start)
+                        .is_some_and(|between| between.matches('\n').count() <= 1)
             }
             _ => false,
         };
@@ -676,8 +610,8 @@ fn first_item_start(source: &Source<'_>, children: &[DecoratedNode<'_>]) -> Opti
 ///
 /// The first line keeps its own start, because the edit puts it after the
 /// indent already.
-fn reindented(source: &Source<'_>, node: &DecoratedNode<'_>, indent: &str) -> String {
-    let from = source.indent(node.span().start());
+fn reindented(source: &FileText<'_>, node: &DecoratedNode<'_>, indent: &str) -> String {
+    let from = source.indent(node.span().start()).unwrap_or("");
     let mut lines = node.text().split('\n');
     let mut result = lines.next().unwrap_or_default().to_owned();
     for line in lines {
@@ -711,12 +645,6 @@ mod tests {
     }
 
     #[test]
-    fn trait_send_source() {
-        fn assert_send<T: Send>() {}
-        assert_send::<Source<'_>>();
-    }
-
-    #[test]
     fn trait_send_standing() {
         fn assert_send<T: Send>() {}
         assert_send::<Standing>();
@@ -735,12 +663,6 @@ mod tests {
     }
 
     #[test]
-    fn trait_sync_source() {
-        fn assert_sync<T: Sync>() {}
-        assert_sync::<Source<'_>>();
-    }
-
-    #[test]
     fn trait_sync_standing() {
         fn assert_sync<T: Sync>() {}
         assert_sync::<Standing>();
@@ -756,12 +678,6 @@ mod tests {
     fn trait_unpin_removal() {
         fn assert_unpin<T: Unpin>() {}
         assert_unpin::<Removal<'_>>();
-    }
-
-    #[test]
-    fn trait_unpin_source() {
-        fn assert_unpin<T: Unpin>() {}
-        assert_unpin::<Source<'_>>();
     }
 
     #[test]

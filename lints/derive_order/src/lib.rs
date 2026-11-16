@@ -1,5 +1,7 @@
 use stiles_rust::{RuleId, RustLintPass, RustLintPassAdapter};
-use stiles_types::{DecoratedNode, Diagnostic, Edit, Fix, LintPass, Severity, Span};
+use stiles_types::{
+    AttachFixError, DecoratedNode, Diagnostic, Edit, Fix, LintPass, Severity, Span,
+};
 
 /// The id that every diagnostic of this rule carries
 ///
@@ -212,10 +214,15 @@ impl RustLintPass for DeriveOrder {
             ))
             .span(node.span())
             .build();
-        let fixed = reorder(node, &entries, &expected)
-            .and_then(|fix| diagnostic.clone().with_fix(fix).ok());
+        let Some(fix) = reorder(node, &entries, &expected) else {
+            return vec![diagnostic];
+        };
 
-        vec![fixed.unwrap_or(diagnostic)]
+        vec![
+            diagnostic
+                .with_fix(fix)
+                .unwrap_or_else(AttachFixError::into_diagnostic),
+        ]
     }
 }
 
@@ -333,10 +340,10 @@ mod tests {
     #[test]
     fn fix_keeps_a_multiline_layout_and_its_trailing_comma() {
         assert_fix()
-            .tree(parse(
+            .source(
                 "#[derive(\n    Debug,\n    Clone,\n    Alpha,\n)]\nstruct Foo;",
                 Language::Rust,
-            ))
+            )
             .passes(passes)
             .produces("#[derive(\n    Clone,\n    Debug,\n    Alpha,\n)]\nstruct Foo;");
     }
@@ -344,10 +351,10 @@ mod tests {
     #[test]
     fn fix_keeps_qualified_paths_as_written() {
         assert_fix()
-            .tree(parse(
+            .source(
                 "#[derive(serde::Serialize, std::fmt::Debug, Clone)]\nstruct Foo;",
                 Language::Rust,
-            ))
+            )
             .passes(passes)
             .produces("#[derive(Clone, std::fmt::Debug, serde::Serialize)]\nstruct Foo;");
     }
@@ -355,10 +362,10 @@ mod tests {
     #[test]
     fn fix_keeps_the_spacing_between_derives() {
         assert_fix()
-            .tree(parse(
+            .source(
                 "#[derive(Debug,Clone,  Default)]\nstruct Foo;",
                 Language::Rust,
-            ))
+            )
             .passes(passes)
             .produces("#[derive(Clone,Debug,  Default)]\nstruct Foo;");
     }
@@ -366,10 +373,10 @@ mod tests {
     #[test]
     fn fix_puts_std_derives_before_third_party_derives() {
         assert_fix()
-            .tree(parse(
+            .source(
                 "#[derive(Builder, Clone, Debug)]\nstruct Foo;",
                 Language::Rust,
-            ))
+            )
             .passes(passes)
             .produces("#[derive(Clone, Debug, Builder)]\nstruct Foo;");
     }
@@ -377,10 +384,10 @@ mod tests {
     #[test]
     fn fix_sorts_every_derive_list_of_a_file() {
         assert_fix()
-            .tree(parse(
+            .source(
                 "#[derive(Debug, Clone)]\nstruct A;\n#[derive(Gamma, Alpha)]\nstruct B;",
                 Language::Rust,
-            ))
+            )
             .passes(passes)
             .produces("#[derive(Clone, Debug)]\nstruct A;\n#[derive(Alpha, Gamma)]\nstruct B;");
     }
@@ -388,10 +395,7 @@ mod tests {
     #[test]
     fn fix_sorts_std_derives_in_the_prescribed_order() {
         assert_fix()
-            .tree(parse(
-                "#[derive(Default, Debug, Hash, PartialOrd, Ord, PartialEq, Eq, Clone, Copy)]\nstruct Foo;",
-                Language::Rust,
-            ))
+            .source("#[derive(Default, Debug, Hash, PartialOrd, Ord, PartialEq, Eq, Clone, Copy)]\nstruct Foo;", Language::Rust)
             .passes(passes)
             .produces("#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Default)]\nstruct Foo;");
     }
@@ -399,10 +403,10 @@ mod tests {
     #[test]
     fn fix_sorts_third_party_derives_without_regard_to_case() {
         assert_fix()
-            .tree(parse(
+            .source(
                 "#[derive(Clone, getters, Beta, alpha)]\nstruct Foo;",
                 Language::Rust,
-            ))
+            )
             .passes(passes)
             .produces("#[derive(Clone, alpha, Beta, getters)]\nstruct Foo;");
     }

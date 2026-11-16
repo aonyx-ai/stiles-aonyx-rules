@@ -30,21 +30,22 @@ use stiles_types::DecoratedNode;
 /// assert!(program_root::is_binary_root(&tree.root_node()));
 /// ```
 pub fn is_binary_root(node: &DecoratedNode<'_>) -> bool {
+    let only_binaries = node.file_decoration::<Target>().is_some_and(|target| {
+        let kinds = target.kinds();
+        !kinds.is_empty() && kinds.iter().all(|kind| kind == TargetKind::Binary)
+    });
+
+    only_binaries && declares_main(node)
+}
+
+/// Returns whether the top level of the file that holds `node` declares a
+/// function named `main`
+fn declares_main(node: &DecoratedNode<'_>) -> bool {
     let mut file = *node;
     while let Some(parent) = file.parent() {
         file = parent;
     }
 
-    let only_binaries = file.decoration::<Target>().is_some_and(|target| {
-        let kinds = target.kinds();
-        !kinds.is_empty() && kinds.iter().all(|kind| kind == TargetKind::Binary)
-    });
-
-    only_binaries && declares_main(&file)
-}
-
-/// Returns whether the top level of `file` declares a function named `main`
-fn declares_main(file: &DecoratedNode<'_>) -> bool {
     file.named_children().iter().any(|child| {
         child.kind() == "function_item"
             && child

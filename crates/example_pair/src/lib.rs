@@ -105,7 +105,7 @@ impl ExamplePair {
     ///
     /// ```
     /// use example_pair::ExamplePair;
-    /// use stiles_types::{Diagnostic, Edit, Fix, RuleId, Severity, Span};
+    /// use stiles_types::{AttachFixError, Diagnostic, Edit, Fix, RuleId, Severity, Span};
     ///
     /// /// Reports `let a` and renames it to `let b`
     /// fn run(text: &str) -> Vec<Diagnostic> {
@@ -122,7 +122,7 @@ impl ExamplePair {
     ///         .span(span)
     ///         .build()
     ///         .with_fix(fix.expect("the fix should build"))
-    ///         .expect("the fix should attach");
+    ///         .unwrap_or_else(AttachFixError::into_diagnostic);
     ///     vec![diagnostic]
     /// }
     ///
@@ -207,7 +207,7 @@ fn joined(lines: &[&str]) -> String {
 
 #[cfg(test)]
 mod tests {
-    use stiles_types::{Edit, Fix, RuleId, Severity, Span};
+    use stiles_types::{AttachFixError, Edit, Fix, RuleId, Severity, Span};
 
     use super::*;
 
@@ -258,7 +258,9 @@ mod tests {
                         .edits(vec![edit])
                         .build()
                         .expect("the fix should build");
-                    diagnostic.with_fix(fix).expect("the fix should attach")
+                    diagnostic
+                        .with_fix(fix)
+                        .unwrap_or_else(AttachFixError::into_diagnostic)
                 }
                 None => diagnostic,
             };

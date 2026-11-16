@@ -1,7 +1,7 @@
 use std::ops::Range;
 
 use doc_comment::DocLine;
-use stiles_types::{DecoratedNode, Edit, Fix, Span};
+use stiles_types::{DecoratedNode, Edit, FileText, Fix};
 
 use crate::doc_block::DocBlock;
 use crate::inline_link::{Ending, InlineLink, LineRole, line_roles};
@@ -66,59 +66,12 @@ enum Previous {
     Text,
 }
 
-/// The source text of a whole file, and the offset where it starts
+/// Returns the text of the row of `line` before the line's prose
 ///
-/// Tree-sitter starts the root node after the whitespace that opens the
-/// file, so the text of the root can start after offset 0. Each offset
-/// here counts from the start of the file, as a span does.
-struct Source<'a> {
-    text: &'a str,
-    start: usize,
-}
-
-impl<'a> Source<'a> {
-    /// Reads the source of the file that `node` lies in
-    fn of(node: &DecoratedNode<'a>) -> Self {
-        let mut root = *node;
-        while let Some(parent) = root.parent() {
-            root = parent;
-        }
-
-        Self {
-            text: root.text(),
-            start: root.span().start(),
-        }
-    }
-
-    /// Returns the text between two file offsets
-    fn slice(&self, range: Range<usize>) -> &'a str {
-        let Range { start, end } = range;
-        &self.text[start - self.start..end - self.start]
-    }
-
-    /// Returns the offset where the line that holds `offset` starts
-    fn line_start(&self, offset: usize) -> usize {
-        self.slice(self.start..offset)
-            .rfind('\n')
-            .map_or(self.start, |newline| self.start + newline + 1)
-    }
-
-    /// Returns the offset of the newline that ends the line holding
-    /// `offset`, or the end of the text when no newline follows
-    fn line_end(&self, offset: usize) -> usize {
-        let end = self.start + self.text.len();
-        self.slice(offset..end)
-            .find('\n')
-            .map_or(end, |newline| offset + newline)
-    }
-
-    /// Returns the text of the row of `line` before the line's prose
-    ///
-    /// That is the comment syntax and the indentation the lines share, such
-    /// as `    /// ` or ` * `.
-    fn before(&self, line: DocLine<'_>) -> &'a str {
-        self.slice(self.line_start(line.offset())..line.offset())
-    }
+/// That is the comment syntax and the indentation the lines share, such as
+/// `    /// ` or ` * `.
+fn before<'a>(source: &FileText<'a>, line: DocLine<'_>) -> Option<&'a str> {
+    source.get(source.line_start(line.offset())?..line.offset())
 }
 
 /// One inline link that the fix can rewrite as a reference link
@@ -185,7 +138,7 @@ pub(crate) fn fix(
         lines,
         syntax,
     } = comment;
-    let source = Source::of(node);
+    let source = node.file_text();
     let form = match node.kind() {
         "line_comment" => Form::LineRun,
         _ => Form::Block,
@@ -196,7 +149,7 @@ pub(crate) fn fix(
         Syntax::Rust => full,
         Syntax::TypeScript => lines[..full]
             .iter()
-            .position(|line| source.before(*line).contains('@'))
+            .position(|line| before(&source, *line).is_some_and(|row| row.contains('@')))
             .unwrap_or(full),
     };
     let tail = match end == full {
@@ -247,10 +200,7 @@ pub(crate) fn fix(
 
     let mut edits: Vec<Edit> = accepted
         .iter()
-        .map(|candidate| {
-            let span = block.span(candidate.link.close() + 1..candidate.link.end());
-            Edit::builder().span(span).replacement("").build()
-        })
+        .map(|candidate| Edit::delete(block.span(candidate.link.close() + 1..candidate.link.end())))
         .collect();
     if !new_definitions.is_empty() {
         let layout = Layout { form, shape, tail };
@@ -337,18 +287,18 @@ struct Layout {
 /// when every line has it, so a new line could otherwise not match.
 ///
 /// [`None`]: std::option::Option::None
-fn description_end(source: &Source<'_>, lines: &[DocLine<'_>], form: Form) -> Option<usize> {
+fn description_end(source: &FileText<'_>, lines: &[DocLine<'_>], form: Form) -> Option<usize> {
     match form {
         Form::LineRun => Some(lines.len()),
         Form::Block => {
             let (close, middle) = lines.split_last()?;
             let middle = middle.get(1..)?;
             let closes_alone = close.text().trim().is_empty()
-                && source.before(*close).trim().is_empty()
+                && before(source, *close).is_some_and(|row| row.trim().is_empty())
                 && lines.len() >= 2;
-            let starred = middle
-                .iter()
-                .all(|line| source.before(*line).trim_start().starts_with('*'));
+            let starred = middle.iter().all(|line| {
+                before(source, *line).is_some_and(|row| row.trim_start().starts_with('*'))
+            });
             (closes_alone && starred).then_some(lines.len() - 1)
         }
     }
@@ -516,7 +466,7 @@ fn usages(
 ///
 /// [`None`]: std::option::Option::None
 fn insertion(
-    source: &Source<'_>,
+    source: &FileText<'_>,
     lines: &[DocLine<'_>],
     anchor: usize,
     layout: Layout,
@@ -534,7 +484,7 @@ fn insertion(
         .iter()
         .rev()
         .find(|line| !line.text().trim().is_empty())
-        .map(|line| source.before(*line));
+        .and_then(|line| before(source, *line));
     let prefix = match (form, marked) {
         (Form::LineRun, Some(prefix)) => {
             let marker = prefix.trim_start();
@@ -545,18 +495,16 @@ fn insertion(
             .trim_start()
             .starts_with('*')
             .then(|| prefix.to_owned())?,
-        (Form::Block, None) => format!("{}* ", source.before(*lines.last()?)),
+        (Form::Block, None) => format!("{}* ", before(source, *lines.last()?)?),
     };
     let blank = prefix.trim_end();
 
-    let mut position = source.line_end(lines[anchor].offset());
-    let newline = match position > source.start && source.slice(position - 1..position) == "\r" {
-        true => {
-            position -= 1;
-            "\r\n"
-        }
-        false => "\n",
+    let line_end = source.line_end(lines[anchor].offset())?;
+    let position = match source.get(source.start()..line_end)?.ends_with('\r') {
+        true => line_end - 1,
+        false => line_end,
     };
+    let newline = source.line_ending().as_str();
 
     let mut text = String::new();
     match shape {
@@ -571,12 +519,13 @@ fn insertion(
         Tail::Tag => text.push_str(&format!("{newline}{blank}")),
     }
 
-    let span = Span::builder()
-        .file(node.span().file_path().clone())
-        .start(position)
-        .end(position)
-        .build();
-    Some(Edit::builder().span(span).replacement(text).build())
+    Some(
+        Edit::insert()
+            .file(node.span().file_path().clone())
+            .offset(position)
+            .text(text)
+            .build(),
+    )
 }
 
 /// Returns a label the way CommonMark compares labels
@@ -668,12 +617,6 @@ mod tests {
     }
 
     #[test]
-    fn trait_send_source() {
-        fn assert_send<T: Send>() {}
-        assert_send::<Source<'_>>();
-    }
-
-    #[test]
     fn trait_send_syntax() {
         fn assert_send<T: Send>() {}
         assert_send::<Syntax>();
@@ -740,12 +683,6 @@ mod tests {
     }
 
     #[test]
-    fn trait_sync_source() {
-        fn assert_sync<T: Sync>() {}
-        assert_sync::<Source<'_>>();
-    }
-
-    #[test]
     fn trait_sync_syntax() {
         fn assert_sync<T: Sync>() {}
         assert_sync::<Syntax>();
@@ -809,12 +746,6 @@ mod tests {
     fn trait_unpin_shape() {
         fn assert_unpin<T: Unpin>() {}
         assert_unpin::<Shape>();
-    }
-
-    #[test]
-    fn trait_unpin_source() {
-        fn assert_unpin<T: Unpin>() {}
-        assert_unpin::<Source<'_>>();
     }
 
     #[test]
