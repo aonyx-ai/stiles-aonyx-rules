@@ -1115,6 +1115,13 @@ mod tests {
     }
 
     #[test]
+    fn stdout_full_path_is_flagged() {
+        let messages = messages("fn f() { let out = std::io::stdout().lock(); }");
+
+        assert_eq!(messages, vec![handle_message("stdout")]);
+    }
+
+    #[test]
     fn stdout_in_other_trait_impl_is_flagged() {
         let source =
             "impl Render for Exit { fn render(self) { report_to(&mut std::io::stdout()); } }";
@@ -1131,13 +1138,6 @@ mod tests {
         let messages = messages(source);
 
         assert!(messages.is_empty());
-    }
-
-    #[test]
-    fn stdout_full_path_is_flagged() {
-        let messages = messages("fn f() { let out = std::io::stdout().lock(); }");
-
-        assert_eq!(messages, vec![handle_message("stdout")]);
     }
 
     #[test]
