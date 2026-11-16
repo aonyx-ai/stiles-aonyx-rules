@@ -399,16 +399,17 @@ fn binds_everything(pattern: &DecoratedNode<'_>) -> bool {
 
 /// Returns whether a struct or tuple struct pattern binds a whole struct
 ///
-/// A variant of an enum can fail, and a struct cannot. The name of the
-/// pattern resolves to one or the other. A name that the provider did not
-/// resolve counts as a struct, so the rule stays silent on it.
+/// A variant of an enum can fail, and a struct cannot. Only a name that
+/// resolves to a variant makes the pattern refutable, so `Self` and an
+/// alias of a struct count as the struct. A name that the provider did not
+/// resolve counts as a struct too, so the rule stays silent on it.
 fn is_plain_struct_binding(pattern: &DecoratedNode<'_>) -> bool {
     let Some(name) = pattern.child_by_field_name("type") else {
         return false;
     };
     let plain = name
         .decoration::<Resolution>()
-        .is_none_or(|resolution| resolution.kind() == DefinitionKind::Struct);
+        .is_none_or(|resolution| resolution.kind() != DefinitionKind::EnumVariant);
 
     plain
         && pattern
@@ -612,9 +613,10 @@ mod tests {
 
     /// Returns the resolution of a pattern name, a variant or a struct
     fn resolution(name: &str) -> Resolution {
-        let kind = match VARIANT_NAMES.contains(&name) {
-            true => DefinitionKind::EnumVariant,
-            false => DefinitionKind::Struct,
+        let kind = match (VARIANT_NAMES.contains(&name), name == "Self") {
+            (true, _) => DefinitionKind::EnumVariant,
+            (false, true) => DefinitionKind::SelfType,
+            (false, false) => DefinitionKind::Struct,
         };
 
         Resolution::builder()
@@ -1099,6 +1101,13 @@ mod tests {
     #[test]
     fn option_pattern_naming_an_unresolved_name_is_not_flagged() {
         let source = "fn f() { let Some(Unknown { x }) = k else { return; }; a(x); }";
+
+        assert_no_diagnostics(&run_with(source, option(), Exhaustiveness::Exhaustive));
+    }
+
+    #[test]
+    fn option_pattern_naming_self_is_not_flagged() {
+        let source = "fn f() { let Some(Self { x, .. }) = k else { return; }; a(x); }";
 
         assert_no_diagnostics(&run_with(source, option(), Exhaustiveness::Exhaustive));
     }
