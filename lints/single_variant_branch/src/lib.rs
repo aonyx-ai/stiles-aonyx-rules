@@ -726,7 +726,7 @@ mod tests {
     fn documented_example_is_flagged() {
         let pair = example_pair::ExamplePair::read(include_str!("lib.rs"));
 
-        assert_eq!(run(pair.example()).len(), 1);
+        pair.assert_example(run);
     }
 
     #[test]

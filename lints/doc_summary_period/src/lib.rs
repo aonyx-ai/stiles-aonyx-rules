@@ -1,6 +1,6 @@
 use doc_comment::DocLine;
 use stiles_rust::{RuleId, RustLintPass};
-use stiles_types::{DecoratedNode, Diagnostic, Severity, Span};
+use stiles_types::{DecoratedNode, Diagnostic, Edit, Fix, Severity, Span};
 
 /// The id that every diagnostic of this rule carries
 ///
@@ -45,6 +45,10 @@ const ATTACHED_KINDS: &[&str] = &[
 /// comes before the comment, the summary can lie in that text, so the rule
 /// stays silent. A summary that runs to the end of the comment can also
 /// continue in later docs of the same item. The rule stays silent then too.
+///
+/// `stiles check --fix` deletes the final period. The rule attaches no fix
+/// when another period comes right before it, as in `0..`. That summary would
+/// still end with a period, and the next round would change its meaning.
 ///
 /// # Examples
 ///
@@ -118,21 +122,30 @@ fn report(node: &DecoratedNode<'_>) -> Option<Diagnostic> {
         return None;
     }
 
-    let file = node.span();
-    Some(
-        Diagnostic::builder()
-            .rule_id(RULE_ID)
-            .severity(Severity::Error)
-            .message("doc summary ends with a period")
-            .span(
-                Span::builder()
-                    .file(file.file_path().clone())
-                    .start(period)
-                    .end(period + 1)
-                    .build(),
-            )
-            .build(),
-    )
+    let span = Span::builder()
+        .file(node.span().file_path().clone())
+        .start(period)
+        .end(period + 1)
+        .build();
+    let diagnostic = Diagnostic::builder()
+        .rule_id(RULE_ID)
+        .severity(Severity::Error)
+        .message("doc summary ends with a period")
+        .span(span.clone())
+        .build();
+    if lines[end].text().trim_end().ends_with("..") {
+        return Some(diagnostic);
+    }
+
+    let deletion = Edit::builder().span(span).replacement("").build();
+    let fixed = Fix::builder()
+        .message("delete the period")
+        .edits(vec![deletion])
+        .build()
+        .ok()
+        .and_then(|fix| diagnostic.clone().with_fix(fix).ok());
+
+    Some(fixed.unwrap_or(diagnostic))
 }
 
 /// Returns the placement of a doc comment or a doc attribute, or [`None`]
@@ -334,10 +347,14 @@ stiles_plugin::export_lints![rust: [DocSummaryPeriod]];
 #[cfg(test)]
 mod tests {
     use stiles_rust::RustLintPassAdapter;
-    use stiles_testing::{assert_diagnostic, assert_no_diagnostics, execute, parse};
+    use stiles_testing::{assert_diagnostic, assert_fix, assert_no_diagnostics, execute, parse};
     use stiles_types::{Language, LintPass};
 
     use super::*;
+
+    fn passes() -> Vec<Box<dyn LintPass>> {
+        vec![Box::new(RustLintPassAdapter::new(DocSummaryPeriod))]
+    }
 
     fn check(source: &str) -> Vec<Diagnostic> {
         let tree = parse(source, Language::Rust);
@@ -550,9 +567,7 @@ mod tests {
     fn documented_example_is_flagged() {
         let pair = example_pair::ExamplePair::read(include_str!("lib.rs"));
 
-        let diagnostics = run_documented(pair.example());
-
-        assert!(!diagnostics.is_empty());
+        pair.assert_example(run_documented);
     }
 
     #[test]
@@ -568,6 +583,63 @@ mod tests {
         let diagnostics = check("/// Waits for the host to connect, ...\nfn f() {}");
 
         assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn fix_deletes_the_period_after_a_code_span() {
+        assert_fix()
+            .tree(parse("/// Reads `Cargo.toml`.\nfn f() {}", Language::Rust))
+            .passes(passes)
+            .produces("/// Reads `Cargo.toml`\nfn f() {}");
+    }
+
+    #[test]
+    fn fix_deletes_the_period_of_a_block_comment() {
+        assert_fix()
+            .tree(parse(
+                "/** Returns the length. */\nfn f() {}",
+                Language::Rust,
+            ))
+            .passes(passes)
+            .produces("/** Returns the length */\nfn f() {}");
+    }
+
+    #[test]
+    fn fix_deletes_the_period_of_a_wrapped_summary() {
+        assert_fix()
+            .tree(parse("/// Returns the length of the string, counted\n/// in bytes.\n///\n/// More.\nfn f() {}", Language::Rust))
+            .passes(passes)
+            .produces("/// Returns the length of the string, counted\n/// in bytes\n///\n/// More.\nfn f() {}");
+    }
+
+    #[test]
+    fn fix_deletes_the_period_of_an_inner_doc_comment() {
+        assert_fix()
+            .tree(parse("//! Holds the parser.\n", Language::Rust))
+            .passes(passes)
+            .produces("//! Holds the parser\n");
+    }
+
+    #[test]
+    fn fix_deletes_the_period_of_every_item() {
+        assert_fix()
+            .tree(parse(
+                "/// Returns one.\nfn f() {}\n/// Returns two.\nfn g() {}",
+                Language::Rust,
+            ))
+            .passes(passes)
+            .produces("/// Returns one\nfn f() {}\n/// Returns two\nfn g() {}");
+    }
+
+    #[test]
+    fn fix_keeps_the_whitespace_after_the_period() {
+        assert_fix()
+            .tree(parse(
+                "/// Returns the length.   \nfn f() {}",
+                Language::Rust,
+            ))
+            .passes(passes)
+            .produces("/// Returns the length   \nfn f() {}");
     }
 
     #[test]
@@ -708,6 +780,13 @@ mod tests {
         let diagnostics = check("/// Returns the length.\n// note\n/// More\nfn f() {}");
 
         assert_no_diagnostics(&diagnostics);
+    }
+
+    #[test]
+    fn summary_ending_in_two_periods_has_no_fix() {
+        let diagnostics = check("/// Counts up from 0..\nfn f() {}");
+
+        assert_diagnostic(&diagnostics[0]).has_no_fix();
     }
 
     #[test]

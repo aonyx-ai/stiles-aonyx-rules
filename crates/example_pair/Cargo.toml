@@ -9,5 +9,11 @@ license.workspace = true
 repository.workspace = true
 publish = false
 
+# The fix check applies the fixes of a rule in rounds, with the same
+# stiles-core code that `stiles check --fix` runs.
+[dependencies]
+stiles-core = { workspace = true }
+stiles-types = { workspace = true }
+
 [lints]
 workspace = true

@@ -1211,9 +1211,7 @@ pub trait Port {
     fn documented_example_is_flagged() {
         let pair = example_pair::ExamplePair::read(include_str!("lib.rs"));
 
-        let diagnostics = run(pair.example(), &DOCUMENTED);
-
-        assert!(!diagnostics.is_empty());
+        pair.assert_example(|source| run(source, &DOCUMENTED));
     }
 
     #[test]
